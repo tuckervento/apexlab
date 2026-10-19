@@ -9,7 +9,9 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
 ## Running and testing
 
 - **Run:** open `apex-lab.html` in a browser. Only external resource is Google Fonts.
-- **No test suite, linter or build exists yet.** Physics is verified headless in Node by extracting the lines between `// ===== CORE START` … `// ===== CORE END` and `// ===== DYN START` … `// ===== DYN END`, concatenating them, and running harnesses against that. `ARCHITECTURE.md` §8 lists the checks (gradient vs finite differences, run-to-convergence, golden lap times, skidpad, model consistency). The harness itself is not in the repo.
+- **Test:** `node --test tests/` (Node's built-in runner, zero deps; ~80 s, almost all of it the convergence run). `tests/load-core.mjs` extracts the lines between `// ===== CORE START` … `// ===== CORE END` and `// ===== DYN START` … `// ===== DYN END` (plus the `CARS`/`TRACKS` presets) from the HTML and evaluates them in a fresh `vm` context per call; it throws if a marker is missing or duplicated or a block references the DOM. Set `APEX_HTML=<path>` to test a different copy of the page.
+- Implemented so far: §8.1 gradient check (`tests/gradient.test.mjs`, 6 presets × hard/`tau=0.5`) and §8.2 run-to-convergence (`tests/convergence.test.mjs`). Golden values, skidpad, model consistency and the margin table (§8.3–8.6) are not yet ported. No linter or build exists.
+- The gradient check measures error against `Σ|grad_i·d_i|`, not the net directional derivative: random directions can cancel ~10⁵×, which makes FD roundoff look like a failure.
 
 ## Architecture (big picture)
 
@@ -29,7 +31,7 @@ Key couplings that span the file:
 
 - **`lapEval` has a hand-written exact adjoint gradient.** Any change to `lapEval` (including yaw limit, shift losses, GGV interpolation) must be re-checked against central finite differences (≥4 sig figs, hard and `tau > 0` modes).
 - **Non-re-entrant hidden state:** `vCorner` returns its derivative via module-level `VC_D`; `lapEval` uses shared scratch `_t1/_t2/_t3`; `DYN` gains are a mutable global.
-- **Preset circuits are seeds** into `genCtrl`/`buildTrack`; changing either changes every preset and invalidates golden lap times (GT racer on seed 27, 12 m width ≈ 78.29 s converged; dynamic check ≈ 97.8–98.1%).
+- **Preset circuits are seeds** into `genCtrl`/`buildTrack`; changing either changes every preset and invalidates golden lap times (GT racer on seed 27, 12 m width: 78.3771 s for a single run from the centreline in Node v26.12.0; restarts scatter ~78.28–78.40 s; Node and Chrome differ by tens of ms, so golden values are per-runtime; dynamic check ≈ 97.8–98.1%).
 - **Conventions:** SI internally (UI params are km/h, %, kW, deg, converted in `buildCar`/`buildPowertrain`/`dynSetup`); screen is y-down so normal `n = (−ty, tx)` points visually right; stations at uniform arc length with wrapping indices; speed tables are 0.5 m/s steps to `VMAX = 110`.
 - **Dead code** (don't extend, safe-to-remove candidates per ARCHITECTURE.md §12): `crPoint`, `HillClimb`, `sig`, `softplus`, `DYN.maxIter`, `DYN.look`.
 - The optimiser's edge handling is a stiffening penalty, deliberately not a clamp (a clamp creates apex curvature kinks the lap model exploits).

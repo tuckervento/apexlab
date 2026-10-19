@@ -224,12 +224,13 @@ All per-station arrays are `Float64Array` of length `N`.
 
 ## 8. Verification (port these first)
 
-These harnesses were run ad hoc during prototyping. They should become the first test suite, run in Node against the core and dynamics modules.
+These harnesses were run ad hoc during prototyping. They are being ported to `tests/` (run with `node --test tests/`), which loads the `CORE` and `DYN` blocks straight out of `apex-lab.html`. Checks 1 and 2 are ported.
 
-1. **Gradient check.** On a random smooth offset field, compare the analytic gradient with a central finite difference along a random direction, in hard mode and with `tau = 0.5`. Must agree to at least 4 significant figures, for several presets including shift time and the yaw limit.
-2. **Run to convergence.** Drive `Optimizer.step()` until `converged`, polish included. This would have caught the `clamp` freeze.
-3. **Determinism and golden values.** Same seed and parameters give the same lap time, bit for bit. Reference values from the prototype, all at 12 m track width:
-   - GT racer on Harrow Ring (seed 27): converges to about 78.29 s in the browser; about 78.1–78.9 s in headless runs that stop before the polish stage.
+1. **Gradient check.** On a random smooth offset field, compare the analytic gradient with a central finite difference along a random direction, in hard mode and with `tau = 0.5`, for several presets including shift time and the yaw limit. *Ported:* all six presets, h = 1e-6. The error is measured against the gradient's scale `Σ|grad_i·d_i|`, not the net directional derivative, and must be below 1e-6. A random direction can cancel to a net 10⁵× smaller than its terms (Open-wheeler on Harrow Ring), so a net-relative "4 significant figures" fails on finite-difference roundoff alone (the lap time carries ~1e-12 s of rounding noise). The hard-mode run also asserts that the yaw limit binds and, for cars with shift time, that an upshift happens, so those adjoint branches are exercised. Single-line sign flips in the yaw and shift-loss adjoints both fail this test.
+2. **Run to convergence.** Drive `Optimizer.step()` until `converged`, polish included. This would have caught the `clamp` freeze (verified: deleting `clamp` fails the test with a stack trace on the HTML line). *Ported:* GT racer, Harrow Ring, 12 m. Headless it converges to 78.377 s in ~78,000 evaluations (~75 s); the lap time is reported, not yet asserted.
+3. **Determinism and golden values.** Same seed and parameters give the same lap time, bit for bit, **within one JS runtime**. Node and Chrome compute the track geometry differently in the last bits (starting in `buildTrack`), and the optimiser's endpoint is chaotic, so their converged laps differ by tens of ms. Golden values must name their procedure and runtime. Reference values, all at 12 m track width (see `investigations/golden-lap.md`):
+   - GT racer on Harrow Ring (seed 27), single run from the centreline: **78.3771 s** in Node v26.12.0 (V8 14.6.202.34); 78.348 s in Chrome 153.
+   - Restarting ("Search again") is a fresh draw, not a refinement. Six consecutive restarts in Chrome gave 78.278–78.398 s. The earlier "about 78.29 s" was one such draw.
    - Dynamic check: clean to about 97.8–98.1%.
 4. **Skidpad.** On an 80 m circle at constant speed, the dynamic model should stay on the line, with mean error around 0.2 m or less, up to 98% of the lap model's lateral limit (road car). Re-baseline with the current driver gains.
 5. **Model consistency.** Inverse-dynamics utilisation on the optimised profile stays at or below about 1.06 across the presets.
