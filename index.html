@@ -226,8 +226,7 @@ details p{margin:6px 0 0}
 </div>
 
 <script type="module">
-import { G, buildCar, describeCar, buildTrack, genCtrl, makeBounds, makeScratch, lapEval, Optimizer } from './src/core/index.js';
-import { dynSetup, dynNominal, DynCheck } from './src/dynamics/index.js';
+import { G, genCtrl } from './src/core/index.js';
 import { CARS, TRACKS } from './src/app/presets.js';
 
 // ---------- presets
@@ -265,35 +264,67 @@ const SPEC=[
 ];
 
 // ---------- state
-let P={...CARS['GT racer']}, car=buildCar(P), info=describeCar(car); // views read info (describeCar), never car's tables
+// The car, the optimiser and the dynamic check live in a Web Worker (src/solver/worker.js, ARCHITECTURE.md §10.1).
+// This thread owns the UI parameters and renders what the solver sends: T (track), disp (line snapshot),
+// info (describeCar), prog (optimiser progress), dynRes (dynamic check).
+let P={...CARS['GT racer']}, info=null;
 let trackIdx=0, width=12, ctrl=genCtrl(TRACKS[0].seed,width), origCtrl=ctrl.map(p=>p.slice());
-let T, B, off, opt=new Optimizer(), refT=0, refV=null, disp=null, ghost=null, corners=[];
+let T=null, refT=0, refV=null, disp=null, prog=null, ghost=null, corners=[];
 let running=true, colorMode='speed', replay=4, animT=0, editing=false;
 let hist=[], cam={x:0,y:0,z:1}, colors={};
 
-function rebuildTrack(keepLine){
-  const oldOff=off, oldN=T?T.N:0;
-  dynRes=null;dyn=null;if(typeof renderDyn==='function')renderDyn();
-  T=buildTrack(ctrl,width); B=makeBounds(T,car);
-  off=new Float64Array(T.N);
-  if(keepLine&&oldOff){for(let i=0;i<T.N;i++){const x=i*oldN/T.N,a=x|0,f=x-a;off[i]=oldOff[a%oldN]*(1-f)+oldOff[(a+1)%oldN]*f;}}
-  for(let i=0;i<T.N;i++) off[i]=Math.min(B.hi[i],Math.max(B.lo[i],off[i]));
-  opt.setup(T,car,B,off); corners=findCorners(T);
-  computeRef(); hist=[]; refreshDisplay(true);
+// ---------- solver
+// setCar/setTrack are coalesced: one in flight per kind and only the latest pending one goes next, so a slider or
+// handle drag can't queue up dozens of ~60 ms rebuilds in the worker.
+const solver=new Worker(new URL('./src/solver/worker.js',import.meta.url),{type:'module'});
+let rev=0,pendingT=null,fitPending=false;
+const flight={setCar:{busy:0,next:null},setTrack:{busy:0,next:null}};
+const send=cmd=>solver.postMessage(cmd);
+function sendState(type,body){const f=flight[type],cmd={type,rev:++rev,...body};if(f.busy){f.next=cmd;return;}f.busy=cmd.rev;send(cmd);}
+function landed(f){f.busy=0;if(f.next){const c=f.next;f.next=null;f.busy=c.rev;send(c);}}
+solver.onmessage=({data:m})=>{
+  switch(m.type){
+    case 'carInfo':landed(flight.setCar);info=m.info;renderDerived();break;
+    case 'track':landed(flight.setTrack);pendingT=m;break; // swapped in with the first snapshot on it
+    case 'snapshot':onSnapshot(m);break;
+    case 'progress':
+      prog=m;
+      if(m.converged&&running){running=false;runLabel();}
+      if(m.running&&!editing&&disp){hist.push([m.evals,disp.t]);if(hist.length>1500)hist=hist.filter((_,i)=>i%2===0);}
+      break;
+    case 'dynProgress':$('#dynState').textContent='running · lap '+m.lap;break;
+    case 'dynResult':dynRunning=false;dynRes={...m.result,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};dynStale=!dynCurrent();renderDyn();break;
+    case 'error':
+      console.error('solver: '+m.message+'\n'+m.stack);showError(m.message);
+      if(dynRunning){dynRunning=false;renderDyn();}
+      for(const f of Object.values(flight))landed(f); // the failed command won't be answered
+      break;
+  }
+};
+solver.onerror=e=>{e.preventDefault();console.error('solver worker:',e.message||e);showError('solver failed: '+(e.message||'see console'));};
+function onSnapshot(m){
+  if(disp&&(m.carRev<disp.carRev||m.trackRev<disp.trackRev))return; // never step back to an older car or track
+  if(pendingT&&m.trackRev===pendingT.trackRev){T=pendingT;pendingT=null;trackArrived();}
+  if(!T||m.trackRev!==T.trackRev)return;
+  if(m.ref){refT=m.ref.t;refV=m.ref.v;}
+  disp={...m.line,t:m.lap,vmin:m.vmin,vmax:m.vmax,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};
+  const st=!!dynRes&&!dynCurrent();if(st!==dynStale){dynStale=st;renderDyn();}
+}
+// A dynamic result is current only while the car, track and line it was computed on are the ones displayed.
+function dynCurrent(){return disp&&dynRes.carRev===disp.carRev&&dynRes.trackRev===disp.trackRev&&dynRes.lineRev===disp.lineRev;}
+function trackArrived(){
+  corners=findCorners(T);if(fitPending&&cw){fit();fitPending=false;}
   const w=$('#warn'); w.hidden=!T.issue; w.textContent=T.issue?T.issue+' — results may look odd':'';
   $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+corners.length+' turns';
 }
-function computeRef(){const z=new Float64Array(T.N),S=makeScratch(T.N);refT=lapEval(T,car,z,S);refV=Float64Array.from(S.v);}
-function carChanged(){if(dynRes)dynStale=true;dyn=null;car=buildCar(P);info=describeCar(car);B=makeBounds(T,car);opt.rescore(car,B);computeRef();hist=[];refreshDisplay(true);renderDerived();if(!running&&!editing)setRunning(true);}
 
-function refreshDisplay(){
-  const S=makeScratch(T.N),t=lapEval(T,car,off,S),N=T.N,tc=new Float64Array(N+1);
-  for(let i=0;i<N;i++){const j=(i+1)%N;tc[i+1]=tc[i]+2*S.ds[i]/(S.v[i]+S.v[j]+1e-9);}
-  let vmin=1e9,vmax=0;for(let i=0;i<N;i++){vmin=Math.min(vmin,S.v[i]);vmax=Math.max(vmax,S.v[i]);}
-  disp={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,t,vmin,vmax,u:null};
-  if(colorMode==='util'){const th=new Float64Array(N);for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(S.py[j]-S.py[i],S.px[j]-S.px[i]);}
-    const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds},S.v);disp.u=Float64Array.from(n.uf,(x,i)=>Math.max(x,n.ur[i]));}
-  if(dynRes&&!dynStale&&Math.abs(t-dynRes.qss)>1e-6){dynStale=true;renderDyn();}
+function rebuildTrack(keepLine){
+  dynRes=null;dynStale=false;if(dynRunning)dynRunning=false;renderDyn();
+  sendState('setTrack',{ctrl:ctrl.map(p=>p.slice()),width,keepLine});hist=[];
+}
+function carChanged(){
+  if(dynRunning){dynRunning=false;renderDyn();}
+  sendState('setCar',{params:{...P}});hist=[];if(!running&&!editing)setRunning(true);
 }
 
 function findCorners(T){
@@ -357,20 +388,23 @@ function renderDerived(){
 function buildTrackUI(){
   const sel=$('#trackPreset');
   sel.innerHTML=TRACKS.map((t,i)=>`<option value="${i}">${t.name}</option>`).join('')+'<option value="r" hidden>Random</option><option value="e" hidden>Edited</option>';
-  sel.onchange=()=>{const i=+sel.value;if(isNaN(i))return;trackIdx=i;ctrl=genCtrl(TRACKS[i].seed,width);origCtrl=ctrl.map(p=>p.slice());ghost=null;updGhostUI();rebuildTrack(false);fit();setRunning(true);};
-  $('#randTrack').onclick=()=>{const seed=(Math.random()*1e6)|0;ctrl=genCtrl(seed,width);origCtrl=ctrl.map(p=>p.slice());sel.value='r';ghost=null;updGhostUI();rebuildTrack(false);fit();setRunning(true);};
+  sel.onchange=()=>{const i=+sel.value;if(isNaN(i))return;trackIdx=i;ctrl=genCtrl(TRACKS[i].seed,width);origCtrl=ctrl.map(p=>p.slice());ghost=null;updGhostUI();fitPending=true;rebuildTrack(false);setRunning(true);};
+  $('#randTrack').onclick=()=>{const seed=(Math.random()*1e6)|0;ctrl=genCtrl(seed,width);origCtrl=ctrl.map(p=>p.slice());sel.value='r';ghost=null;updGhostUI();fitPending=true;rebuildTrack(false);setRunning(true);};
   const w=$('#f-width');w.oninput=()=>{width=+w.value;$('#o-width').textContent=width+' m';ghost=null;updGhostUI();rebuildTrack(true);setRunning(true);};
-  $('#editBtn').onclick=()=>{editing=!editing;$('#editBtn').classList.toggle('on',editing);$('#editBtn').textContent=editing?'Done editing':'Edit shape';$('#editbar').hidden=!editing;$('#view').classList.toggle('editing',editing);if(!editing)setRunning(true);};
+  $('#editBtn').onclick=()=>{editing=!editing;$('#editBtn').classList.toggle('on',editing);$('#editBtn').textContent=editing?'Done editing':'Edit shape';$('#editbar').hidden=!editing;$('#view').classList.toggle('editing',editing);if(editing)send({type:'pause'});else setRunning(true);};
   $('#revertTrack').onclick=()=>{ctrl=origCtrl.map(p=>p.slice());ghost=null;updGhostUI();rebuildTrack(true);setRunning(true);};
 }
 
-function setRunning(r){running=r;$('#runBtn').textContent=r?'Pause':(opt.converged?'Search again':'Run');}
-$('#runBtn').onclick=()=>{if(!running&&opt.converged){opt.setup(T,car,B,off);hist=[];}setRunning(!running);};
-$('#resetC').onclick=()=>{off.fill(0);for(let i=0;i<T.N;i++)off[i]=Math.min(B.hi[i],Math.max(B.lo[i],0));opt.setup(T,car,B,off);hist=[];refreshDisplay();setRunning(true);};
+// The search never runs while editing the track (the worker is paused then); fresh = "Search again" from the current line.
+function setRunning(r,fresh){running=r;if(!editing)send(r?{type:'run',fresh:!!fresh}:{type:'pause'});runLabel();}
+function runLabel(){$('#runBtn').textContent=running?'Pause':(prog&&prog.converged?'Search again':'Run');}
+function showError(msg){frameErr=frameErr||new Error(msg);running=false;runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
+$('#runBtn').onclick=()=>{if(!running&&prog&&prog.converged){hist=[];setRunning(true,true);}else setRunning(!running);};
+$('#resetC').onclick=()=>{send({type:'setLine'});hist=[];setRunning(true);};
 $('#pinBtn').onclick=()=>{ghost={px:Float64Array.from(disp.px),py:Float64Array.from(disp.py),v:Float64Array.from(disp.v),ds:Float64Array.from(disp.ds),k:Float64Array.from(disp.k),tc:Float64Array.from(disp.tc),t:disp.t,wb:P.wb,track:P.track};animT=0;updGhostUI();};
 $('#clearGhost').onclick=()=>{ghost=null;updGhostUI();};
 function updGhostUI(){$('#ghostRow').hidden=!ghost;$('#clearGhost').hidden=!ghost;$('#capGhost').hidden=!ghost;$('#gapWrap').hidden=!ghost;}
-$('#colorSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;colorMode=b.dataset.v;setSeg($('#colorSeg'),colorMode);$('#legSpeed').hidden=colorMode!=='speed';$('#legPedal').hidden=colorMode!=='pedal';$('#legUtil').hidden=colorMode!=='util';refreshDisplay();};
+$('#colorSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;colorMode=b.dataset.v;setSeg($('#colorSeg'),colorMode);$('#legSpeed').hidden=colorMode!=='speed';$('#legPedal').hidden=colorMode!=='pedal';$('#legUtil').hidden=colorMode!=='util';send({type:'view',util:colorMode==='util'});};
 $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);if(replay===0&&follow)setFollow(false);};
 
 // ---------- canvas + view
@@ -488,15 +522,16 @@ function draw(){
     ctx.setLineDash([6,5]);ctx.strokeStyle=colors.ghost;ctx.lineWidth=Math.max(1.5,Math.min(4,0.8*cam.z));ctx.stroke();ctx.setLineDash([]);}
   // racing line
   const d=disp,lw=Math.max(2.5,Math.min(6,1.2*cam.z));ctx.lineWidth=lw;
-  const buckets=colorMode==='pedal'?3:ramp.length,paths=Array.from({length:buckets},()=>[]);
+  const mode=colorMode==='util'&&!d.u?'speed':colorMode; // until a snapshot with tyre use arrives
+  const buckets=mode==='pedal'?3:ramp.length,paths=Array.from({length:buckets},()=>[]);
   const span=Math.max(1e-6,d.vmax-d.vmin);
   for(let i=0;i<N;i++){const j=(i+1)%N;let b;
-    if(colorMode==='speed') b=Math.round((d.v[i]-d.vmin)/span*(buckets-1));
-    else if(colorMode==='util') b=buckets-1-Math.round(Math.max(0,Math.min(1,(d.u[i]-0.5)/0.5))*(buckets-1));
+    if(mode==='speed') b=Math.round((d.v[i]-d.vmin)/span*(buckets-1));
+    else if(mode==='util') b=buckets-1-Math.round(Math.max(0,Math.min(1,(d.u[i]-0.5)/0.5))*(buckets-1));
     else{const a=(d.v[j]*d.v[j]-d.v[i]*d.v[i])/(2*d.ds[i]+1e-9);b=a<-1.2?0:a>0.4?2:1;}
     paths[b].push(i);}
   paths.forEach((arr,b)=>{if(!arr.length)return;ctx.beginPath();for(const i of arr){const j=(i+1)%N;ctx.moveTo(SX(d.px[i]),SY(d.py[i]));ctx.lineTo(SX(d.px[j]),SY(d.py[j]));}
-    ctx.strokeStyle=colorMode==='pedal'?[colors.s0,colors.s1,colors.s2][b]:ramp[b];ctx.stroke();});
+    ctx.strokeStyle=mode==='pedal'?[colors.s0,colors.s1,colors.s2][b]:ramp[b];ctx.stroke();});
   drawDynOverlay();
   // corner labels
   ctx.font=`500 11px ${colors.mono}`;ctx.textAlign='center';ctx.textBaseline='middle';const placed=[];
@@ -521,7 +556,7 @@ function draw(){
   drawScaleBar();
 }
 let carPos=-1,carV=0;
-let dyn=null,dynRes=null,dynStale=false;
+let dynRes=null,dynStale=false,dynRunning=false;
 function cornerAt(i){const N=T.N;for(let n=0;n<corners.length;n++){const c=corners[n],len=(c.e-c.s+N)%N,d=(i-c.s+N)%N;if(d<=len+12||d>=N-12)return 'T'+(n+1);}return (i*T.L/N/1000).toFixed(2)+' km';}
 function renderDyn(){
   const out=$('#dynOut');if(!dynRes){out.hidden=true;$('#dynState').textContent='not run';return;}
@@ -532,7 +567,7 @@ function renderDyn(){
     `<div>Peak tyre use on lap-model profile<b>${(R.umax*100).toFixed(1)}% · ${R.uaxle}</b></div>`+
     `<div>First trouble<b>${f?cornerAt(f.at)+' · '+(f.spun?'spins':'runs wide')+' at '+(f.fr*100).toFixed(1)+'%':'none'}</b></div>`;
 }
-$('#dynBtn').onclick=()=>{setRunning(false);dyn=new DynCheck(T,car,off);dynRes=null;dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
+$('#dynBtn').onclick=()=>{running=false;runLabel();send({type:'dynCheck'});dynRunning=true;dynRes=null;dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
 function drawDynOverlay(){
   if(!dynRes||dynStale)return;const R=dynRes,tr=R.dyn&&R.dyn.trace;
   if(tr&&tr.x.length>1){ctx.beginPath();ctx.moveTo(SX(tr.x[0]),SY(tr.y[0]));for(let i=1;i<tr.x.length;i++)ctx.lineTo(SX(tr.x[i]),SY(tr.y[i]));ctx.setLineDash([2,3]);ctx.strokeStyle=colors.ink;ctx.lineWidth=1.2;ctx.stroke();ctx.setLineDash([]);}
@@ -617,32 +652,24 @@ function frame(ts){
 function frameBody(ts){
   if(frameErr&&running)frameErr=null;
   const dt=Math.min(0.1,(ts-lastTs)/1000||0);lastTs=ts;frameN++;
-  if(running&&!editing){
-    const t0=performance.now(),budget=cw<560?7:10;let imp=false;
-    while(performance.now()-t0<budget){if(opt.step())imp=true;}
-    if(imp)refreshDisplay();
-    if(frameN%3===0)hist.push([opt.evals,disp.t]);
-    if(hist.length>1500)hist=hist.filter((_,i)=>i%2===0);
-    if(opt.converged)setRunning(false);
-  }
-  if(dyn&&!dyn.done){const t0=performance.now();while(!dyn.done&&performance.now()-t0<14)dyn.step();$('#dynState').textContent=dyn.done?'':'running · lap '+dyn.iter;if(dyn.done){dynRes=dyn.result;dynStale=false;dyn=null;renderDyn();}}
+  if(!T||!disp||!prog)return; // nothing from the solver yet
   animT+=dt*replay;
-  const st=$('#status'),si=opt.stageInfo,s=editing?'editing':!running?(opt.converged?'converged':'paused'):(opt.polish?'refining':'searching');
-  const lbl=editing?'Editing track':!running?(opt.converged?'Converged':'Paused'):opt.polish?`Stage ${si.n}/${si.of} · local polish`:`Stage ${si.n}/${si.of} · ${si.knot} m spline`;
+  const p=prog,st=$('#status'),s=editing?'editing':!running?(p.converged?'converged':'paused'):(p.polish?'refining':'searching');
+  const lbl=editing?'Editing track':!running?(p.converged?'Converged':'Paused'):p.polish?`Stage ${p.stage}/${p.of} · local polish`:`Stage ${p.stage}/${p.of} · ${p.knot} m spline`;
   if(!frameErr){if(st.dataset.s!==s)st.dataset.s=s;if(st.textContent!==lbl)st.textContent=lbl;}
   $('#lapTime').textContent=fmtTime(disp.t);
   const dl=disp.t-refT;$('#deltaRef').textContent=(dl<0?'−':'+')+Math.abs(dl).toFixed(3)+' s';
   if(ghost){$('#ghostTime').textContent=fmtTime(ghost.t);const g=disp.t-ghost.t;$('#ghostDelta').textContent='· you '+(g<0?'−':'+')+Math.abs(g).toFixed(3)+' s';}
-  $('#evals').textContent=opt.evals.toLocaleString()+' laps simulated';
+  $('#evals').textContent=p.evals.toLocaleString()+' laps simulated';
   $('#legMin').textContent=Math.round(disp.vmin*3.6);$('#legMax').textContent=Math.round(disp.vmax*3.6);
   $('#convCap').textContent=hist.length?'':'';
   draw();if(frameN%2===0){drawSpeedChart();drawConv();drawGapChart();}if(frameN%4===0)drawForceChart();
 }
 
 // ---------- boot
-readColors();buildCarUI();buildTrackUI();renderDerived();
+readColors();buildCarUI();buildTrackUI();
 new ResizeObserver(()=>{const first=!cw;resize();if(first&&T)fit();}).observe($('#stage'));
-resize();rebuildTrack(false);fit();
+resize();sendState('setCar',{params:{...P}});fitPending=true;rebuildTrack(false);setRunning(true);
 document.fonts&&document.fonts.ready.then(readColors);
 requestAnimationFrame(frame);
 </script>
