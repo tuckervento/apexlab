@@ -1,6 +1,7 @@
 // Public surface of the physics core.
 export { G, RHO, FZ0, VSTEP, VMAX, NT, ETA, CRR, NQ } from './constants.js';
 export { mulberry32 } from './rng.js';
+export { carSpec } from './units.js';
 export { enginePower, buildPowertrain } from './powertrain.js';
 export { buildCar } from './car.js';
 export { buildTrack, genCtrl, makeBounds } from './track.js';

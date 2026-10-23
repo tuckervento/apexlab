@@ -1,12 +1,15 @@
-// Moved verbatim from prototype/apex-lab.html (migration step 2).
+// Moved from prototype/apex-lab.html (migration step 2); units normalised by carSpec (step 3).
 import { G, RHO, FZ0, VSTEP, VMAX, NT, CRR, NQ } from './constants.js';
 import { buildPowertrain } from './powertrain.js';
+import { carSpec } from './units.js';
 
 // Largest a in [0,hi] with fn(a)>=0, for fn decreasing in a.
 export function solveDec(fn,hi,n){let lo=0;if(fn(hi)>=0)return hi;for(let k=0,K=n||46;k<K;k++){const mid=(lo+hi)/2;if(fn(mid)>=0)lo=mid;else hi=mid;}return lo;}
 
-export function buildCar(p){
-  const m=p.mass,wr=p.rear/100,wf=1-wr,aF=p.aeroF/100,rF=p.rollF/100,bF=p.brakeF/100,awd=p.drive==='AWD',h=p.cg;
+// params: CarParams in UI units. Everything below reads the SI CarSpec p, stored as car.spec.
+export function buildCar(params){
+  const p=carSpec(params);
+  const m=p.mass,wr=p.wr,wf=1-wr,aF=p.aF,rF=p.rF,bF=p.bF,awd=p.drive==='AWD',h=p.cg;
   const tireF=Fz=>{if(Fz<=0)return 0;let k=1-p.sens*(Fz/FZ0-1);if(k<0.25)k=0.25;return p.mu*k*Fz;};
   const alat=new Float64Array(NT),brk=new Float64Array(NT),trc=new Float64Array(NT),kcrit=new Float64Array(NT),limF=new Uint8Array(NT),brkF=new Uint8Array(NT);
   const ayFt=new Float64Array(NT),ayRt=new Float64Array(NT),kcF=new Float64Array(NT),kcR=new Float64Array(NT);
@@ -47,7 +50,7 @@ export function buildCar(p){
   // Yaw: Izz = DI·m·a·b. Changing yaw rate needs a yaw moment, which only the spare grip on one axle can supply:
   // the front axle when tightening into a turn, the rear when unwinding. That turns into an effective curvature
   // |k| + l·|dk/ds| checked against that axle's own limit, with l = DI·(CG-to-axle distance).
-  const aCG=p.wb*wr,bCG=p.wb*wf,DI=p.yawDI==null?1:p.yawDI,lF=DI*aCG,lR=DI*bCG;
+  const aCG=p.wb*wr,bCG=p.wb*wf,DI=p.yawDI,lF=DI*aCG,lR=DI*bCG;
   // Powertrain: tractive force envelope at the wheels, as an acceleration (m/s²).
   const pt=buildPowertrain(p),drv=pt.drv;
   // Top speed: highest speed where drive still beats drag + rolling resistance.
@@ -55,6 +58,6 @@ export function buildCar(p){
   let vTop=VSTEP;
   for(let i=1;i<NT;i++){const v=i*VSTEP;if(drv[i]>=res(v))vTop=v;else if(i>4&&drv[i-1]>=res(v-VSTEP)){const a=drv[i-1]-res(v-VSTEP),b=drv[i]-res(v);vTop=v-VSTEP+VSTEP*a/(a-b);break;}}
   vTop=Math.min(vTop,VMAX-1);
-  const shiftT=p.pt==='EV'?0:(p.shiftT||0);
-  return {p,m,cda:p.cda,alat,brk,trc,ggB,ggT,kcrit,kcF,kcR,ayF:ayFt,ayR:ayRt,lF,lR,aCG,bCG,Izz:DI*m*aCG*bCG,limF,brkF,drv,gear:pt.gear,rpm:pt.rpm,gearF:pt.gearF,vTop,shiftT};
+  const shiftT=p.pt==='EV'?0:p.shiftT;
+  return {spec:p,m,cda:p.cda,alat,brk,trc,ggB,ggT,kcrit,kcF,kcR,ayF:ayFt,ayR:ayRt,lF,lR,aCG,bCG,Izz:DI*m*aCG*bCG,limF,brkF,drv,gear:pt.gear,rpm:pt.rpm,gearF:pt.gearF,vTop,shiftT};
 }

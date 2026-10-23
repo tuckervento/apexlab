@@ -8,8 +8,8 @@ This document describes the current code (physics in ES modules under `src/`, th
 
 ## 1. Status
 
-- **Layers** (migration steps 1–2 done):
-  - `src/core/` — `constants`, `rng`, `powertrain`, `car`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, lap model, optimiser. No DOM.
+- **Layers** (migration steps 1–3 done):
+  - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
   - `src/app/presets.js` — `CARS`, `TRACKS`.
   - `index.html` — markup, CSS, and the app as one inline module script: state, frame loop, canvas drawing, charts, controls.
@@ -23,7 +23,7 @@ This document describes the current code (physics in ES modules under `src/`, th
 
 | Thing | Convention |
 |---|---|
-| Units | SI internally: m, s, kg, N, rad, m/s. Car parameters are entered in mixed units (km/h, %, kW, degrees) and converted inside `buildCar` / `buildPowertrain` / `dynSetup`. |
+| Units | SI internally: m, s, kg, N, rad, m/s. Car parameters are entered in mixed units (km/h, %, kW, degrees) and converted once, by `carSpec` (`src/core/units.js`), into the SI `CarSpec` stored as `car.spec`. Nothing past that boundary reads UI units. |
 | World frame | 2D, metres. The canvas maps world to screen with **y pointing down**. |
 | Stations | The circuit is resampled at uniform arc length, `N = clamp(round(L / 4 m), 240, 1600)`. Index arithmetic wraps (closed loop). Station `i` on the centreline and station `i` on the racing line correspond. |
 | Normal | `n = (−ty, tx)`, the tangent rotated +90° in the numbers' own frame. A positive offset moves along `n`. |
@@ -43,8 +43,9 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 |---|---|---|
 | `genCtrl(seed, width) → ctrl[]` | Procedural circuit: 9–15 control points, a star-shaped polygon with random radii; retries until valid. | Seeded RNG (`mulberry32`). Preset circuits are just seeds. |
 | `buildTrack(ctrl, width) → Track` | Periodic C² cubic spline through the control points (chord-length knots), sampled densely (~0.25 m), resampled to stations. Computes centreline points, normals, smoothed curvature `kc`, minimum radius and an `issue` string for overlaps or too-tight corners. | C² matters: an earlier Catmull-Rom spline had curvature steps at every control point, which every racing line inherited. |
-| `makeBounds(Track, params) → {lo, hi, hw}` | Usable lateral range per station: half width minus half the car's width, plus a fold limit `|off| < 0.8 / |kc|` on the inside of tight corners. | |
-| `buildCar(params) → CarModel` | Precomputes every speed-indexed limit table (§4). | About 60 ms; called on every slider change. |
+| `makeBounds(Track, CarModel) → {lo, hi, hw}` | Usable lateral range per station: half width minus half the car's width, plus a fold limit `|off| < 0.8 / |kc|` on the inside of tight corners. | |
+| `carSpec(params) → CarSpec` | Validates `CarParams` and converts them to SI (§7). | Throws on any missing, non-finite or invalid field; no defaults. Result is frozen. |
+| `buildCar(params) → CarModel` | Calls `carSpec`, then precomputes every speed-indexed limit table (§4). | About 60 ms; called on every slider change. `car.spec` is a frozen snapshot, not the caller's object. |
 | `lapEval(Track, CarModel, off, Scratch, grad?, tau?, lim?) → lapTime` | Quasi-steady-state lap of a given line. Fills `Scratch` with points, step lengths, curvature, speeds. Optionally writes the **exact gradient** `dT/d(off)` into `grad`. | `tau > 0` softens every hard `min()` for the optimiser. `lim = {cap, bs, ts}` adds per-station speed caps and braking/traction scales (no gradient). |
 | `class Optimizer` | `setup(Track, CarModel, Bounds, off)`, `step() → improved`, `rescore(CarModel, Bounds)`, plus `best`, `converged`, `stageInfo`, `evals`, `exactLap()`, `clamp(x)`. | **Mutates `off` in place.** See §5. |
 | `vCorner`, `tabAt`, `tab2`, `gg2`, `smin`, `solveDec`, `enginePower`, `buildPowertrain` | Helpers. | `vCorner(car, k, kc, out)` writes speed and `dv/d|k|` into `out`, like `tab2`/`gg2`. `lapEval`'s small output buffers live in `Scratch` (`t0`–`t3`), so it keeps no module-level state. |
@@ -190,6 +191,21 @@ The reverse pass is hand-written and exact through every step above, including t
 }
 ```
 
+### `CarSpec` (`car.spec`, SI; built by `carSpec`)
+
+Fields whose unit changes are renamed, so a reader that still expects UI units fails.
+
+```ts
+{
+  mass, cg, track, wb, yawDI, pt, drive, gears, shiftT, cla, cda, mu, sens,   // unchanged
+  wr, rF, aF, bF,                     // rear, rollF, aeroF, brakeF: % → fraction
+  Pmax,                               // power: kW → W
+  vBase, vMotor, vGear1, vGearTop,    // evBase, evMax, v1, vTopG: km/h → m/s
+  nTorque, nRedline,                  // nT, nRed: % → fraction of power-peak rpm
+  slipPeak                            // slipPk: deg → rad
+}
+```
+
 ### `Track`
 
 ```ts
@@ -232,7 +248,7 @@ All six checks are ported to `tests/` (run with `node --test tests/`, ~15 s), wh
 3. **Determinism and golden values** (`golden.test.mjs`, `make-golden.mjs`). Same seed and parameters give the same results, bit for bit, **within one JS runtime**. Node and Chrome compute the track geometry differently in the last bits (starting in `buildTrack`), and the optimiser's endpoint is chaotic, so their converged laps differ by tens of ms (`investigations/golden-lap.md`).
    - `tests/golden.json` holds, for all 6 cars × 4 circuits: the centreline lap, the line converged from the centreline (the *fixture*) with its lap and optimiser effort, and the dynamic-check result on it, including the final traced lap's error maxima and mean error. It also holds the skidpad results. Its `meta` records Node/V8, commit, and a SHA-256 of the physics source.
    - Regenerate with `node tests/make-golden.mjs --write` (~30 s, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
-   - Reference: GT racer on Harrow Ring (seed 27, 12 m), single run from the centreline: **78.3771 s** in Node v26.12.0 (V8 14.6.202.34); 78.348 s in Chrome 153. Restarting ("Search again") is a fresh draw, not a refinement: six consecutive restarts in Chrome gave 78.278–78.398 s.
+   - Reference: GT racer on Harrow Ring (seed 27, 12 m), single run from the centreline: **78.3771 s** in Node v26.12.0 and v26.12.1 (V8 14.6.202.34); 78.348 s in Chrome 153. Restarting ("Search again") is a fresh draw, not a refinement: six consecutive restarts in Chrome gave 78.278–78.398 s.
    - Teeth: `CRR` 0.012 → 0.0121 fails every lap golden; `DYN.kr` 0.3 → 0.31 fails every dynamic golden and the skidpad goldens while all property checks still pass.
 4. **Skidpad** (`skidpad.test.mjs`). Road car, 80 m circle (a 16-point spline, so |k| ripples ±1.4%), constant speed at 90/95/98% of the lap model's v² there. Property: a clean lap and mean lateral error ≤ 0.2 m. Measured with the current driver gains: 0.059 / 0.068 / 0.077 m (still clean at 100%: 0.088 m).
 5. **Model consistency** and 6. **Margin table** (`golden.test.mjs`, on the 24 fixtures). The prototype's figures, utilisation ≤ ~1.06 and a margin of 92–99%, hold only for the GT racer and Open-wheeler on the current code. The properties are sanity bounds every preset meets: dynamic-check fraction in [0.85, 1], utilisation ≤ 1.15, and a clean final lap. Measured (fraction % / peak utilisation):
@@ -349,13 +365,13 @@ Each step keeps behaviour identical and is checked against §8.
 
 1. ✅ **Commit the prototype as-is**, plus a Node harness that extracts the `CORE` and `DYN` blocks and runs the §8 tests.
 2. ✅ **Split mechanically** into modules with no logic changes. Golden lap times must match bit for bit. Done: goldens unchanged; dead code removed in a follow-up commit, also bit-identical.
-3. **Remove hidden state from the core:**
+3. ✅ **Remove hidden state from the core:**
    - ✅ the `VC_D` side channel;
    - ✅ module-level scratch `_t1`, `_t2`, `_t3` (both now live in `Scratch`);
    - ✅ mutable `DYN` gains (now one frozen literal);
    - ✅ presets defined next to the UI (moved to `src/app/presets.js` in step 2; frozen in step 3).
 
-   Normalise parameter units at the boundary.
+   ✅ Normalise parameter units at the boundary (`carSpec`). Goldens and prototype parity unchanged, bit for bit.
 4. **Add `describeCar()`** and move chart and readout data behind it.
 5. **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only.
 6. **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots.
@@ -369,7 +385,6 @@ Each step keeps behaviour identical and is checked against §8.
 
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.
 - **`buildCar` costs about 60 ms**, the GGV bisections included. Fine on slider release; heavy on continuous drag. Consider fewer bisection steps, or memoising by parameter hash.
-- **Parameters mix units** (km/h, %, kW, degrees); see step 3 above.
 - **The dynamic check's driver gains were tuned on the GT and road presets.** Very different cars may need retuning before the margin can be trusted.
 - **Lap model and dynamic model disagree more for some presets** (§8.5/8.6 table): Hot hatch AWD and EV saloon reach inverse-dynamics utilisation 1.11–1.12; the Road car holds only 91% of lap-model pace on two circuits; the Kart reaches 100% (the check can't find its limit). Not investigated: it could be the lap model, the bicycle model or the driver.
 

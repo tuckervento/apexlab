@@ -30,6 +30,6 @@ export function setupPreset(core, carName, { seed = core.TRACKS[0].seed, width =
   const params = core.CARS[carName];
   if (!params) throw new Error(`Unknown car preset "${carName}"; have: ${Object.keys(core.CARS).join(', ')}`);
   const P = { ...params }, car = core.buildCar(P);
-  const T = core.buildTrack(core.genCtrl(seed, width), width), B = core.makeBounds(T, P);
+  const T = core.buildTrack(core.genCtrl(seed, width), width), B = core.makeBounds(T, car);
   return { P, car, T, B };
 }

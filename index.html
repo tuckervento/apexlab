@@ -274,7 +274,7 @@ let hist=[], cam={x:0,y:0,z:1}, colors={};
 function rebuildTrack(keepLine){
   const oldOff=off, oldN=T?T.N:0;
   dynRes=null;dyn=null;if(typeof renderDyn==='function')renderDyn();
-  T=buildTrack(ctrl,width); B=makeBounds(T,P);
+  T=buildTrack(ctrl,width); B=makeBounds(T,car);
   off=new Float64Array(T.N);
   if(keepLine&&oldOff){for(let i=0;i<T.N;i++){const x=i*oldN/T.N,a=x|0,f=x-a;off[i]=oldOff[a%oldN]*(1-f)+oldOff[(a+1)%oldN]*f;}}
   for(let i=0;i<T.N;i++) off[i]=Math.min(B.hi[i],Math.max(B.lo[i],off[i]));
@@ -284,7 +284,7 @@ function rebuildTrack(keepLine){
   $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+corners.length+' turns';
 }
 function computeRef(){const z=new Float64Array(T.N),S=makeScratch(T.N);refT=lapEval(T,car,z,S);refV=Float64Array.from(S.v);}
-function carChanged(){if(dynRes)dynStale=true;dyn=null;car=buildCar(P);B=makeBounds(T,P);opt.rescore(car,B);computeRef();hist=[];refreshDisplay(true);renderDerived();if(!running&&!editing)setRunning(true);}
+function carChanged(){if(dynRes)dynStale=true;dyn=null;car=buildCar(P);B=makeBounds(T,car);opt.rescore(car,B);computeRef();hist=[];refreshDisplay(true);renderDerived();if(!running&&!editing)setRunning(true);}
 
 function refreshDisplay(){
   const S=makeScratch(T.N),t=lapEval(T,car,off,S),N=T.N,tc=new Float64Array(N+1);

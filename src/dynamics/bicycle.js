@@ -1,4 +1,4 @@
-// Moved from prototype/apex-lab.html (migration step 2); DYN frozen (step 3).
+// Moved from prototype/apex-lab.html (migration step 2); DYN frozen, reads car.spec (step 3).
 import { G, RHO, FZ0, VSTEP, NT, CRR } from '../core/constants.js';
 import { tabAt } from '../core/lap.js';
 
@@ -14,11 +14,11 @@ import { tabAt } from '../core/lap.js';
 // the driver then eases off before that point and tries again.
 export const DYN=Object.freeze({C:1.45,dt:0.004,tolOff:0.5,steerRate:1.5,lag:0.06,ke:15,kpsi:2.5,kr:0.3,ki:0.01});
 export function dynSetup(car){
-  const p=car.p,m=car.m,wr=p.rear/100,wf=1-wr,a=car.aCG,b=car.bCG,L=p.wb,h=p.cg;
+  const p=car.spec,m=car.m,wr=p.wr,wf=1-wr,a=car.aCG,b=car.bCG,L=p.wb,h=p.cg;
   const tireF=Fz=>{if(Fz<=0)return 0;let k=1-p.sens*(Fz/FZ0-1);if(k<0.25)k=0.25;return p.mu*k*Fz;};
-  const apk=(p.slipPk||7)*Math.PI/180,B=Math.tan(Math.PI/(2*DYN.C))/apk;
-  const Izz=Math.max(0.3,p.yawDI==null?1:p.yawDI)*m*a*b;
-  return {p,m,wr,wf,a,b,L,h,tireF,apk,B,Izz,aF:p.aeroF/100,rF:p.rollF/100,bF:p.brakeF/100,awd:p.drive==='AWD'};
+  const apk=p.slipPeak,B=Math.tan(Math.PI/(2*DYN.C))/apk;
+  const Izz=Math.max(0.3,p.yawDI)*m*a*b;
+  return {p,m,wr,wf,a,b,L,h,tireF,apk,B,Izz,aF:p.aF,rF:p.rF,bF:p.bF,awd:p.drive==='AWD'};
 }
 export function fyCurve(alpha,D,B){return D*Math.sin(DYN.C*Math.atan(B*alpha));}
 export function alphaFor(F,D,B,apk){if(D<=1)return apk*Math.sign(F);const r=F/D;if(Math.abs(r)>=1)return apk*Math.sign(F);return Math.tan(Math.asin(r)/DYN.C)/B;}

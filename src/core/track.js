@@ -1,4 +1,4 @@
-// Moved verbatim from prototype/apex-lab.html (migration step 2).
+// Moved verbatim from prototype/apex-lab.html (migration step 2); makeBounds takes the car (step 3).
 import { mulberry32 } from './rng.js';
 
 export function curv3(ax,ay,bx,by,cx,cy){
@@ -47,8 +47,8 @@ export function genCtrl(seed,width){
   return [[-400,-200],[400,-200],[400,200],[-400,200]];
 }
 
-export function makeBounds(T,p){
-  const N=T.N,hw=Math.max(0.5,T.width/2-(p.track+0.25)/2),lo=new Float64Array(N),hi=new Float64Array(N);
+export function makeBounds(T,car){
+  const N=T.N,hw=Math.max(0.5,T.width/2-(car.spec.track+0.25)/2),lo=new Float64Array(N),hi=new Float64Array(N);
   for(let i=0;i<N;i++){let l=-hw,h=hw;const k=T.kc[i];if(k>1e-6)h=Math.min(h,0.8/k);else if(k<-1e-6)l=Math.max(l,0.8/k);if(l>h){l=h=0;}lo[i]=l;hi[i]=h;}
   return {lo,hi,hw};
 }

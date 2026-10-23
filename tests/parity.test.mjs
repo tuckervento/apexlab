@@ -54,7 +54,7 @@ test('parity: buildCar', () => {
 for (const [ti, t] of tracks.entries()) {
   for (const [ci, c] of cars.entries()) {
     test(`parity: lapEval + gradient, seed ${t.seed}, car ${ci}`, () => {
-      const Bm = mod.makeBounds(t.m.T, c.P), Bp = proto.makeBounds(t.p.T, c.P), N = t.m.T.N;
+      const Bm = mod.makeBounds(t.m.T, c.m), Bp = proto.makeBounds(t.p.T, c.P), N = t.m.T.N;
       same(Bm.lo, Bp.lo, 'bounds.lo'); same(Bm.hi, Bp.hi, 'bounds.hi');
       const off = smoothField(mod.mulberry32(t.seed + ci), N, 0.5 * Bm.hw);
       for (let i = 0; i < N; i++) off[i] = Math.min(Bm.hi[i], Math.max(Bm.lo[i], off[i]));
