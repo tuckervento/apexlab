@@ -226,7 +226,7 @@ details p{margin:6px 0 0}
 </div>
 
 <script type="module">
-import { G, RHO, VSTEP, VMAX, NT, CRR, buildCar, tabAt, buildTrack, genCtrl, makeBounds, makeScratch, lapEval, Optimizer } from './src/core/index.js';
+import { G, buildCar, describeCar, buildTrack, genCtrl, makeBounds, makeScratch, lapEval, Optimizer } from './src/core/index.js';
 import { dynSetup, dynNominal, DynCheck } from './src/dynamics/index.js';
 import { CARS, TRACKS } from './src/app/presets.js';
 
@@ -265,7 +265,7 @@ const SPEC=[
 ];
 
 // ---------- state
-let P={...CARS['GT racer']}, car=buildCar(P);
+let P={...CARS['GT racer']}, car=buildCar(P), info=describeCar(car); // views read info (describeCar), never car's tables
 let trackIdx=0, width=12, ctrl=genCtrl(TRACKS[0].seed,width), origCtrl=ctrl.map(p=>p.slice());
 let T, B, off, opt=new Optimizer(), refT=0, refV=null, disp=null, ghost=null, corners=[];
 let running=true, colorMode='speed', replay=4, animT=0, editing=false;
@@ -284,7 +284,7 @@ function rebuildTrack(keepLine){
   $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+corners.length+' turns';
 }
 function computeRef(){const z=new Float64Array(T.N),S=makeScratch(T.N);refT=lapEval(T,car,z,S);refV=Float64Array.from(S.v);}
-function carChanged(){if(dynRes)dynStale=true;dyn=null;car=buildCar(P);B=makeBounds(T,car);opt.rescore(car,B);computeRef();hist=[];refreshDisplay(true);renderDerived();if(!running&&!editing)setRunning(true);}
+function carChanged(){if(dynRes)dynStale=true;dyn=null;car=buildCar(P);info=describeCar(car);B=makeBounds(T,car);opt.rescore(car,B);computeRef();hist=[];refreshDisplay(true);renderDerived();if(!running&&!editing)setRunning(true);}
 
 function refreshDisplay(){
   const S=makeScratch(T.N),t=lapEval(T,car,off,S),N=T.N,tc=new Float64Array(N+1);
@@ -347,12 +347,11 @@ function syncFields(){
   document.querySelectorAll('[data-pt]').forEach(el=>el.hidden=el.dataset.pt!==P.pt);
 }
 function renderDerived(){
-  const g=v=>(tabAt(car.alat,v/3.6)/G).toFixed(2);
-  const ix=v=>Math.min(NT-1,Math.round(v/3.6/VSTEP)),lim=v=>car.limF[ix(v)]?'front · understeer':'rear · oversteer',bl=v=>car.brkF[ix(v)]?'front':'rear';
-  $('#derived').innerHTML=`<div>Power / weight<b>${Math.round(P.power/P.mass*1000)} kW/t</b></div><div>Top speed<b>${Math.round(car.vTop*3.6)} km/h</b></div>`+
-    `<div>Lateral @ 100<b>${g(100)} g</b></div><div>Lateral @ 200<b>${g(200)} g</b></div>`+
-    `<div>Grip limit @ 100<b>${lim(100)}</b></div><div>Grip limit @ 200<b>${lim(200)}</b></div>`+
-    `<div>Braking @ 150<b>${(tabAt(car.brk,150/3.6)/G).toFixed(2)} g</b></div><div>First to lock<b>${bl(150)} axle</b></div>`;
+  const {lateral:[l1,l2],braking:bk}=info.balance,d=info.derived,lim=b=>b.axle==='front'?'front · understeer':'rear · oversteer';
+  $('#derived').innerHTML=`<div>Power / weight<b>${Math.round(d.powerToWeight)} kW/t</b></div><div>Top speed<b>${Math.round(d.vTop*3.6)} km/h</b></div>`+
+    `<div>Lateral @ ${l1.kmh}<b>${l1.g.toFixed(2)} g</b></div><div>Lateral @ ${l2.kmh}<b>${l2.g.toFixed(2)} g</b></div>`+
+    `<div>Grip limit @ ${l1.kmh}<b>${lim(l1)}</b></div><div>Grip limit @ ${l2.kmh}<b>${lim(l2)}</b></div>`+
+    `<div>Braking @ ${bk.kmh}<b>${bk.g.toFixed(2)} g</b></div><div>First to lock<b>${bk.axle} axle</b></div>`;
 }
 
 function buildTrackUI(){
@@ -512,7 +511,7 @@ function draw(){
   if(cs){
     const {v}=cs,lo=cs.i;$('#carSpeed').textContent=Math.round(v*3.6);
     $('#gLat').textContent=cs.glat.toFixed(2);$('#gLong').textContent=(cs.glong<0?'−':'+')+Math.abs(cs.glong).toFixed(2);
-    $('#gearWrap').hidden=P.pt==='EV';$('#carGear').textContent=car.gear[Math.min(NT-1,Math.round(v/VSTEP))]||'—';
+    $('#gearWrap').hidden=P.pt==='EV';$('#carGear').textContent=info.curves.gear[Math.min(info.n-1,Math.round(v/info.vstep))]||'—';
     if(ghost){const gp=disp.tc[lo]-ghost.tc[lo];$('#liveGap').textContent=(gp<0?'−':'+')+Math.abs(gp).toFixed(2)+' s';}
     drawCar(cs,P.wb,P.track,false);carPos=lo;carV=v;
   }else{$('#carSpeed').textContent='—';$('#gLat').textContent='—';$('#gLong').textContent='—';carPos=-1;}
@@ -562,21 +561,22 @@ function drawGapChart(){
 }
 function drawForceChart(){
   const c=$('#forceChart'),g=c.getContext('2d'),[w,h]=sizeChart(c);g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
-  const m=car.m,vmaxK=Math.min(VMAX*3.6,Math.ceil(car.vTop*3.6*1.12/50)*50),nmax=Math.min(NT-1,Math.round(vmaxK/3.6/VSTEP));
-  let fmax=0;for(let i=1;i<=nmax;i++)fmax=Math.max(fmax,car.drv[i]*m,Math.min(car.trc[i]*m,car.drv[i]*m*1.6));fmax=Math.ceil(fmax/1000/2)*2||2;
+  const {drive,traction,resist,gears}=info.curves,vs=info.vstep;
+  const vmaxK=Math.min((info.n-1)*vs*3.6,Math.ceil(info.derived.vTop*3.6*1.12/50)*50),nmax=Math.min(info.n-1,Math.round(vmaxK/3.6/vs));
+  let fmax=0;for(let i=1;i<=nmax;i++)fmax=Math.max(fmax,drive[i],Math.min(traction[i],drive[i]*1.6));fmax=Math.ceil(fmax/1000/2)*2||2;
   const padL=26,padB=16,padT=6,iw=w-padL-4,ih=h-padT-padB,X=i=>padL+i/nmax*iw,Y=F=>padT+ih-F/1000/fmax*ih;
   g.font=`10px ${colors.mono}`;g.fillStyle=colors.muted;g.textAlign='right';g.strokeStyle=colors.rule;g.lineWidth=1;
   const ys=fmax>12?4:2;for(let f=0;f<=fmax;f+=ys){const y=Math.round(Y(f*1000))+0.5;g.beginPath();g.moveTo(padL,y);g.lineTo(w-4,y);g.stroke();g.fillText(f,padL-5,y+3);}
-  for(let v=0;v<=vmaxK;v+=vmaxK>250?100:50){const x=X(v/3.6/VSTEP);g.textAlign=x>w-20?'right':'center';g.fillText(v,Math.min(x,w-2),h-3);}
+  for(let v=0;v<=vmaxK;v+=vmaxK>250?100:50){const x=X(v/3.6/vs);g.textAlign=x>w-20?'right':'center';g.fillText(v,Math.min(x,w-2),h-3);}
   g.save();g.beginPath();g.rect(padL,padT,iw,ih);g.clip();
   const line=(fn,col,wd,dash)=>{g.beginPath();let pen=false;for(let i=0;i<=nmax;i++){const F=fn(i);if(!isFinite(F)){pen=false;continue;}pen?g.lineTo(X(i),Y(F)):g.moveTo(X(i),Y(F));pen=true;}g.strokeStyle=col;g.lineWidth=wd;g.setLineDash(dash||[]);g.stroke();g.setLineDash([]);};
-  if(P.pt!=='EV')car.gearF.forEach(gf=>line(i=>gf[i],colors.grid2,1.2));
-  line(i=>car.trc[i]*m,colors.accent,1.4,[5,3]);
-  line(i=>0.5*RHO*P.cda*(i*VSTEP)**2+m*G*CRR,colors.muted,1.2,[3,3]);
-  line(i=>car.drv[i]*m,colors.ink,1.8);
+  gears.forEach(gf=>line(i=>gf[i],colors.grid2,1.2)); // none for an EV
+  line(i=>traction[i],colors.accent,1.4,[5,3]);
+  line(i=>resist[i],colors.muted,1.2,[3,3]);
+  line(i=>drive[i],colors.ink,1.8);
   g.restore();
-  if(carPos>=0){const x=X(carV/VSTEP);g.strokeStyle=colors.accent;g.lineWidth=1;g.beginPath();g.moveTo(x,padT);g.lineTo(x,padT+ih);g.stroke();}
-  $('#capGears').hidden=P.pt==='EV';
+  if(carPos>=0){const x=X(carV/vs);g.strokeStyle=colors.accent;g.lineWidth=1;g.beginPath();g.moveTo(x,padT);g.lineTo(x,padT+ih);g.stroke();}
+  $('#capGears').hidden=!gears.length;
 }
 
 function sizeChart(c){const w=c.clientWidth,h=+c.getAttribute('height');if(c.width!==Math.round(w*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px';}return [w,h];}

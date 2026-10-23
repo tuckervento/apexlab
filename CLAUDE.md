@@ -25,7 +25,7 @@ Three layers; core and dynamics have no DOM access and must stay that way (the p
 
 Key couplings across the layers:
 - `Optimizer` mutates the same `off` array the renderer reads; the UI reads globals directly. `refreshDisplay()` re-runs `lapEval` to build the `disp` snapshot used by drawing.
-- Chart/readout code reads raw `CarModel` tables and calls `dynNominal` from the display path (so table renames break views).
+- Views get car data only from `describeCar(car)` (the `info` global, rebuilt in `carChanged()`); `index.html` must not read `car.<field>` — `car` is an opaque handle for `lapEval`/`Optimizer`/`DynCheck`/`makeBounds`. Exception until step 5: tyre-use colouring calls `dynNominal` from the display path.
 - `carChanged()` is the slider-change path: rebuilds car (~60 ms), bounds, re-scores the optimiser (restarts at stage 3), recomputes the reference lap.
 - `frame()`/`frameBody()` catch exceptions and show them in the status chip rather than killing the loop — a past silent freeze was a missing `Optimizer.clamp` at convergence.
 

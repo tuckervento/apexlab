@@ -8,8 +8,8 @@ This document describes the current code (physics in ES modules under `src/`, th
 
 ## 1. Status
 
-- **Layers** (migration steps 1–3 done):
-  - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, lap model, optimiser. No DOM, no module-level mutable state.
+- **Layers** (migration steps 1–4 done):
+  - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
   - `src/app/presets.js` — `CARS`, `TRACKS`.
   - `index.html` — markup, CSS, and the app as one inline module script: state, frame loop, canvas drawing, charts, controls.
@@ -46,6 +46,7 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 | `makeBounds(Track, CarModel) → {lo, hi, hw}` | Usable lateral range per station: half width minus half the car's width, plus a fold limit `|off| < 0.8 / |kc|` on the inside of tight corners. | |
 | `carSpec(params) → CarSpec` | Validates `CarParams` and converts them to SI (§7). | Throws on any missing, non-finite or invalid field; no defaults. Result is frozen. |
 | `buildCar(params) → CarModel` | Calls `carSpec`, then precomputes every speed-indexed limit table (§4). | About 60 ms; called on every slider change. `car.spec` is a frozen snapshot, not the caller's object. |
+| `describeCar(CarModel) → CarInfo` | Chart- and readout-ready car data: force curves on the speed grid, the balance readout, top speed, power/weight (§7). | The only car data views read; they treat `car` as an opaque handle. Arrays are copies. Becomes the `carInfo` payload in step 5. |
 | `lapEval(Track, CarModel, off, Scratch, grad?, tau?, lim?) → lapTime` | Quasi-steady-state lap of a given line. Fills `Scratch` with points, step lengths, curvature, speeds. Optionally writes the **exact gradient** `dT/d(off)` into `grad`. | `tau > 0` softens every hard `min()` for the optimiser. `lim = {cap, bs, ts}` adds per-station speed caps and braking/traction scales (no gradient). |
 | `class Optimizer` | `setup(Track, CarModel, Bounds, off)`, `step() → improved`, `rescore(CarModel, Bounds)`, plus `best`, `converged`, `stageInfo`, `evals`, `exactLap()`, `clamp(x)`. | **Mutates `off` in place.** See §5. |
 | `vCorner`, `tabAt`, `tab2`, `gg2`, `smin`, `solveDec`, `enginePower`, `buildPowertrain` | Helpers. | `vCorner(car, k, kc, out)` writes speed and `dv/d|k|` into `out`, like `tab2`/`gg2`. `lapEval`'s small output buffers live in `Scratch` (`t0`–`t3`), so it keeps no module-level state. |
@@ -206,6 +207,22 @@ Fields whose unit changes are renamed, so a reader that still expects UI units f
 }
 ```
 
+### `CarInfo` (built by `describeCar`; all SI)
+
+```ts
+{
+  vstep, n,                                  // speed grid: sample i is at i·vstep m/s, i < n
+  curves: { drive, traction, resist,         // N at the wheels, per sample
+            gears: Float64Array[],           // per-gear force, NaN outside its rpm range; [] for EV
+            gear: Int8Array },               // selected gear, 0 = none
+  balance: { lateral: [{ kmh: 100, g, axle }, { kmh: 200, g, axle }],   // axle: 'front' | 'rear' (limiting)
+             braking: { kmh: 150, g, axle } },                         // first axle to lock
+  derived: { vTop /* m/s */, powerToWeight /* kW/t */ }
+}
+```
+
+Plain objects are frozen; arrays are fresh copies.
+
 ### `Track`
 
 ```ts
@@ -271,8 +288,8 @@ Golden values depend on `genCtrl` and `buildTrack`. Any change to the generator 
 1. **Shared mutable state.** The optimiser mutates the same `off` array the renderer reads; UI functions read globals (`car`, `T`, `off`, `P`) directly.
 2. **One thread.** The optimiser and the dynamic check run inside the frame loop. A heavier view (3D) would compete with the solver for frame time.
 3. **Views reach into internals.**
-   - The tractive-force chart and balance readout read raw `CarModel` tables (`drv`, `trc`, `gearF`, `alat`, `limF`, `brkF`).
-   - Tyre-use colouring calls `dynNominal` from the display path.
+   - ✅ The tractive-force chart, balance readout and HUD gear read raw `CarModel` tables. Now behind `describeCar` (step 4).
+   - Tyre-use colouring calls `dynNominal` from the display path. Deferred to step 5: the protocol puts utilisation in the solver's snapshot (`line.u`).
 4. **No pose contract.** The car's position is interpolated inside the 2D drawing code (`carState`).
 5. **Staleness is ad hoc.** `dynStale` is a flag compared against lap time, not a revision.
 6. **Flat world.** No elevation, grade or banking; y-down screen convention.
@@ -372,7 +389,7 @@ Each step keeps behaviour identical and is checked against §8.
    - ✅ presets defined next to the UI (moved to `src/app/presets.js` in step 2; frozen in step 3).
 
    ✅ Normalise parameter units at the boundary (`carSpec`). Goldens and prototype parity unchanged, bit for bit.
-4. **Add `describeCar()`** and move chart and readout data behind it.
+4. ✅ **Add `describeCar()`** and move chart and readout data behind it. `index.html` reads no `car.<field>`; readouts and the force chart are pixel-identical for every preset. Tyre-use colouring stays on `dynNominal` until step 5.
 5. **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only.
 6. **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots.
 7. **Add `playback.pose()`**; the 2D car marker and ghost use it.
