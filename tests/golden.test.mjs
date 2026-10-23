@@ -9,12 +9,12 @@ import { loadCore, setupPreset } from './load-core.mjs';
 import { loadGolden, assertRuntime, comboKey, clampedZeros, dynSummary } from './golden-util.mjs';
 
 const FRAC_MIN = 0.85, UMAX_MAX = 1.15;
-const g = loadGolden(), { CARS, TRACKS } = loadCore();
+const core = await loadCore(), g = loadGolden(), { CARS, TRACKS } = core;
 const combos = Object.keys(CARS).flatMap(car => TRACKS.map(track => ({ car, track, key: comboKey(car, track.name) })));
 
 test('golden: centreline laps, all cars × circuits', () => {
   assertRuntime(g);
-  const core = loadCore(), bad = [];
+  const bad = [];
   for (const { car, track, key } of combos) {
     const { T, B, car: c } = setupPreset(core, car, { seed: track.seed });
     const lap = core.lapEval(T, c, clampedZeros(B, T.N), core.makeScratch(T.N)), want = g.combos[key]?.centreLap;
@@ -29,7 +29,7 @@ for (const { car, track, key } of combos) {
     before(() => {
       const fx = g.combos[key];
       if (!fx) throw new Error(`no fixture for ${key} in goldens; regenerate with node tests/make-golden.mjs --write`);
-      const core = loadCore(), p = setupPreset(core, car, { seed: track.seed });
+      const p = setupPreset(core, car, { seed: track.seed });
       ({ T, B } = p);
       off = Float64Array.from(fx.off);
       centreLap = core.lapEval(T, p.car, clampedZeros(B, T.N), core.makeScratch(T.N));

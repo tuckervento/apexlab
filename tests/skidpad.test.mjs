@@ -5,11 +5,11 @@ import assert from 'node:assert/strict';
 import { loadCore } from './load-core.mjs';
 import { SKIDPAD, skidpad, loadGolden, assertRuntime } from './golden-util.mjs';
 
-const MAX_MEAN_E = 0.2;
+const MAX_MEAN_E = 0.2, core = await loadCore();
 
 for (const fr of SKIDPAD.fracs) {
   test(`skidpad: ${SKIDPAD.car}, ${SKIDPAD.R} m circle, ${fr * 100}% of v²`, async t => {
-    const r = skidpad(loadCore(), SKIDPAD.car, fr);
+    const r = skidpad(core, SKIDPAD.car, fr);
     t.diagnostic(`mean|e|=${r.meanE.toFixed(4)} m  max|e|=${r.maxE.toFixed(4)} m  t=${r.t.toFixed(3)} s`);
 
     await t.test('property', () => {

@@ -10,7 +10,7 @@ import { loadGolden, assertRuntime, comboKey, clampedZeros } from './golden-util
 const MAX_STEPS = 5e6, CAR = 'GT racer';
 
 test(`convergence: ${CAR}, Harrow Ring, 12 m`, { timeout: 10 * 60 * 1000 }, async t => {
-  const core = loadCore(), track = core.TRACKS[0], { T, B, car } = setupPreset(core, CAR, { seed: track.seed }), N = T.N;
+  const core = await loadCore(), track = core.TRACKS[0], { T, B, car } = setupPreset(core, CAR, { seed: track.seed }), N = T.N;
   const off = clampedZeros(B, N); // as rebuildTrack(false)
   const centreLap = core.lapEval(T, car, off, core.makeScratch(N));
 

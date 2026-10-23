@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { loadCore, setupPreset } from './load-core.mjs';
 
 const H = 1e-6, SCALE_TOL = 1e-6; // a 0.1% gradient error at a single station of ~800 still fails
-const CAR_NAMES = Object.keys(loadCore().CARS);
+const core = await loadCore(), CAR_NAMES = Object.keys(core.CARS);
 
 // Periodic smooth field: sum of 4 sinusoids in arc length with random integer wavenumbers and phases.
 function smoothField(rnd, N, amp) {
@@ -21,7 +21,7 @@ function smoothField(rnd, N, amp) {
 for (const name of CAR_NAMES) {
   for (const tau of [0, 0.5]) {
     test(`gradient: ${name}, tau=${tau}`, t => {
-      const core = loadCore(), { T, B, car } = setupPreset(core, name), N = T.N;
+      const { T, B, car } = setupPreset(core, name), N = T.N;
       const off = smoothField(core.mulberry32(1001), N, 0.5 * B.hw);
       for (let i = 0; i < N; i++) off[i] = Math.min(B.hi[i], Math.max(B.lo[i], off[i]));
       const d = smoothField(core.mulberry32(2002), N, 1);

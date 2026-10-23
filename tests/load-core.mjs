@@ -1,64 +1,28 @@
-// Extracts the CORE and DYN blocks (and the CARS/TRACKS presets) from apex-lab.html and evaluates them
-// in a fresh VM context, so the physics runs headless exactly as the page runs it.
-// Every call gets its own realm: module-level state (VC_D, _t1.._t3, DYN) never leaks between tests.
-import { readFileSync } from 'node:fs';
+// Loads the physics from the src/ ES modules (core, dynamics, presets) as one namespace object.
+// APEX_SRC=<dir> loads a copy of src/ instead (used to check that the tests fail on deliberately broken code).
+// Modules are cached per process, so module-level state (VC_D, _t1.._t3, DYN) is shared by every loadCore()
+// call in a test file. No test mutates it, and each test file runs in its own process.
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
+import { join, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const DEFAULT_HTML = fileURLToPath(new URL('../apex-lab.html', import.meta.url));
-const MARKERS = ['// ===== CORE START', '// ===== CORE END', '// ===== DYN START', '// ===== DYN END'];
-const DOM = /\b(document|window|requestAnimationFrame|localStorage)\b/;
-const EXPORTS = ['genCtrl', 'buildTrack', 'makeBounds', 'buildCar', 'makeScratch', 'lapEval', 'Optimizer', 'STAGES',
-  'mulberry32', 'dynSetup', 'dynNominal', 'dynLap', 'DynCheck', 'DYN', 'CARS', 'TRACKS'];
+const SRC = process.env.APEX_SRC || fileURLToPath(new URL('../src', import.meta.url));
+const ENTRIES = ['core/index.js', 'dynamics/index.js', 'app/presets.js'];
 
-function markerLine(lines, marker) {
-  const hits = [];
-  lines.forEach((l, i) => { if (l.trim() === marker) hits.push(i); });
-  if (hits.length !== 1) throw new Error(`Expected marker "${marker}" exactly once, found ${hits.length}`);
-  return hits[0];
+export async function loadCore(srcDir = SRC) {
+  const mods = await Promise.all(ENTRIES.map(e => import(pathToFileURL(join(srcDir, e)).href)));
+  return Object.assign({}, ...mods);
 }
 
-function anchorLine(lines, prefix) {
-  const hits = [];
-  lines.forEach((l, i) => { if (l.startsWith(prefix)) hits.push(i); });
-  if (hits.length !== 1) throw new Error(`Expected a line starting "${prefix}" exactly once, found ${hits.length}`);
-  return hits[0];
-}
-
-// The exact source the harness evaluates (CORE + DYN + presets), and its SHA-256. Recorded in goldens for reference.
-export function coreSource(htmlPath = process.env.APEX_HTML || DEFAULT_HTML) {
-  const text = extract(htmlPath).parts.map(p => p.code).join('\n');
-  return { text, sha256: createHash('sha256').update(text).digest('hex') };
-}
-
-export function loadCore(htmlPath = process.env.APEX_HTML || DEFAULT_HTML) {
-  const { parts } = extract(htmlPath);
-  const ctx = vm.createContext({});
-  for (const p of parts) new vm.Script(p.code, { filename: htmlPath, lineOffset: p.lineOffset }).runInContext(ctx);
-  return new vm.Script(`({${EXPORTS.join(',')}})`, { filename: 'load-core:exports' }).runInContext(ctx);
-}
-
-function extract(htmlPath) {
-  const lines = readFileSync(htmlPath, 'utf8').split('\n');
-  const [cs, ce, ds, de] = MARKERS.map(m => markerLine(lines, m));
-  if (!(cs < ce && ce < ds && ds < de)) throw new Error(`Markers out of order: CORE ${cs + 1}-${ce + 1}, DYN ${ds + 1}-${de + 1}`);
-
-  // a block is the lines strictly between its markers; lineOffset = marker index + 1 keeps stack traces on HTML lines
-  const block = (start, end, name) => {
-    const code = lines.slice(start + 1, end).join('\n');
-    const m = code.match(DOM);
-    if (m) throw new Error(`${name} block references "${m[0]}"; it must stay DOM-free`);
-    return { code, lineOffset: start + 1 };
-  };
-  const pc = anchorLine(lines, 'const CARS={'), pt = anchorLine(lines, 'const TRACKS=[');
-  if (pt < pc) throw new Error('Presets: "const TRACKS=[" found before "const CARS={"');
-  const parts = [
-    block(cs, ce, 'CORE'),
-    block(ds, de, 'DYN'),
-    { code: lines.slice(pc, pt + 1).join('\n'), lineOffset: pc },
-  ];
-  return { parts };
+// The physics source files and their combined SHA-256. Recorded in goldens for reference only.
+export function coreSource(srcDir = SRC) {
+  const files = [];
+  const walk = d => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) files.push(p); } };
+  walk(join(srcDir, 'core')); walk(join(srcDir, 'dynamics')); files.push(join(srcDir, 'app/presets.js'));
+  const h = createHash('sha256');
+  for (const f of files.sort()) h.update(`// ${relative(srcDir, f)}\n`).update(readFileSync(f));
+  return { files: files.map(f => relative(srcDir, f)), sha256: h.digest('hex') };
 }
 
 // Build a preset circuit the way the app does (genCtrl -> buildTrack -> makeBounds).

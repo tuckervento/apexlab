@@ -17,8 +17,8 @@ import { GOLDEN_PATH, SKIDPAD, comboKey, clampedZeros, dynSummary, skidpad } fro
 const MAX_STEPS = 5e6, SELF = fileURLToPath(import.meta.url), REPO = fileURLToPath(new URL('..', import.meta.url));
 const argv = process.argv.slice(2);
 
-function runCombo(carName, trackIdx) {
-  const core = loadCore(), track = core.TRACKS[trackIdx];
+async function runCombo(carName, trackIdx) {
+  const core = await loadCore(), track = core.TRACKS[trackIdx];
   const { T, B, car } = setupPreset(core, carName, { seed: track.seed }), N = T.N;
   const off = clampedZeros(B, N), centreLap = core.lapEval(T, car, off, core.makeScratch(N));
   const opt = new core.Optimizer(), t0 = performance.now();
@@ -33,14 +33,14 @@ function runCombo(carName, trackIdx) {
 }
 
 // exit only once the message is flushed: exiting straight after send() can drop it
-if (argv[0] === '--job') process.send(runCombo(argv[1], +argv[2]), () => process.exit(0));
+if (argv[0] === '--job') process.send(await runCombo(argv[1], +argv[2]), () => process.exit(0));
 else await main();
 
 async function main() {
   const out = argv[0] === '--write' ? GOLDEN_PATH : argv[0] === '--out' ? argv[1] : null;
   if (argv.length && !out) throw new Error(`Usage: node tests/make-golden.mjs [--write | --out <path>]; got ${argv.join(' ')}`);
 
-  const core = loadCore(), jobs = [];
+  const core = await loadCore(), jobs = [];
   for (const car of Object.keys(core.CARS)) for (let t = 0; t < core.TRACKS.length; t++) jobs.push([car, t]);
   const runJob = ([car, t]) => new Promise((resolve, reject) => {
     let res = null;
