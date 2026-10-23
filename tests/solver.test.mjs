@@ -149,3 +149,23 @@ test('solver: a failing command emits error, pauses, and leaves the solver usabl
   for (let k = 0; k < 5; k++) b.s.tick(30);
   assert.ok(b.last('progress').evals > e0, 'solver did not resume after the error');
 });
+
+// The line on screen must be one the optimiser accepted: during the polish stage, Optimizer.step() leaves `off`
+// holding the last candidate tried, even when it rejects it and restores the spline coefficients `c`.
+test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 * 1000 }, t => {
+  let s = null, checked = 0, polish = 0;
+  const bad = [];
+  s = new core.Solver(e => {
+    if (e.type !== 'snapshot' || s.opt.converged) return;
+    const o = s.opt, N = s.T.N;
+    checked++; if (o.polish) polish++;
+    for (let i = 0; i < N; i++) if (s.pub[i] !== o.spl(i, o.c)) { bad.push({ lineRev: e.lineRev, polish: !!o.polish, station: i }); break; }
+  });
+  s.handle({ type: 'setCar', rev: 1, params: { ...core.CARS[CAR] } });
+  s.handle({ type: 'setTrack', rev: 2, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, keepLine: false });
+  s.handle({ type: 'run' });
+  while (s.tick(20));
+  t.diagnostic(`snapshots checked=${checked} (polish ${polish})  not accepted=${bad.length} (outside polish ${bad.filter(b => !b.polish).length})`);
+  assert.ok(polish > 0, 'no snapshot was published during the polish stage');
+  assert.deepEqual(bad.slice(0, 3), [], `${bad.length} of ${checked} snapshots showed a line the optimiser had not accepted`);
+});

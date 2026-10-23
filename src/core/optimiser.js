@@ -56,6 +56,9 @@ export class Optimizer{
     this.lap=this.st.tau>0?NaN:t;this.smooth=t;return t+pen;
   }
   exactLap(){return lapEval(this.T,this.car,this.off,makeScratch(this.T.N));}
+  // The line the optimiser has accepted, written into out. Not `off`: during the polish, `off` still holds the last
+  // candidate tried even when it was rejected. Once converged, the clamped final line.
+  current(out){if(this.done){out.set(this.off);return out;}for(let i=0;i<out.length;i++)out[i]=this.spl(i,this.c);return out;}
   clamp(x){const lo=this.B.lo,hi=this.B.hi;for(let i=0;i<x.length;i++)x[i]=x[i]<lo[i]?lo[i]:x[i]>hi[i]?hi[i]:x[i];}
   advance(){
     this.target=Float64Array.from(this.off);

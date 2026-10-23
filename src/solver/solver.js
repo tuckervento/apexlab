@@ -85,7 +85,7 @@ export class Solver{
   // Snapshot of the line for views. bump: the working line changed, so copy it and take a new line revision.
   publish(bump){
     const T=this.T,N=T.N,car=this.car;
-    if(bump){this.pub=Float64Array.from(this.off);this.lineRev++;}
+    if(bump){this.pub=this.opt.current(new Float64Array(N));this.lineRev++;} // accepted line, never a rejected trial
     const S=makeScratch(N),t=lapEval(T,car,this.pub,S),tc=new Float64Array(N+1);
     for(let i=0;i<N;i++){const j=(i+1)%N;tc[i+1]=tc[i]+2*S.ds[i]/(S.v[i]+S.v[j]+1e-9);}
     let vmin=1e9,vmax=0;for(let i=0;i<N;i++){vmin=Math.min(vmin,S.v[i]);vmax=Math.max(vmax,S.v[i]);}
