@@ -8,11 +8,12 @@ This document describes the current code (physics in ES modules under `src/`, th
 
 ## 1. Status
 
-- **Layers** (migration steps 1–4 done):
+- **Layers** (migration steps 1–5 done):
   - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
+  - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
   - `src/app/presets.js` — `CARS`, `TRACKS`.
-  - `index.html` — markup, CSS, and the app as one inline module script: state, frame loop, canvas drawing, charts, controls.
+  - `index.html` — markup, CSS, and the app as one inline module script: a protocol client that renders what the worker sends, canvas drawing, charts, controls.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
 - **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
 - **No build step, no dependencies.** Fonts load from Google Fonts; nothing else is external.
@@ -62,9 +63,13 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 
 ### 3.3 App (everything else)
 
-Global state (`P`, `car`, `T`, `B`, `off`, `opt`, `disp`, `ghost`, `hist`, `cam`, `dyn`, `dynRes`, …), a `requestAnimationFrame` loop that gives the optimiser about 10 ms per frame (7 ms on narrow screens) on the main thread, `refreshDisplay()` which re-runs `lapEval` to produce the display snapshot `disp`, canvas drawing, charts and controls.
+The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread owns the UI parameters `P` and renders only what the worker sends: `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. It imports from core only `G` and `genCtrl`.
 
-The frame loop is wrapped so an exception pauses the search and shows in the status chip instead of stopping the loop. This exists because of a real bug: a missing `Optimizer.clamp` threw at convergence and froze the page silently.
+- `setCar`/`setTrack` are coalesced: one in flight per kind, and only the latest pending one is sent next, so a slider or handle drag can't queue up ~60 ms rebuilds.
+- A snapshot never steps back to an older car or track, and a new track is swapped in together with its first snapshot (stations change with the track).
+- Editing the track pauses the worker's search; leaving edit mode resumes it.
+
+Errors are shown in the status chip and pause the search, instead of stopping the page: the worker reports exceptions as `error` events, and the `requestAnimationFrame` loop is wrapped the same way. This exists because of a real bug: a missing `Optimizer.clamp` threw at convergence and froze the page silently.
 
 ---
 
@@ -171,6 +176,8 @@ The reverse pass is hand-written and exact through every step above, including t
 1. Inverse-dynamics utilisation on the lap model's own profile.
 2. Bisection of the highest uniform fraction of lap-model speed the car completes cleanly, from 80% to 100%, to 0.4%.
 3. The first failure just above that fraction.
+
+The check runs on the line the solver last published, the one on screen, and its result carries that line's revisions (§10.1).
 
 **Reading the result:** the driver is not perfect, so the margin is a lower bound, repeatable to about ±0.5%. Inverse utilisation on the lap model's profile peaks at 103–106% (95th percentile about 103%), so the two models agree to within a few percent.
 
@@ -285,13 +292,13 @@ Golden values depend on `genCtrl` and `buildTrack`. Any change to the generator 
 
 ## 9. Coupling to remove
 
-1. **Shared mutable state.** The optimiser mutates the same `off` array the renderer reads; UI functions read globals (`car`, `T`, `off`, `P`) directly.
-2. **One thread.** The optimiser and the dynamic check run inside the frame loop. A heavier view (3D) would compete with the solver for frame time.
+1. ✅ **Shared mutable state.** The optimiser mutated the same `off` array the renderer read. Now the worker owns the line and sends copies (step 5).
+2. ✅ **One thread.** The optimiser and the dynamic check ran inside the frame loop. Now they run in a worker (step 5).
 3. **Views reach into internals.**
    - ✅ The tractive-force chart, balance readout and HUD gear read raw `CarModel` tables. Now behind `describeCar` (step 4).
-   - Tyre-use colouring calls `dynNominal` from the display path. Deferred to step 5: the protocol puts utilisation in the solver's snapshot (`line.u`).
+   - ✅ Tyre-use colouring called `dynNominal` from the display path. Now the solver puts utilisation in the snapshot (`line.u`) when asked (step 5).
 4. **No pose contract.** The car's position is interpolated inside the 2D drawing code (`carState`).
-5. **Staleness is ad hoc.** `dynStale` is a flag compared against lap time, not a revision.
+5. ✅ **Staleness is ad hoc.** `dynStale` compared lap times. Now it's car/track/line revisions (step 5).
 6. **Flat world.** No elevation, grade or banking; y-down screen convention.
 
 ---
@@ -320,30 +327,39 @@ tests/
 
 ### 10.1 Solver protocol (worker boundary)
 
-**Commands** (main thread → worker):
+As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solver.test.mjs`).
+
+**Commands** (main thread → worker). `rev` is one counter on the main thread, increasing with every car or track command.
 
 ```ts
-{ type: 'setCar',   rev, params: CarParams }
-{ type: 'setTrack', rev, spec: { ctrl, width } | { seed, width } }
-{ type: 'setLine',  rev, off?: Float64Array }   // omit off = centreline
-{ type: 'run' } | { type: 'pause' }
-{ type: 'dynCheck', lineRev }
-{ type: 'describeCar' }                          // chart-ready data, so views never touch tables
+{ type: 'setCar',   rev, params: CarParams }        // build car → carInfo; rescore; new reference lap → snapshot
+{ type: 'setTrack', rev, ctrl, width, keepLine }    // build track → track; fresh search from the old line resampled, or the centreline → snapshot
+{ type: 'setLine' }                                 // fresh search from the centreline → snapshot
+{ type: 'run', fresh? } | { type: 'pause' }         // fresh: restart the search from the current line ("Search again")
+{ type: 'view', util }                              // include tyre use u in snapshots → snapshot
+{ type: 'dynCheck' }                                // pause; republish the current line; check it
 ```
 
 **Events** (worker → main thread):
 
 ```ts
-{ type: 'progress',  stage, of, knot, evals, lap }
-{ type: 'snapshot',  carRev, trackRev, lineRev, lap, line: { px, py, v, k, ds, tc, u? } }   // throttled ~10–20 Hz
-{ type: 'track',     trackRev, cx, cy, nx, ny, kc, width, corners, issue }
-{ type: 'carInfo',   carRev, curves: { drive, gears[], traction, resist }, balance, derived }
-{ type: 'dynProgress', lap } | { type: 'dynResult', lineRev, result }
-{ type: 'error',     message, stack }
+{ type: 'carInfo',   carRev, info: CarInfo }       // describeCar (§7)
+{ type: 'track',     trackRev, N, L, ds, cx, cy, nx, ny, kc, width, issue }
+{ type: 'snapshot',  carRev, trackRev, lineRev, lap, vmin, vmax,
+                     line: { px, py, v, k, ds, tc, u }, ref?: { t, v } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes
+{ type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
+{ type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }
+{ type: 'error',     message, stack }                // the solver pauses and stays usable
 ```
 
-- **Revisions** replace the staleness flags: a view drops anything tagged with an older revision, and a dynamic result is current only while its `lineRev` matches.
-- **Arrays** cross the boundary as copied or transferred `Float64Array`s. The worker keeps its own working copy and never shares memory with views.
+- **Revisions** replace the staleness flags. `lineRev` increases each time the worker publishes a changed line. A view never steps back to an older car or track revision, and a dynamic result is current only while all three of its revisions match the displayed snapshot.
+- **Arrays** cross the boundary as fresh copies, transferred. The worker keeps its own working copy and a published copy, and never shares memory with views.
+- **Differences from the original sketch:**
+  - `describeCar` is pushed as `carInfo` on every car change rather than requested.
+  - `setTrack` always sends `ctrl`: the main thread generates preset tracks itself, because it needs the control points for editing.
+  - `corners` are computed on the main thread (label placement).
+  - `dynCheck` takes no `lineRev`: a line revision sent from the main thread was usually stale by the time it arrived (lines publish at 20 Hz), so the worker checks the current line and republishes it.
+  - `setLine` with an explicit `off`, and `view`, `run.fresh` and `ref`, were added or deferred as the UI needed.
 
 ### 10.2 Pose contract (shared by every view)
 
@@ -390,7 +406,7 @@ Each step keeps behaviour identical and is checked against §8.
 
    ✅ Normalise parameter units at the boundary (`carSpec`). Goldens and prototype parity unchanged, bit for bit.
 4. ✅ **Add `describeCar()`** and move chart and readout data behind it. `index.html` reads no `car.<field>`; readouts and the force chart are pixel-identical for every preset. Tyre-use colouring stays on `dynNominal` until step 5.
-5. **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only.
+5. ✅ **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only. A run through the protocol reproduces the convergence fixture and its dynamic check bit for bit (`tests/solver.test.mjs`). In headless Chrome, convergence takes 9 s instead of 32 s, at the same 1:18.348.
 6. **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots.
 7. **Add `playback.pose()`**; the 2D car marker and ghost use it.
 8. **Elevation:** the track record (§10.3), physics terms, golden-value refresh with a new track-generator version.

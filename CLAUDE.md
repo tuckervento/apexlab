@@ -17,17 +17,18 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
 
 ## Architecture (big picture)
 
-Three layers; core and dynamics have no DOM access and must stay that way (the planned worker split depends on it).
+Four layers; core, dynamics and solver have no DOM access and must stay that way (the solver runs in a Web Worker).
 
 1. **Core** (`src/core/`) — track (`genCtrl` → `buildTrack` spline → `makeBounds`), car (`buildCar` precomputes speed-indexed limit tables incl. the GGV), quasi-steady-state lap model `lapEval`, and `Optimizer` (staged spline L-BFGS).
 2. **Dynamics** (`src/dynamics/`) — `dynNominal` (inverse dynamics), `dynLap` (4 ms time-stepped lap with feedforward+feedback driver), `DynCheck` (bisects the fastest clean fraction of lap-model pace).
-3. **App** (inline module script in `index.html`; presets in `src/app/presets.js`) — globals (`P`, `car`, `T`, `B`, `off`, `opt`, `disp`, `dyn`, `dynRes`…), a `requestAnimationFrame` loop giving the optimiser ~10 ms/frame on the main thread, canvas drawing, charts, controls.
+3. **Solver** (`src/solver/`) — `Solver` owns car, track, line, `Optimizer` and `DynCheck` behind the `ARCHITECTURE.md` §10.1 protocol (commands in, events out, every array a copy, results tagged with car/track/line revisions); `worker.js` runs it in a Web Worker in 15 ms slices. No worker APIs in `solver.js`, so `tests/solver.test.mjs` drives it directly.
+4. **App** (inline module script in `index.html`; presets in `src/app/presets.js`) — a protocol client: owns the UI params `P`, renders `T`/`disp`/`info`/`prog`/`dynRes` from worker events, canvas drawing, charts, controls. Imports only `G` and `genCtrl` from core.
 
 Key couplings across the layers:
-- `Optimizer` mutates the same `off` array the renderer reads; the UI reads globals directly. `refreshDisplay()` re-runs `lapEval` to build the `disp` snapshot used by drawing.
-- Views get car data only from `describeCar(car)` (the `info` global, rebuilt in `carChanged()`); `index.html` must not read `car.<field>` — `car` is an opaque handle for `lapEval`/`Optimizer`/`DynCheck`/`makeBounds`. Exception until step 5: tyre-use colouring calls `dynNominal` from the display path.
-- `carChanged()` is the slider-change path: rebuilds car (~60 ms), bounds, re-scores the optimiser (restarts at stage 3), recomputes the reference lap.
-- `frame()`/`frameBody()` catch exceptions and show them in the status chip rather than killing the loop — a past silent freeze was a missing `Optimizer.clamp` at convergence.
+- The main thread has no car, bounds, line or optimiser: everything physical arrives as worker events. Views get car data only from `carInfo` (`describeCar`), and the line only from `snapshot` (tyre use `u` too, after a `view` command).
+- `carChanged()`/`rebuildTrack()` send `setCar`/`setTrack`, coalesced (one in flight per kind, latest pending). In the worker these rebuild the car (~60 ms) or track, re-score or restart the optimiser, and recompute the reference lap.
+- A new track is swapped in only together with its first snapshot (station counts differ); snapshots never step back to an older car/track revision; dynamic results are current only while their three revisions match the displayed snapshot.
+- Worker exceptions arrive as `error` events (the solver pauses itself); `frame()`/`frameBody()` also catch exceptions. Both show in the status chip rather than killing the page — a past silent freeze was a missing `Optimizer.clamp` at convergence.
 
 ## Things that bite
 
