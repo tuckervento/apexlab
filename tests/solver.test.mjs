@@ -45,7 +45,7 @@ test(`solver: converges through the protocol, ${CAR}, ${TRACK.name}`, { timeout:
 
 test(`solver: dynamic check through the protocol, ${CAR}, ${TRACK.name}`, async t => {
   const b = converged(), lineRev = b.last('snapshot').lineRev, n0 = b.ev.length;
-  b.s.handle({ type: 'dynCheck', lineRev });
+  b.s.handle({ type: 'dynCheck' });
   while (b.s.tick(1000));
   const ev = b.ev.slice(n0); noErrors(ev);
   const res = ev.filter(e => e.type === 'dynResult');
@@ -79,11 +79,15 @@ test('solver: revisions tag results and expose staleness', () => {
   for (let k = 1; k < snaps.length; k++) assert.ok(snaps[k].lineRev > snaps[k - 1].lineRev, `lineRev not increasing at snapshot ${k}`);
   assert.ok(snaps.length > 1, 'no snapshot published while improving');
 
-  // dynamic check on the current line: tagged with it, current until something changes
-  const L = b.last('snapshot').lineRev;
-  b.s.handle({ type: 'dynCheck', lineRev: L });
+  // dynamic check while searching: pauses, republishes the line it checks (same revision), tags the result with it
+  const L = b.last('snapshot').lineRev, n1 = b.ev.length;
+  b.s.handle({ type: 'dynCheck' });
+  const re = b.ev.slice(n1).find(e => e.type === 'snapshot');
+  assert.ok(re && re.lineRev === L, 'dynCheck should republish the checked line without a new revision');
+  assert.equal(b.s.running, false, 'dynCheck should pause the search');
   while (b.s.tick(1000));
   const r = b.last('dynResult');
+  assert.equal(r.lineRev, L);
   assert.ok(current(r, b.last('snapshot')), 'fresh dynResult should be current');
 
   // tyre-use view: same line, same revision, now with u
@@ -102,13 +106,11 @@ test('solver: revisions tag results and expose staleness', () => {
   assert.ok(s3.carRev === 3 && s3.lineRev > L && s3.ref, 'snapshot after setCar should carry carRev 3, a new lineRev and a new ref');
   assert.ok(!current(r, s3), 'dynamic result should be stale after a car change');
 
-  // dynCheck against the old line is refused, and the solver carries on
-  b.s.handle({ type: 'dynCheck', lineRev: L });
-  assert.match(b.last('error').message, /out of date/);
+  // the search resumes from the rescored line
   b.s.handle({ type: 'run' });
   const e0 = b.last('progress').evals;
   for (let k = 0; k < 5; k++) b.s.tick(30);
-  assert.ok(b.last('progress').evals > e0 && b.last('progress').running, 'solver did not resume after the refused dynCheck');
+  assert.ok(b.last('progress').evals > e0 && b.last('progress').running, 'solver did not resume after the car change');
 });
 
 test('solver: emitted arrays are copies, never solver state', () => {

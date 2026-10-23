@@ -22,11 +22,10 @@ export class Solver{
       case 'run':this.need();if(c.fresh){this.off.set(this.pub);this.opt.setup(this.T,this.car,this.B,this.off);}this.running=true;this.progress();break;
       case 'pause':this.running=false;this.progress();break;
       case 'view':this.util=!!c.util;if(this.pub)this.publish(false);break;
-      case 'dynCheck':
-        this.need();
-        if(c.lineRev!==this.lineRev)throw new Error(`dynCheck: line revision ${c.lineRev} is out of date (current ${this.lineRev})`);
-        this.running=false;this.dyn=new DynCheck(this.T,this.car,this.pub); // the published line, exactly what is on screen
-        this.dynRevs={carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev};this.progress();break;
+      case 'dynCheck': // pauses the search and checks the current published line, republished so views show exactly it
+        this.need();this.running=false;this.publish(false);
+        this.dyn=new DynCheck(this.T,this.car,this.pub);
+        this.dynRevs={carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev};break;
       default:throw new Error(`Unknown command type "${c.type}"`);
     }
   });}
