@@ -12,7 +12,7 @@ import { tabAt } from '../core/lap.js';
 // sideslip from the kinematics). That nominal steering and longitudinal force drive the car, with small
 // corrections for path, heading and speed error. Where the line asks for more than an axle has, the car slides;
 // the driver then eases off before that point and tries again.
-export const DYN={C:1.45,dt:0.004,tolOff:0.5,maxIter:60,steerRate:1.5,lag:0.06};
+export const DYN={C:1.45,dt:0.004,tolOff:0.5,steerRate:1.5,lag:0.06};
 export function dynSetup(car){
   const p=car.p,m=car.m,wr=p.rear/100,wf=1-wr,a=car.aCG,b=car.bCG,L=p.wb,h=p.cg;
   const tireF=Fz=>{if(Fz<=0)return 0;let k=1-p.sens*(Fz/FZ0-1);if(k<0.25)k=0.25;return p.mu*k*Fz;};
@@ -80,8 +80,8 @@ export function dynLap(T,car,dc,line,v,keepTrace){
     const e=-(x-px[seg])*uy+(y-py[seg])*ux; // + = left of line
     const thl=th[seg]+f*Math.atan2(Math.sin(th[j]-th[seg]),Math.cos(th[j]-th[seg]));
     const vt=v[seg]+(v[j]-v[seg])*f,vyN=lp(nom.vy),rN=lp(nom.r),FxN=lp(nom.Fx);
-    // steering feedforward is taken slightly ahead, covering the delay between steering and yaw response
-    let dN;{const sa=(seg+f)+vt*DYN.look/(dsL[seg]||4),i1=Math.floor(sa),fr=sa-i1,a0=nom.delta[i1%N],a1=nom.delta[(i1+1)%N];dN=a0+(a1-a0)*fr;}
+    // steering feedforward: nominal steering interpolated at the car's position along the line
+    let dN;{const sa=seg+f,i1=Math.floor(sa),fr=sa-i1,a0=nom.delta[i1%N],a1=nom.delta[(i1+1)%N];dN=a0+(a1-a0)*fr;}
     let eps=psi-(thl-Math.atan2(vyN,Math.max(1,vt)));eps=Math.atan2(Math.sin(eps),Math.cos(eps));
     const vxs=Math.max(3,vx);
     // steering: nominal + path/heading/yaw corrections
@@ -116,4 +116,4 @@ export function dynLap(T,car,dc,line,v,keepTrace){
   }
   return {t,start:i0,spun,complete:!spun&&prog>=N,trouble,maxOff,maxE,maxDB,maxAf,maxAr,stV,stE,trace:tr,endIdx:idx,nom};
 }
-DYN.ke=15;DYN.kpsi=2.5;DYN.kr=0.3;DYN.ki=0.01;DYN.look=0;
+DYN.ke=15;DYN.kpsi=2.5;DYN.kr=0.3;DYN.ki=0.01;

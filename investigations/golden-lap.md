@@ -1,6 +1,6 @@
 # Investigation: headless converged lap 78.377 s vs documented browser 78.29 s
 
-GT racer, Harrow Ring (seed 27), 12 m. Started 2026-10-18.
+GT racer, Harrow Ring (seed 27), 12 m. Started 2026-10-18. Line numbers refer to the page as it was then, now `prototype/apex-lab.html` (unchanged). The fingerprint snippet used in E6–E8 is in the appendix.
 
 ## FACTS (verified)
 
@@ -33,7 +33,7 @@ GT racer, Harrow Ring (seed 27), 12 m. Started 2026-10-18.
 
 | E4 | Headless replay of the readout: `lapEval(off)` after every step from the last improving step k* to convergence | T4 (now "A") | k* = 76,849 of 76,851 steps; every possible readout is 78.3770–78.3771 | With Node's trajectory the readout can't show 78.348. **A ruled out.** Chrome's optimiser took a different path. |
 | E5 | Read-only: duplicate function/class declarations in the page script; app-region writes to `P`/CORE state at boot | T5/T6 | None. `P` is written only in user event handlers | No page-side override found. |
-| E6 | Stage fingerprint (`scratchpad/fingerprint.js`) in Node v26.12.0 / V8 14.6.202.34 | localise the divergence | `{"ctrl":-1543.948446703365,"N":783,"track":44736.19302159477,"bounds":15785.805000000146,"alat":13992.476506664188,"ggB":330753.2366386127,"ggT":257637.70778531957,"drv":4750.868898350019,"lap0":85.78787570797407,"setupEvals":1,"f2000":78.80591405168128,"evals2000":3211,"stage2000":4}` | Reference for the Chrome run of the same snippet. |
+| E6 | Stage fingerprint (snippet in the appendix) in Node v26.12.0 / V8 14.6.202.34 | localise the divergence | `{"ctrl":-1543.948446703365,"N":783,"track":44736.19302159477,"bounds":15785.805000000146,"alat":13992.476506664188,"ggB":330753.2366386127,"ggT":257637.70778531957,"drv":4750.868898350019,"lap0":85.78787570797407,"setupEvals":1,"f2000":78.80591405168128,"evals2000":3211,"stage2000":4}` | Reference for the Chrome run of the same snippet. |
 
 | E6b | Same snippet, Q's Chrome | localise | `ctrl`, `bounds`, `alat`, `ggB`, `ggT`, `drv` **identical**; `track` 44736.19302159354 (Node …477, rel 2.7e-14); `lap0` 85.78787570797387 (Node …407); `f2000` 78.65696577877716 (Node 78.806), evals 3629 vs 3211 | The split starts in `buildTrack`, after `genCtrl`. Everything after it is chaotic amplification. |
 | E7 | Bit-hash of `Math.hypot` over 200k pseudo-random pairs in ±500, Node vs headless Chrome 155 (the installed `/Applications/Google Chrome.app`) | `hypot` is the only library function in `buildTrack` beyond `sqrt` | **Identical** hashes (`7c16148e7ae36e0a`); `hypot ≠ sqrt(x²+y²)` in 76,632/200k in both | Theory "V8 versions differ in `hypot`" is refuted for this input range. Not exhaustive: `buildTrack`'s `hypot` inputs include ~0.25 m segments. |
@@ -61,3 +61,16 @@ Q confirmed E3 was in **Chrome** (V8).
 ## STATUS (checkpoint after E1–E2, superseded by CONCLUSIONS below)
 
 Leading theory was T1: the documented 78.29 s came from a second (or later) run, not a single run from the centreline. E3 later showed a single Chrome run gives 78.348 s, not 78.377 s. That led to E4–E8.
+
+## APPENDIX: fingerprint snippet
+
+An expression to paste into a console (or evaluate with the names in scope). It hashes each pipeline stage for GT racer on Harrow Ring and runs 2000 optimiser steps. On the prototype page the names are globals. On `index.html` (modules), wrap it: `(async()=>{const c=await import('/src/core/index.js'),{CARS}=await import('/src/app/presets.js');const {buildCar,genCtrl,buildTrack,makeBounds,makeScratch,lapEval,Optimizer}=c;return <snippet>;})()`. After migration step 2 the modules reproduce both reference fingerprints exactly: Node `track …477, f2000 78.80591405168128`; Chrome 155 `track …354, f2000 78.65696577877716`.
+
+```js
+(()=>{const h=a=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*(1+(i%7));return s;};
+const P0={...CARS['GT racer']},c0=buildCar(P0),g=genCtrl(27,12),T0=buildTrack(g,12),B0=makeBounds(T0,P0);
+const z=new Float64Array(T0.N);for(let i=0;i<T0.N;i++)z[i]=Math.min(B0.hi[i],Math.max(B0.lo[i],0));
+const lap0=lapEval(T0,c0,z,makeScratch(T0.N));
+const o=new Optimizer();o.setup(T0,c0,B0,z);const s1=o.evals;for(let k=0;k<2000;k++)o.step();
+return JSON.stringify({ctrl:h(g.flat()),N:T0.N,track:h(T0.cx)+h(T0.cy)+h(T0.kc),bounds:h(B0.hi),alat:h(c0.alat),ggB:h(c0.ggB),ggT:h(c0.ggT),drv:h(c0.drv),lap0,setupEvals:s1,f2000:o.f,evals2000:o.evals,stage2000:o.stage});})()
+```

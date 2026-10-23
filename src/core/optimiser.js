@@ -14,8 +14,6 @@ export const STAGES=[
   {knot:8, tau:0.08,pen:300},
   {knot:6, tau:0,  pen:2000}
 ];
-export function sig(z){return z>30?1:z<-30?0:1/(1+Math.exp(-z));}
-export function softplus(z,t){const u=z/t;return u>30?z:u<-30?0:t*Math.log1p(Math.exp(u));}
 export class Optimizer{
   setup(T,car,B,off){
     this.T=T;this.car=car;this.B=B;this.off=off;const N=T.N;
@@ -96,20 +94,5 @@ export class Optimizer{
     this.stall=imp<2e-5?this.stall+1:0;
     if(this.stall>12)this.advance();
     return true;
-  }
-}
-
-// The original random-bump hill-climb, kept for comparison.
-export class HillClimb{
-  setup(T,car,B,off){this.T=T;this.car=car;this.B=B;this.off=off;this.S=makeScratch(T.N);this.buf=new Float64Array(T.N);this.best=lapEval(T,car,off,this.S);this.scale=0.3;this.evals=0;this.rnd=mulberry32(4242);}
-  gauss(){const r=this.rnd;let u=0;while(u===0)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r());}
-  step(){
-    const T=this.T,N=T.N,off=this.off,B=this.B,buf=this.buf,r=this.rnd;
-    const c=(r()*N)|0,w0=this.minW||2.5,w=Math.exp(Math.log(w0)+r()*(Math.log(80)-Math.log(w0))),amp=this.gauss()*this.scale*T.width/2,span=Math.min((N>>1)-1,Math.ceil(w*3));
-    for(let d=-span;d<=span;d++){const i=(c+d+N)%N;buf[d+span]=off[i];let o=off[i]+amp*Math.exp(-d*d/(2*w*w));off[i]=o<B.lo[i]?B.lo[i]:o>B.hi[i]?B.hi[i]:o;}
-    const t=lapEval(T,this.car,off,this.S);this.evals++;
-    if(t<this.best-1e-9){this.best=t;this.scale=Math.min(0.6,this.scale*1.12);return true;}
-    for(let d=-span;d<=span;d++)off[(c+d+N)%N]=buf[d+span];
-    this.scale=Math.max(0.002,this.scale*0.99);return false;
   }
 }

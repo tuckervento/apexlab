@@ -2,17 +2,19 @@
 
 Apex Lab finds the minimum-time racing line around a closed circuit for a configurable car, then checks how much of that pace a time-stepped vehicle model can actually hold.
 
-This document describes the prototype as committed (`apex-lab.html`, a single self-contained page) and the plan for splitting it into a physics core, a solver that runs off the main thread, and interchangeable views (the existing 2D map first, a 3D view later).
+This document describes the current code (physics in ES modules under `src/`, the app in `index.html`; the original single-page prototype is frozen in `prototype/apex-lab.html`) and the plan for splitting it into a physics core, a solver that runs off the main thread, and interchangeable views (the existing 2D map first, a 3D view later).
 
 ---
 
 ## 1. Status
 
-- **Source of truth:** `apex-lab.html`. Everything lives in one `<script>` block, in three layers marked by comments:
-  - `// ===== CORE START` … `// ===== CORE END` — track, car, lap model, optimiser. No DOM.
-  - `// ===== DYN START` … `// ===== DYN END` — time-stepped bicycle model and dynamic check. No DOM.
-  - Everything after — app state, frame loop, canvas drawing, charts, controls.
-- **The core and dynamics layers already run headless.** Every physics change in the prototype was verified by concatenating those two blocks and running them in Node. That is the seam this plan builds on.
+- **Layers** (migration steps 1–2 done):
+  - `src/core/` — `constants`, `rng`, `powertrain`, `car`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, lap model, optimiser. No DOM.
+  - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
+  - `src/app/presets.js` — `CARS`, `TRACKS`.
+  - `index.html` — markup, CSS, and the app as one inline module script: state, frame loop, canvas drawing, charts, controls.
+- **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
+- **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
 - **No build step, no dependencies.** Fonts load from Google Fonts; nothing else is external.
 
 ---
@@ -140,7 +142,6 @@ The reverse pass is hand-written and exact through every step above, including t
 - **Done** when the polish has gone 3000 tries without gaining 1 ms; the final line is clamped to the bounds.
 - **Re-scoring** after a car change restarts at stage 3 from the current line.
 - **Starting point** doesn't matter much: six different starts finish within 0.02–0.2 s of each other.
-- `class HillClimb` is the original random-search optimiser, kept for comparison. It is unused.
 
 ---
 
@@ -224,13 +225,13 @@ All per-station arrays are `Float64Array` of length `N`.
 
 ## 8. Verification (port these first)
 
-All six checks are ported to `tests/` (run with `node --test tests/`, ~80 s), which loads the `CORE` and `DYN` blocks straight out of `apex-lab.html`. Each check is split into **property** assertions (physical sanity) and **golden** assertions (bit-exact against `tests/golden.json`).
+All six checks are ported to `tests/` (run with `node --test tests/`, ~15 s), which imports the `src/` modules (`tests/load-core.mjs`; `APEX_SRC=<dir>` loads a modified copy). Each check is split into **property** assertions (physical sanity) and **golden** assertions (bit-exact against `tests/golden.json`).
 
 1. **Gradient check** (`gradient.test.mjs`). On a random smooth offset field, compare the analytic gradient with a central finite difference along a random direction, in hard mode and with `tau = 0.5`, for all six presets, h = 1e-6. The error is measured against the gradient's scale `Σ|grad_i·d_i|`, not the net directional derivative, and must be below 1e-6. A random direction can cancel to a net 10⁵× smaller than its terms (Open-wheeler on Harrow Ring), so a net-relative "4 significant figures" fails on finite-difference roundoff alone (the lap time carries ~1e-12 s of rounding noise). The hard-mode run also asserts that the yaw limit binds and, for cars with shift time, that an upshift happens, so those adjoint branches are exercised. Single-line sign flips in the yaw and shift-loss adjoints both fail this test.
 2. **Run to convergence** (`convergence.test.mjs`). Drive `Optimizer.step()` until `converged`, polish included, GT racer on Harrow Ring. This would have caught the `clamp` freeze (verified: deleting `clamp` fails with a stack trace on the HTML line). Golden: lap, evaluation and step counts, and every station of the converged line match the fixture bit for bit.
 3. **Determinism and golden values** (`golden.test.mjs`, `make-golden.mjs`). Same seed and parameters give the same results, bit for bit, **within one JS runtime**. Node and Chrome compute the track geometry differently in the last bits (starting in `buildTrack`), and the optimiser's endpoint is chaotic, so their converged laps differ by tens of ms (`investigations/golden-lap.md`).
    - `tests/golden.json` holds, for all 6 cars × 4 circuits: the centreline lap, the line converged from the centreline (the *fixture*) with its lap and optimiser effort, and the dynamic-check result on it, including the final traced lap's error maxima and mean error. It also holds the skidpad results. Its `meta` records Node/V8, commit, and a SHA-256 of the physics source.
-   - Regenerate with `node tests/make-golden.mjs --write` (~5 min, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
+   - Regenerate with `node tests/make-golden.mjs --write` (~30 s, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
    - Reference: GT racer on Harrow Ring (seed 27, 12 m), single run from the centreline: **78.3771 s** in Node v26.12.0 (V8 14.6.202.34); 78.348 s in Chrome 153. Restarting ("Search again") is a fresh draw, not a refinement: six consecutive restarts in Chrome gave 78.278–78.398 s.
    - Teeth: `CRR` 0.012 → 0.0121 fails every lap golden; `DYN.kr` 0.3 → 0.31 fails every dynamic golden and the skidpad goldens while all property checks still pass.
 4. **Skidpad** (`skidpad.test.mjs`). Road car, 80 m circle (a 16-point spline, so |k| ripples ±1.4%), constant speed at 90/95/98% of the lap model's v² there. Property: a clean lap and mean lateral error ≤ 0.2 m. Measured with the current driver gains: 0.059 / 0.068 / 0.077 m (still clean at 100%: 0.088 m).
@@ -346,13 +347,13 @@ Pick the world frame for 3D explicitly. Recommended: right-handed, z-up. Convert
 
 Each step keeps behaviour identical and is checked against §8.
 
-1. **Commit the prototype as-is**, plus a Node harness that extracts the `CORE` and `DYN` blocks and runs the §8 tests.
-2. **Split mechanically** into modules with no logic changes. Golden lap times must match bit for bit.
+1. ✅ **Commit the prototype as-is**, plus a Node harness that extracts the `CORE` and `DYN` blocks and runs the §8 tests.
+2. ✅ **Split mechanically** into modules with no logic changes. Golden lap times must match bit for bit. Done: goldens unchanged; dead code removed in a follow-up commit, also bit-identical.
 3. **Remove hidden state from the core:**
    - the `VC_D` side channel;
    - module-level scratch `_t1`, `_t2`, `_t3`;
    - mutable `DYN` gains;
-   - presets defined next to the UI.
+   - presets defined next to the UI (moved to `src/app/presets.js` in step 2; still plain mutable objects).
 
    Normalise parameter units at the boundary.
 4. **Add `describeCar()`** and move chart and readout data behind it.
@@ -366,12 +367,6 @@ Each step keeps behaviour identical and is checked against §8.
 
 ## 12. Known issues and cleanup
 
-- **Dead code:**
-  - `crPoint` (old Catmull-Rom spline);
-  - `HillClimb` (only for comparison);
-  - `sig`, `softplus` (old soft edges);
-  - `DYN.maxIter`, left over from a speed-learning loop the bisection replaced;
-  - `DYN.look`, a steering look-ahead, set to 0 because it didn't help.
 - **`vCorner` returns its derivative through the module-level `VC_D`.** It is not re-entrant: fine single-threaded, but fragile.
 - **`_t1`, `_t2`, `_t3` are shared scratch buffers** inside `lapEval`. Same caveat.
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.

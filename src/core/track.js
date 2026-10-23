@@ -1,13 +1,6 @@
 // Moved verbatim from prototype/apex-lab.html (migration step 2).
 import { mulberry32 } from './rng.js';
 
-export function crPoint(p0,p1,p2,p3,t){
-  const d=(a,b)=>Math.max(1e-4,Math.sqrt(Math.hypot(b[0]-a[0],b[1]-a[1])));
-  const t0=0,t1=t0+d(p0,p1),t2=t1+d(p1,p2),t3=t2+d(p2,p3),tt=t1+(t2-t1)*t;
-  const L=(a,b,ta,tb)=>{const u=(tt-ta)/(tb-ta);return [a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];};
-  const A1=L(p0,p1,t0,t1),A2=L(p1,p2,t1,t2),A3=L(p2,p3,t2,t3),B1=L(A1,A2,t0,t2),B2=L(A2,A3,t1,t3);
-  return L(B1,B2,t1,t2);
-}
 export function curv3(ax,ay,bx,by,cx,cy){
   const d1x=bx-ax,d1y=by-ay,d2x=cx-bx,d2y=cy-by,cr=d1x*d2y-d1y*d2x,den=Math.hypot(d1x,d1y)*Math.hypot(d2x,d2y)*Math.hypot(cx-ax,cy-ay);
   return den>1e-9?2*cr/den:0;
