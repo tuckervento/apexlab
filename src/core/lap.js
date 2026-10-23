@@ -1,23 +1,24 @@
-// Moved verbatim from prototype/apex-lab.html (migration step 2).
+// Moved from prototype/apex-lab.html (migration step 2); module-level state removed (step 3).
 import { G, RHO, VSTEP, NT, CRR, NQ } from './constants.js';
 
-export let VC_D=0; // dv/d|k| of the last vCorner call
-export function vCorner(car,k,kc){
-  k=k<0?-k:k;VC_D=0;
-  if(k<1e-7)return car.vTop;
+// Corner speed at curvature |k| from a kcrit-style table: writes out[0]=v, out[1]=dv/d|k|, returns v.
+export function vCorner(car,k,kc,out){
+  k=k<0?-k:k;out[1]=0;
+  if(k<1e-7)return out[0]=car.vTop;
   kc=kc||car.kcrit;
-  if(kc[NT-1]>k)return car.vTop;
-  if(kc[1]<=k)return VSTEP;
+  if(kc[NT-1]>k)return out[0]=car.vTop;
+  if(kc[1]<=k)return out[0]=VSTEP;
   let lo=1,hi=NT-1;
   while(hi-lo>1){const mid=(lo+hi)>>1;if(kc[mid]>k)lo=mid;else hi=mid;}
   const den=kc[lo]-kc[hi],v=(lo+(kc[lo]-k)/den)*VSTEP;
-  if(v>=car.vTop)return car.vTop;
-  VC_D=-VSTEP/den;return v;
+  if(v>=car.vTop)return out[0]=car.vTop;
+  out[1]=-VSTEP/den;return out[0]=v;
 }
 export function tabAt(a,v){let x=v/VSTEP;if(x>=NT-1)return a[NT-1];const i=x|0;return a[i]+(a[i+1]-a[i])*(x-i);}
 
 export function makeScratch(N){const f=()=>new Float64Array(N);return {px:f(),py:f(),ds:f(),k:f(),vc:f(),dvc:f(),vf:f(),vb:f(),v:f(),
-  ff:f(),fb:f(),fm:f(),wy:f(),dvy:f(),dk:f(),yc:f(),sh:new Uint8Array(N),gv:f(),gf:f(),gb:f(),gk:f(),gds:f(),gx:f(),gy:f(),i0:0};}
+  ff:f(),fb:f(),fm:f(),wy:f(),dvy:f(),dk:f(),yc:f(),sh:new Uint8Array(N),gv:f(),gf:f(),gb:f(),gk:f(),gds:f(),gx:f(),gy:f(),i0:0,
+  t0:new Float64Array(2),t1:new Float64Array(2),t2:new Float64Array(3),t3:new Float64Array(2)};} // t0..t3: vCorner/tab2/gg2 outputs
 
 // GGV lookup: value and partials (per m/s, per unit q) at speed v and lateral fraction q.
 export function gg2(t,v,q,out){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=top;x=top+1;}const fx=x-ii;
@@ -27,14 +28,13 @@ export function gg2(t,v,q,out){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii
 // Interpolated table value and slope (per m/s) at speed v.
 export function tab2(a,v,out){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=top;x=top+1;}const s=a[ii+1]-a[ii];out[0]=a[ii]+s*(x-ii);out[1]=s/VSTEP;}
 
-// Quasi-steady-state lap. Returns lap time; fills S. If grad is given, also writes dT/d(offset) into it.
-export const _t1=new Float64Array(2),_t2=new Float64Array(3),_t3=new Float64Array(2);
 // tau>0 replaces each hard min() with a soft-min of width tau (m/s) so the lap time is smooth for the gradient solver.
 export function smin(a,b,tau,W,i){if(tau<=0){if(a<b){W[i]=1;return a;}W[i]=0;return b;}const d=(a-b)/tau;if(d>30){W[i]=0;return b;}if(d<-30){W[i]=1;return a;}const e=Math.exp(-Math.abs(d)),w=a<b?1/(1+e):e/(1+e);W[i]=w;return Math.min(a,b)-tau*Math.log1p(e);}
+// Quasi-steady-state lap. Returns lap time; fills S. If grad is given, also writes dT/d(offset) into it.
 // lim (optional, no gradient): {cap, bs, ts} per-station speed ceiling and braking/traction scale, used by the
 // dynamic check to ease off in specific places.
 export function lapEval(T,car,off,S,grad,tau,lim){
-  const cap=lim&&lim.cap,bs=lim&&lim.bs,ts=lim&&lim.ts;
+  const cap=lim&&lim.cap,bs=lim&&lim.bs,ts=lim&&lim.ts,t0=S.t0,_t1=S.t1,_t2=S.t2,_t3=S.t3;
   tau=tau||0;
   const N=T.N,cx=T.cx,cy=T.cy,nx=T.nx,ny=T.ny,px=S.px,py=S.py,ds=S.ds,k=S.k,vc=S.vc,dvc=S.dvc,vf=S.vf,vb=S.vb,v=S.v;
   for(let i=0;i<N;i++){px[i]=cx[i]+nx[i]*off[i];py[i]=cy[i]+ny[i]*off[i];}
@@ -49,10 +49,10 @@ export function lapEval(T,car,off,S,grad,tau,lim){
   const lF=car.lF,lR=car.lR,wy=S.wy,dvy=S.dvy,dkA=S.dk,yc=S.yc;
   for(let i=0;i<N;i++){
     const a=i===0?N-1:i-1,b=i+1===N?0:i+1,ak=k[i]<0?-k[i]:k[i];
-    const v0=vCorner(car,ak),d0=VC_D;
+    const v0=vCorner(car,ak,null,t0),d0=t0[1];
     // rate of change of |k| along the line; >0 tightening (front-limited), <0 unwinding (rear-limited)
     const dk=((k[b]<0?-k[b]:k[b])-(k[a]<0?-k[a]:k[a]))/(ds[a]+ds[i]);dkA[i]=dk;
-    const c=dk>0?lF:-lR,ke=ak+c*dk,v1=vCorner(car,ke,dk>0?car.kcF:car.kcR),d1=VC_D;yc[i]=c;
+    const c=dk>0?lF:-lR,ke=ak+c*dk,v1=vCorner(car,ke,dk>0?car.kcF:car.kcR,t0),d1=t0[1];yc[i]=c;
     let vv=smin(v0,v1,tau,wy,i);if(cap&&cap[i]<vv)vv=cap[i];vc[i]=vv;dvc[i]=d0;dvy[i]=d1;
     if(vv<vmin){vmin=vv;i0=i;}
   }

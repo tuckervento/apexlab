@@ -47,7 +47,7 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 | `buildCar(params) → CarModel` | Precomputes every speed-indexed limit table (§4). | About 60 ms; called on every slider change. |
 | `lapEval(Track, CarModel, off, Scratch, grad?, tau?, lim?) → lapTime` | Quasi-steady-state lap of a given line. Fills `Scratch` with points, step lengths, curvature, speeds. Optionally writes the **exact gradient** `dT/d(off)` into `grad`. | `tau > 0` softens every hard `min()` for the optimiser. `lim = {cap, bs, ts}` adds per-station speed caps and braking/traction scales (no gradient). |
 | `class Optimizer` | `setup(Track, CarModel, Bounds, off)`, `step() → improved`, `rescore(CarModel, Bounds)`, plus `best`, `converged`, `stageInfo`, `evals`, `exactLap()`, `clamp(x)`. | **Mutates `off` in place.** See §5. |
-| `vCorner`, `tabAt`, `tab2`, `gg2`, `smin`, `solveDec`, `enginePower`, `buildPowertrain` | Helpers. | `vCorner` returns its derivative through a module-level variable `VC_D` (see §10). |
+| `vCorner`, `tabAt`, `tab2`, `gg2`, `smin`, `solveDec`, `enginePower`, `buildPowertrain` | Helpers. | `vCorner(car, k, kc, out)` writes speed and `dv/d|k|` into `out`, like `tab2`/`gg2`. `lapEval`'s small output buffers live in `Scratch` (`t0`–`t3`), so it keeps no module-level state. |
 
 ### 3.2 Dynamics
 
@@ -350,8 +350,8 @@ Each step keeps behaviour identical and is checked against §8.
 1. ✅ **Commit the prototype as-is**, plus a Node harness that extracts the `CORE` and `DYN` blocks and runs the §8 tests.
 2. ✅ **Split mechanically** into modules with no logic changes. Golden lap times must match bit for bit. Done: goldens unchanged; dead code removed in a follow-up commit, also bit-identical.
 3. **Remove hidden state from the core:**
-   - the `VC_D` side channel;
-   - module-level scratch `_t1`, `_t2`, `_t3`;
+   - ✅ the `VC_D` side channel;
+   - ✅ module-level scratch `_t1`, `_t2`, `_t3` (both now live in `Scratch`);
    - mutable `DYN` gains;
    - presets defined next to the UI (moved to `src/app/presets.js` in step 2; still plain mutable objects).
 
@@ -367,8 +367,6 @@ Each step keeps behaviour identical and is checked against §8.
 
 ## 12. Known issues and cleanup
 
-- **`vCorner` returns its derivative through the module-level `VC_D`.** It is not re-entrant: fine single-threaded, but fragile.
-- **`_t1`, `_t2`, `_t3` are shared scratch buffers** inside `lapEval`. Same caveat.
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.
 - **`buildCar` costs about 60 ms**, the GGV bisections included. Fine on slider release; heavy on continuous drag. Consider fewer bisection steps, or memoising by parameter hash.
 - **Parameters mix units** (km/h, %, kW, degrees); see step 3 above.
