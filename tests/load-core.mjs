@@ -2,6 +2,7 @@
 // in a fresh VM context, so the physics runs headless exactly as the page runs it.
 // Every call gets its own realm: module-level state (VC_D, _t1.._t3, DYN) never leaks between tests.
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
@@ -25,7 +26,20 @@ function anchorLine(lines, prefix) {
   return hits[0];
 }
 
+// The exact source the harness evaluates (CORE + DYN + presets), and its SHA-256. Recorded in goldens for reference.
+export function coreSource(htmlPath = process.env.APEX_HTML || DEFAULT_HTML) {
+  const text = extract(htmlPath).parts.map(p => p.code).join('\n');
+  return { text, sha256: createHash('sha256').update(text).digest('hex') };
+}
+
 export function loadCore(htmlPath = process.env.APEX_HTML || DEFAULT_HTML) {
+  const { parts } = extract(htmlPath);
+  const ctx = vm.createContext({});
+  for (const p of parts) new vm.Script(p.code, { filename: htmlPath, lineOffset: p.lineOffset }).runInContext(ctx);
+  return new vm.Script(`({${EXPORTS.join(',')}})`, { filename: 'load-core:exports' }).runInContext(ctx);
+}
+
+function extract(htmlPath) {
   const lines = readFileSync(htmlPath, 'utf8').split('\n');
   const [cs, ce, ds, de] = MARKERS.map(m => markerLine(lines, m));
   if (!(cs < ce && ce < ds && ds < de)) throw new Error(`Markers out of order: CORE ${cs + 1}-${ce + 1}, DYN ${ds + 1}-${de + 1}`);
@@ -44,10 +58,7 @@ export function loadCore(htmlPath = process.env.APEX_HTML || DEFAULT_HTML) {
     block(ds, de, 'DYN'),
     { code: lines.slice(pc, pt + 1).join('\n'), lineOffset: pc },
   ];
-
-  const ctx = vm.createContext({});
-  for (const p of parts) new vm.Script(p.code, { filename: htmlPath, lineOffset: p.lineOffset }).runInContext(ctx);
-  return new vm.Script(`({${EXPORTS.join(',')}})`, { filename: 'load-core:exports' }).runInContext(ctx);
+  return { parts };
 }
 
 // Build a preset circuit the way the app does (genCtrl -> buildTrack -> makeBounds).

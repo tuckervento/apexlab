@@ -224,17 +224,26 @@ All per-station arrays are `Float64Array` of length `N`.
 
 ## 8. Verification (port these first)
 
-These harnesses were run ad hoc during prototyping. They are being ported to `tests/` (run with `node --test tests/`), which loads the `CORE` and `DYN` blocks straight out of `apex-lab.html`. Checks 1 and 2 are ported.
+All six checks are ported to `tests/` (run with `node --test tests/`, ~80 s), which loads the `CORE` and `DYN` blocks straight out of `apex-lab.html`. Each check is split into **property** assertions (physical sanity) and **golden** assertions (bit-exact against `tests/golden.json`).
 
-1. **Gradient check.** On a random smooth offset field, compare the analytic gradient with a central finite difference along a random direction, in hard mode and with `tau = 0.5`, for several presets including shift time and the yaw limit. *Ported:* all six presets, h = 1e-6. The error is measured against the gradient's scale `Σ|grad_i·d_i|`, not the net directional derivative, and must be below 1e-6. A random direction can cancel to a net 10⁵× smaller than its terms (Open-wheeler on Harrow Ring), so a net-relative "4 significant figures" fails on finite-difference roundoff alone (the lap time carries ~1e-12 s of rounding noise). The hard-mode run also asserts that the yaw limit binds and, for cars with shift time, that an upshift happens, so those adjoint branches are exercised. Single-line sign flips in the yaw and shift-loss adjoints both fail this test.
-2. **Run to convergence.** Drive `Optimizer.step()` until `converged`, polish included. This would have caught the `clamp` freeze (verified: deleting `clamp` fails the test with a stack trace on the HTML line). *Ported:* GT racer, Harrow Ring, 12 m. Headless it converges to 78.377 s in ~78,000 evaluations (~75 s); the lap time is reported, not yet asserted.
-3. **Determinism and golden values.** Same seed and parameters give the same lap time, bit for bit, **within one JS runtime**. Node and Chrome compute the track geometry differently in the last bits (starting in `buildTrack`), and the optimiser's endpoint is chaotic, so their converged laps differ by tens of ms. Golden values must name their procedure and runtime. Reference values, all at 12 m track width (see `investigations/golden-lap.md`):
-   - GT racer on Harrow Ring (seed 27), single run from the centreline: **78.3771 s** in Node v26.12.0 (V8 14.6.202.34); 78.348 s in Chrome 153.
-   - Restarting ("Search again") is a fresh draw, not a refinement. Six consecutive restarts in Chrome gave 78.278–78.398 s. The earlier "about 78.29 s" was one such draw.
-   - Dynamic check: clean to about 97.8–98.1%.
-4. **Skidpad.** On an 80 m circle at constant speed, the dynamic model should stay on the line, with mean error around 0.2 m or less, up to 98% of the lap model's lateral limit (road car). Re-baseline with the current driver gains.
-5. **Model consistency.** Inverse-dynamics utilisation on the optimised profile stays at or below about 1.06 across the presets.
-6. **Margin table.** The dynamic check across 4 cars × 3 circuits lands between 92% and 99%.
+1. **Gradient check** (`gradient.test.mjs`). On a random smooth offset field, compare the analytic gradient with a central finite difference along a random direction, in hard mode and with `tau = 0.5`, for all six presets, h = 1e-6. The error is measured against the gradient's scale `Σ|grad_i·d_i|`, not the net directional derivative, and must be below 1e-6. A random direction can cancel to a net 10⁵× smaller than its terms (Open-wheeler on Harrow Ring), so a net-relative "4 significant figures" fails on finite-difference roundoff alone (the lap time carries ~1e-12 s of rounding noise). The hard-mode run also asserts that the yaw limit binds and, for cars with shift time, that an upshift happens, so those adjoint branches are exercised. Single-line sign flips in the yaw and shift-loss adjoints both fail this test.
+2. **Run to convergence** (`convergence.test.mjs`). Drive `Optimizer.step()` until `converged`, polish included, GT racer on Harrow Ring. This would have caught the `clamp` freeze (verified: deleting `clamp` fails with a stack trace on the HTML line). Golden: lap, evaluation and step counts, and every station of the converged line match the fixture bit for bit.
+3. **Determinism and golden values** (`golden.test.mjs`, `make-golden.mjs`). Same seed and parameters give the same results, bit for bit, **within one JS runtime**. Node and Chrome compute the track geometry differently in the last bits (starting in `buildTrack`), and the optimiser's endpoint is chaotic, so their converged laps differ by tens of ms (`investigations/golden-lap.md`).
+   - `tests/golden.json` holds, for all 6 cars × 4 circuits: the centreline lap, the line converged from the centreline (the *fixture*) with its lap and optimiser effort, and the dynamic-check result on it, including the final traced lap's error maxima and mean error. It also holds the skidpad results. Its `meta` records Node/V8, commit, and a SHA-256 of the physics source.
+   - Regenerate with `node tests/make-golden.mjs --write` (~5 min, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
+   - Reference: GT racer on Harrow Ring (seed 27, 12 m), single run from the centreline: **78.3771 s** in Node v26.12.0 (V8 14.6.202.34); 78.348 s in Chrome 153. Restarting ("Search again") is a fresh draw, not a refinement: six consecutive restarts in Chrome gave 78.278–78.398 s.
+   - Teeth: `CRR` 0.012 → 0.0121 fails every lap golden; `DYN.kr` 0.3 → 0.31 fails every dynamic golden and the skidpad goldens while all property checks still pass.
+4. **Skidpad** (`skidpad.test.mjs`). Road car, 80 m circle (a 16-point spline, so |k| ripples ±1.4%), constant speed at 90/95/98% of the lap model's v² there. Property: a clean lap and mean lateral error ≤ 0.2 m. Measured with the current driver gains: 0.059 / 0.068 / 0.077 m (still clean at 100%: 0.088 m).
+5. **Model consistency** and 6. **Margin table** (`golden.test.mjs`, on the 24 fixtures). The prototype's figures, utilisation ≤ ~1.06 and a margin of 92–99%, hold only for the GT racer and Open-wheeler on the current code. The properties are sanity bounds every preset meets: dynamic-check fraction in [0.85, 1], utilisation ≤ 1.15, and a clean final lap. Measured (fraction % / peak utilisation):
+
+   | Car | Harrow Ring | Kestrel Point | Millbrook Park | Saltmarsh |
+   |---|---|---|---|---|
+   | Road car | 91.3 / 1.052 | 91.6 / 1.059 | 97.2 / 1.055 | 92.8 / 1.083 |
+   | Hot hatch AWD | 98.1 / 1.117 | 97.5 / 1.073 | 97.8 / 1.073 | 98.4 / 1.083 |
+   | EV saloon | 97.2 / 1.042 | 96.2 / 1.053 | 95.0 / 1.110 | 97.5 / 1.114 |
+   | GT racer | 97.8 / 1.043 | 96.6 / 1.051 | 97.2 / 1.054 | 97.2 / 1.043 |
+   | Open-wheeler | 96.6 / 1.055 | 96.9 / 1.045 | 97.2 / 1.039 | 95.9 / 1.050 |
+   | Kart | 99.1 / 1.039 | 100 / 1.039 | 100 / 1.096 | 99.7 / 1.046 |
 
 Golden values depend on `genCtrl` and `buildTrack`. Any change to the generator or spline changes every preset circuit, so tag golden values with a track-generator version.
 
@@ -369,6 +378,7 @@ Each step keeps behaviour identical and is checked against §8.
 - **`buildCar` costs about 60 ms**, the GGV bisections included. Fine on slider release; heavy on continuous drag. Consider fewer bisection steps, or memoising by parameter hash.
 - **Parameters mix units** (km/h, %, kW, degrees); see step 3 above.
 - **The dynamic check's driver gains were tuned on the GT and road presets.** Very different cars may need retuning before the margin can be trusted.
+- **Lap model and dynamic model disagree more for some presets** (§8.5/8.6 table): Hot hatch AWD and EV saloon reach inverse-dynamics utilisation 1.11–1.12; the Road car holds only 91% of lap-model pace on two circuits; the Kart reaches 100% (the check can't find its limit). Not investigated: it could be the lap model, the bicycle model or the driver.
 
 ---
 
