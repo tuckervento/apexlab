@@ -32,7 +32,7 @@ Key couplings across the layers:
 ## Things that bite
 
 - **`lapEval` has a hand-written exact adjoint gradient.** Any change to `lapEval` (including yaw limit, shift losses, GGV interpolation) must be re-checked against central finite differences (≥4 sig figs, hard and `tau > 0` modes).
-- **Hidden state:** `DYN` gains are a mutable global. (`vCorner`/`lapEval` are re-entrant: their output buffers live in `Scratch`, so every `lapEval` caller needs its own `makeScratch(N)`.)
+- **No module-level mutable state in core/dynamics:** `vCorner`/`lapEval` output buffers live in `Scratch` (every `lapEval` caller needs its own `makeScratch(N)`); `DYN` is frozen. Keep it that way: the worker split depends on it.
 - **Preset circuits are seeds** into `genCtrl`/`buildTrack`; changing either changes every preset and invalidates golden lap times (GT racer on seed 27, 12 m width: 78.3771 s for a single run from the centreline in Node v26.12.0; restarts scatter ~78.28–78.40 s; Node and Chrome differ by tens of ms, so golden values are per-runtime; dynamic check 97.8%). Changing either also requires regenerating `tests/golden.json`.
 - **Conventions:** SI internally (UI params are km/h, %, kW, deg, converted in `buildCar`/`buildPowertrain`/`dynSetup`); screen is y-down so normal `n = (−ty, tx)` points visually right; stations at uniform arc length with wrapping indices; speed tables are 0.5 m/s steps to `VMAX = 110`.
 - The optimiser's edge handling is a stiffening penalty, deliberately not a clamp (a clamp creates apex curvature kinks the lap model exploits).

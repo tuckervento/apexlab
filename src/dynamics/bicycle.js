@@ -1,4 +1,4 @@
-// Moved verbatim from prototype/apex-lab.html (migration step 2).
+// Moved from prototype/apex-lab.html (migration step 2); DYN frozen (step 3).
 import { G, RHO, FZ0, VSTEP, NT, CRR } from '../core/constants.js';
 import { tabAt } from '../core/lap.js';
 
@@ -12,7 +12,7 @@ import { tabAt } from '../core/lap.js';
 // sideslip from the kinematics). That nominal steering and longitudinal force drive the car, with small
 // corrections for path, heading and speed error. Where the line asks for more than an axle has, the car slides;
 // the driver then eases off before that point and tries again.
-export const DYN={C:1.45,dt:0.004,tolOff:0.5,steerRate:1.5,lag:0.06};
+export const DYN=Object.freeze({C:1.45,dt:0.004,tolOff:0.5,steerRate:1.5,lag:0.06,ke:15,kpsi:2.5,kr:0.3,ki:0.01});
 export function dynSetup(car){
   const p=car.p,m=car.m,wr=p.rear/100,wf=1-wr,a=car.aCG,b=car.bCG,L=p.wb,h=p.cg;
   const tireF=Fz=>{if(Fz<=0)return 0;let k=1-p.sens*(Fz/FZ0-1);if(k<0.25)k=0.25;return p.mu*k*Fz;};
@@ -116,4 +116,3 @@ export function dynLap(T,car,dc,line,v,keepTrace){
   }
   return {t,start:i0,spun,complete:!spun&&prog>=N,trouble,maxOff,maxE,maxDB,maxAf,maxAr,stV,stE,trace:tr,endIdx:idx,nom};
 }
-DYN.ke=15;DYN.kpsi=2.5;DYN.kr=0.3;DYN.ki=0.01;
