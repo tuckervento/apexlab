@@ -1,7 +1,7 @@
 // Loads the physics from the src/ ES modules (core, dynamics, presets) as one namespace object.
 // APEX_SRC=<dir> loads a copy of src/ instead (used to check that the tests fail on deliberately broken code).
 // Modules are cached per process, so every loadCore() call in a test file shares one instance (the core keeps no
-// mutable module-level state; DYN is frozen).
+// mutable module-level state; DYN and the presets are frozen).
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';

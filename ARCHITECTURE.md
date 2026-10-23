@@ -353,7 +353,7 @@ Each step keeps behaviour identical and is checked against §8.
    - ✅ the `VC_D` side channel;
    - ✅ module-level scratch `_t1`, `_t2`, `_t3` (both now live in `Scratch`);
    - ✅ mutable `DYN` gains (now one frozen literal);
-   - presets defined next to the UI (moved to `src/app/presets.js` in step 2; still plain mutable objects).
+   - ✅ presets defined next to the UI (moved to `src/app/presets.js` in step 2; frozen in step 3).
 
    Normalise parameter units at the boundary.
 4. **Add `describeCar()`** and move chart and readout data behind it.

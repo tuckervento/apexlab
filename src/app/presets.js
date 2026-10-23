@@ -1,4 +1,4 @@
-// Moved verbatim from prototype/apex-lab.html (migration step 2).
+// Moved verbatim from prototype/apex-lab.html (migration step 2); frozen in step 3. Callers copy before editing ({...CARS[name]}).
 
 export const CARS={
   'Road car':      {mass:1450,cg:0.52,track:1.58,wb:2.70,rear:48,rollF:58,power:220,pt:'ICE',gears:6,v1:60,vTopG:280,nT:50,nRed:110,evBase:100,evMax:250,drive:'RWD',cla:0.10,aeroF:50,cda:0.70,brakeF:68,mu:1.00,sens:0.10,shiftT:0.2,yawDI:1.0,slipPk:8},
@@ -9,3 +9,5 @@ export const CARS={
   'Kart':          {mass:175, cg:0.25,track:1.30,wb:2.00,rear:58,rollF:45,power:12, pt:'ICE',gears:1,v1:115,vTopG:115,nT:60,nRed:110,evBase:50,evMax:115,drive:'RWD',cla:0.00,aeroF:50,cda:0.55,brakeF:0,mu:1.25,sens:0.05,shiftT:0,yawDI:1.0,slipPk:6}
 };
 export const TRACKS=[{name:'Harrow Ring',seed:27},{name:'Kestrel Point',seed:11},{name:'Millbrook Park',seed:15},{name:'Saltmarsh',seed:9}];
+for(const c of Object.values(CARS))Object.freeze(c);Object.freeze(CARS);
+for(const t of TRACKS)Object.freeze(t);Object.freeze(TRACKS);
