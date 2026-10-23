@@ -37,9 +37,14 @@ export function dynSummary(core, T, car, off) {
   const lap = core.lapEval(T, car, off, core.makeScratch(T.N));
   const dc = new core.DynCheck(T, car, off);
   while (!dc.done) dc.step();
-  const r = dc.result, f = r.fail, d = r.dyn;
+  return { lap, ...dynResultSummary(dc.result) };
+}
+
+// The summarised fields of a DynCheck result (as stored in the goldens).
+export function dynResultSummary(r) {
+  const f = r.fail, d = r.dyn;
   return {
-    lap, frac: r.frac, umax: r.umax, uat: r.uat, uaxle: r.uaxle, qss: r.qss, iters: r.iters,
+    frac: r.frac, umax: r.umax, uat: r.uat, uaxle: r.uaxle, qss: r.qss, iters: r.iters,
     fail: f ? { fr: f.fr, at: f.at, spun: f.spun } : null,
     fin: d ? { t: d.t, complete: d.complete, spun: d.spun, trouble: d.trouble.length,
       maxE: d.maxE, maxOff: d.maxOff, maxDB: d.maxDB, meanE: meanAbs(d.stE) } : null,
