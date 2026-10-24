@@ -62,6 +62,7 @@ export class Solver{
     this.emitCar(info,c.rev);
     if(!this.T)return;
     this.B=makeBounds(this.T,car);
+    if(c.resume)this.running=true; // the app's auto-resume rides on this command, so a separate run can't overtake it; both paths below publish a progress
     if(!this.off){this.resetLine(null);return;}
     this.opt.rescore(car,this.B);this.computeRef();this.publish(true);
   }
@@ -70,7 +71,9 @@ export class Solver{
     this.T=T;this.trackRev=c.rev;this.dyn=null;
     this.emitTrack(T,c.rev);
     if(!this.car)return;
-    this.B=makeBounds(T,this.car);this.resetLine(c.keepLine?this.pub:null);
+    this.B=makeBounds(T,this.car);
+    if(c.resume)this.running=true; // as in setCar
+    this.resetLine(c.keepLine?this.pub:null);
   }
   // Replace car, track and line in one command (a saved run, ARCHITECTURE.md §7), so the line can't land on a different
   // track than it was recorded on. The line is published exactly as given (clamped to the new bounds, resampled if the

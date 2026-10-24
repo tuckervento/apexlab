@@ -193,6 +193,40 @@ test('solver: an error carries the rev of the failing command, null for a slice 
   assert.equal(b.last('error').rev, null, 'an error in a slice');
 });
 
+// The worker owns `running`. The app resumes the search after a car or circuit change with `resume` on that very command,
+// not with a separate `run`, which could overtake a coalesced (queued) setCar or land just after convergence.
+test('solver: setCar and setTrack with resume start the search; without it they leave it as it was', () => {
+  const car = { ...core.CARS[CAR] }, ctrl = core.genCtrl(TRACK.seed, WIDTH);
+  const b = boot();
+  b.s.handle({ type: 'setCar', rev: 3, params: car });
+  assert.equal(b.s.running, false, 'no resume: stays paused');
+  assert.equal(b.last('progress').running, false);
+  b.s.handle({ type: 'setCar', rev: 4, params: car, resume: true });
+  assert.equal(b.s.running, true, 'resume: searching');
+  assert.equal(b.last('progress').running, true, 'and the progress event says so');
+  const e0 = b.last('progress').evals;
+  for (let k = 0; k < 5; k++) b.s.tick(30);
+  assert.ok(b.last('progress').evals > e0, 'the search does work');
+
+  b.s.handle({ type: 'pause' });
+  b.s.handle({ type: 'setTrack', rev: 5, ctrl, width: WIDTH, keepLine: false, resume: true });
+  assert.equal(b.s.running, true, 'setTrack resumes too');
+  assert.equal(b.last('progress').running, true);
+
+  const bad = { ...car }; delete bad.slipPk;
+  b.s.handle({ type: 'setCar', rev: 6, params: bad, resume: true });
+  assert.equal(b.last('error').rev, 6);
+  assert.equal(b.s.running, false, 'a rejected car does not resume');
+
+  // the app boots with setCar before there is a track: nothing to run yet, and no error
+  const ev = [], s = new core.Solver(e => ev.push(e));
+  s.handle({ type: 'setCar', rev: 1, params: car, resume: true });
+  assert.equal(s.running, false, 'no track yet');
+  s.handle({ type: 'setTrack', rev: 2, ctrl, width: WIDTH, keepLine: false, resume: true });
+  assert.equal(s.running, true, 'the track\'s resume starts it');
+  noErrors(ev);
+});
+
 // The line on screen must be one the optimiser accepted: during the polish stage, Optimizer.step() leaves `off`
 // holding the last candidate tried, even when it rejects it and restores the spline coefficients `c`.
 test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 * 1000 }, t => {
