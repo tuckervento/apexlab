@@ -75,3 +75,11 @@ test('simple: more power gives more kW/t and a higher top speed', () => {
     assert.ok(rows.at(-1)[1].power > rows[0][1].power, `${base}: the Power knob moves power`);
   }
 });
+
+test('simple: more downforce gives more lateral g at 200 km/h', () => {
+  for (const base of BASES) {
+    const rows = sweep(base, 'downforce');
+    risesWith(rows, 'cla', d => d.balance.lateral[1].g, `${base} lateral g at ${rows[0][2].balance.lateral[1].kmh} km/h`);
+    assert.ok(rows.at(-1)[1].cla > rows[0][1].cla, `${base}: the Downforce knob moves CL·A`);
+  }
+});
