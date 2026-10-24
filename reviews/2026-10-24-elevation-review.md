@@ -41,7 +41,7 @@ The hilly physics and its adjoint are in very good shape:
 | E-L3 | `dynLap` scales lateral velocity by cos(grade) too | dynamics | yes | hilly yes |
 | E-L4 | Stale selected handle when the circuit is replaced in edit mode; "Point N" label not renumbered on insert | app | no | no |
 | E-L5 | After loading a hilly run, *Revert shape* doesn't re-enable Hills, contrary to the note | app | no | no |
-| E-L6 | Property-test gaps: cos-grade in n, the track's kv, and the dynamics' hill terms are guarded only by bit-exact goldens | tests | no | no |
+| E-L6 | Property-test gaps: cos-grade in n, the track's kv, and the dynamics' hill terms are guarded only by bit-exact goldens — **fixed**, `5b29646` (M12, kv smoothing, stays golden-only on purpose) | tests | no | no |
 | E-L7 | Docs drift (6 items) | docs | no | no |
 
 **Before banking or tyres:** fix E-H1 first. Both features add regimes where the clamps and `warn` matter more, and right now the only signal that a lap time isn't real is invisible. E-L6 should land before banking too: banking replaces exactly the terms (cth, kv, the n formula, `dynLap`'s plan motion) that only goldens guard. When banking forces a golden regeneration, a wrong term would go in with it. Nothing in the core blocks building on this code.
@@ -186,7 +186,7 @@ The hilly physics and its adjoint are in very good shape:
 - **Fix:** reword the note for loaded runs ("pick a circuit"), or hide *Revert* from the note when `origCtrl` has no `u`.
 - **Hash/goldens:** no.
 
-#### [ ] E-L6. Several hilly terms are guarded only by the bit-exact goldens, not by any physical-property test (VERIFIED, see "Test teeth")
+#### [x] E-L6. Several hilly terms are guarded only by the bit-exact goldens, not by any physical-property test (VERIFIED, see "Test teeth")
 
 - **Why it matters:**
   - Goldens catch any change but can't tell right from wrong. When a physics change (E-M1, E-L1, banking) forces a regeneration, a wrong term goes in with it.

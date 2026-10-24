@@ -90,9 +90,10 @@ track overlaps itself.
 
 ## A2. Banking
 
-**Prerequisites** (`reviews/2026-10-24-elevation-review.md`): E-L6, property tests for the hill terms that today only the
-bit-exact goldens guard (banking rewrites exactly those, and its golden regeneration could carry a wrong one in); and
-E-M1, n ≤ 0 clamped to 0 keeps downforce grip off the ground.
+**Prerequisites** (`reviews/2026-10-24-elevation-review.md`): E-M1, n ≤ 0 clamped to 0 keeps downforce grip off the
+ground. E-L6 is done (`5b29646`): closed-form tests on a parabolic crest now guard kv, cth, the cth term of n, the grade
+sine, `dynNominal`'s path acceleration and `dynLap`'s plan motion, which banking rewrites; extend them to banked
+sections rather than lean on the golden regeneration.
 
 **Why.** Many real hilly corners are banked, which adds `g·sinφ` of lateral support. Without it, hilly corners here are
 harder than real ones (`ARCHITECTURE.md` §4.7). It's the natural next physics step after step 8.
