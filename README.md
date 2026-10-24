@@ -2,6 +2,103 @@
 
 racing to find the right line
 
+Apex Lab finds the minimum-time racing line around a closed circuit for a car you configure, then checks how much of that pace a time-stepped vehicle model can actually hold. Everything runs in the browser. The physics is plain JavaScript (ES modules), with no build step and no dependencies.
+
+## Run
+
+```bash
+node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.mjs to change the port)
+```
+
+- **Requirements:** Node.js to serve the files, and a current browser with module Web Workers. Developed with Node v26.12.1 and tested in Chrome.
+- **Use `serve.mjs`, not `file://`:** browsers won't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
+- **No install step.** The only external resource is Google Fonts.
+
+## What you can do
+
+**Set up a car**
+- Six presets: Road car, Hot hatch AWD, EV saloon, GT racer, Open-wheeler, Kart.
+- 25 parameters (some apply only to combustion or only to electric), in five groups:
+  - chassis: mass, CoG height, track width, wheelbase, weight split, roll stiffness split, yaw inertia;
+  - powertrain: combustion or electric, power, torque curve, gears, shift time, RWD/AWD;
+  - aero: downforce, balance, drag;
+  - brakes: bias;
+  - tyres: grip, load sensitivity, peak slip angle.
+- Derived readouts: power-to-weight, top speed, lateral grip at 100 and 200 km/h with the limiting axle (understeer or oversteer), braking, and which axle locks first.
+- A tractive-force chart: per-gear force, the traction limit, and drag plus rolling resistance.
+
+**Pick or shape a circuit**
+- Four preset circuits, or a random one.
+- Adjustable track width.
+- **Edit shape:** drag control points, tap empty space to add a point, double-tap a point to remove it; revert to the original.
+
+**Watch the optimiser**
+- The search runs in the background in stages, from coarse to fine.
+- A status chip, a count of laps simulated, and a convergence chart.
+- Pause or run, *Search again* from the current line, or *Restart from centreline*.
+- The GT racer on Harrow Ring converges in about 10 s, to 1:18.348.
+
+**Read the result**
+- The map colours the line by speed, pedal state (brake, at the limit, throttle) or tyre use (per-axle grip utilisation).
+- Corner labels show each corner's minimum speed.
+- Replay at 1×, 4× or 12×, with an optional follow camera. A HUD shows speed, gear, and lateral and longitudinal g.
+- Telemetry plots speed over lap distance against the centreline.
+- **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart.
+
+**Dynamic check**
+- A time-stepped bicycle model drives the optimised line. It has yaw inertia, Pacejka-style tyres, load-transfer lag and a steering-rate limit.
+- It reports the highest fraction of the lap model's pace it can hold on track without sliding, its lap time at that pace, and the peak tyre use.
+- It also shows where it first runs wide or spins, marked on the map. The result goes out of date as soon as the car, track or line changes.
+
+The app's *How the model works* panel summarises the physics. [ARCHITECTURE.md](ARCHITECTURE.md) has the details.
+
+## How it fits together
+
+```
+index.html ─ src/app/                 state, worker client, controls, frame loop, HUD
+               │  commands ↓   ↑ events (copies, tagged with car/track/line revisions)
+               │
+             src/solver/worker.js ─ Solver   (in a Web Worker; owns car, track, line, optimiser, dynamic check)
+               │  uses
+               ├── src/core/       track spline, car tables (incl. the GGV), lap model + exact gradient, optimiser
+               └── src/dynamics/   bicycle model, inverse dynamics, dynamic check
+
+             src/views/map2d/      map and charts, drawn from explicit inputs
+             src/playback/         pose(t) along a lap or a dynamic trace; race clock for ghosts
+```
+
+| Directory | What it holds |
+|---|---|
+| `src/core/` | Units boundary (`carSpec`), track generation and spline, car limit tables, the quasi-steady-state lap model `lapEval` with its hand-written adjoint gradient, the staged spline L-BFGS optimiser, and `describeCar` (chart and readout data). No DOM. |
+| `src/dynamics/` | The time-stepped bicycle model (`dynLap`), inverse dynamics (`dynNominal`) and the dynamic check (`DynCheck`). No DOM. |
+| `src/solver/` | `Solver` behind a message protocol (commands in, events out), and the Web Worker that runs it. The main thread never runs physics. |
+| `src/playback/` | `pose()` (position, heading, speed, accelerations, gear; plus steering and slip for dynamic traces) and the race clock. |
+| `src/views/map2d/` | Camera, palette, map drawing and side-panel charts: pure functions of what they're given. |
+| `src/app/` | The page: one state object, the solver client, controls, input, frame loop and boot. Car and circuit presets. |
+| `tests/` | Node tests: see below. |
+| `prototype/` | The original single-file prototype, frozen as a reference. |
+
+## Tests
+
+```bash
+node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
+```
+
+- **Gradient check:** the exact gradient against finite differences.
+- **Convergence:** the optimiser run to the end.
+- **Skidpad:** the dynamic model on a constant-speed circle.
+- **Golden values:** 6 cars × 4 circuits, bit for bit.
+- **Parity:** the modules against the prototype.
+- **Solver protocol, `describeCar` and playback.**
+
+Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff.
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): conventions, physics, optimiser, data shapes, the worker protocol, the pose contract, and the migration plan with its status.
+- [CLAUDE.md](CLAUDE.md): a short guide for working on the code, including the things that bite.
+- [investigations/](investigations/): write-ups of past investigations (e.g. why Node and Chrome converge to slightly different laps).
+
 ## TODO
 
 1. Decouple sim and UI
