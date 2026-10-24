@@ -243,7 +243,7 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 - The same GT/Harrow convergence runs three times: `convergence.test`, solver "converges", and solver "publishes only accepted" (about 8 s each). The new `load: the recorded line comes back bit for bit` test also compares against the same golden, so check whether it adds a fourth run.
 - **Fix:** the repeated runs could share `converged()`.
 
-#### [ ] L11. `telemetry.build` stores DOM refs on the shared `ROWS` constants
+#### [x] L11. `telemetry.build` stores DOM refs on the shared `ROWS` constants
 
 - **Where:** `src/app/telemetry.js:52`. Works, but it is mutable module state. Low priority.
 

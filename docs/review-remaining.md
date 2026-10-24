@@ -212,8 +212,9 @@ revision rules are what the architecture leans on.
 - **L10.** The GT/Harrow convergence runs three times (`convergence.test.mjs`; `solver.test.mjs` "converges" and "publishes
   only accepted"), about 8 s each, and `runfile.test.mjs`'s bit-for-bit load test compares against the same golden. Let the
   solver tests share `converged()` (`solver.test.mjs:21`); the suite is 26 s now.
-- **L11.** `telemetry.js` stores DOM refs on the shared row constants (`r.tr=…`, `r.c=…` in `build`, `:60`). Works, but it is
-  module state; keep the refs in a per-table array instead.
+- [x] **L11.** `telemetry.js` stored DOM refs on the shared row constants (`r.tr=…`, `r.c=…` in `build`, `:60`). Now the
+  built table holds them in a per-table `cells` array (`built = {rows, cells}`). Checked by driving the old and new module
+  through the same ten `renderTelemetry` calls against a recording fake DOM: identical writes.
 
 ## Docs drift (all re-checked at `b12517d`)
 

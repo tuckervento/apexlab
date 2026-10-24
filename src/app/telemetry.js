@@ -52,13 +52,15 @@ const MAX_ROWS_H=[...MAX_ROWS,{g:'Hills'},
   {l:'Vertical load most',u:'g',f:x=>x.phys.nz&&x.phys.nz.max,d:2},
   {l:'Vertical load least',u:'g',f:x=>x.phys.nz&&x.phys.nz.min,d:2}];
 
-// The table holds one row set at a time, rebuilt only when the set changes.
+// The table holds one row set at a time, rebuilt only when the set changes. built = {rows, cells}: cells[i] holds the DOM
+// refs {tr, c, gc, dc} of rows[i] (null for a group heading). The row constants are shared between sets (ROWS_H spreads
+// ROWS), so the refs belong to the built table, not to the rows.
 let built=null;
 function build(rows){
   $('#teleBody').innerHTML=rows.map(r=>r.g?`<tr class="grp"><th colspan="4">${r.g}</th></tr>`:
     `<tr><th>${r.l}${r.u?` <small>${r.u}</small>`:''}</th><td></td><td class="gcol g"></td><td class="gcol d"></td></tr>`).join('');
-  const trs=$('#teleBody').rows;rows.forEach((r,i)=>{if(!r.g){const c=trs[i].cells;r.tr=trs[i];r.c=c[1];r.gc=c[2];r.dc=c[3];}});
-  built=rows;
+  const trs=$('#teleBody').rows;
+  built={rows,cells:rows.map((r,i)=>{if(r.g)return null;const c=trs[i].cells;return {tr:trs[i],c:c[1],gc:c[2],dc:c[3]};})};
 }
 // Lap extremes per snapshot object (a new one arrives with every snapshot; a ghost never changes).
 const extremes=new WeakMap(),lapMax=d=>{let x=extremes.get(d);if(!x){x=lapExtremes(d);extremes.set(d,x);}return x;};
@@ -68,14 +70,15 @@ const fmt=(x,r)=>x==null||!isFinite(x)?'—':r.signed?fmtDelta(x,r.d):x.toFixed(
 // ghost: a ghost is pinned; ev: electric (no gears); hills: the circuit has hills (adds their rows); mode: 'time' or 'place' (live, ref chosen by the caller) or
 // 'max' (lap maxima of carLap and ghostLap, the two lap snapshots).
 export function renderTelemetry(car,ref,{ghost,ev,hills,mode,carLap,ghostLap}){
-  const max=mode==='max',rows=max?(hills?MAX_ROWS_H:MAX_ROWS):(hills?ROWS_H:ROWS);if(built!==rows)build(rows);
-  const A=max?lapMax(carLap):car,B=max?lapMax(ghostLap):ref;
-  for(const r of rows){
+  const max=mode==='max',rows=max?(hills?MAX_ROWS_H:MAX_ROWS):(hills?ROWS_H:ROWS);if(!built||built.rows!==rows)build(rows);
+  const A=max?lapMax(carLap):car,B=max?lapMax(ghostLap):ref,cells=built.cells;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i],e=cells[i];
     if(r.g)continue;
-    if(r.gear){r.tr.hidden=ev;if(ev)continue;}
-    const a=A?r.f(A):null;set(r.c,fmt(a,r));
+    if(r.gear){e.tr.hidden=ev;if(ev)continue;}
+    const a=A?r.f(A):null;set(e.c,fmt(a,r));
     if(!ghost)continue;
-    const b=B?r.f(B):null;set(r.gc,fmt(b,r));set(r.dc,a==null||b==null?'—':fmtDelta(a-b,r.d));
+    const b=B?r.f(B):null;set(e.gc,fmt(b,r));set(e.dc,a==null||b==null?'—':fmtDelta(a-b,r.d));
   }
 }
 
