@@ -54,7 +54,7 @@ export function setRunning(r,fresh){S.running=r;if(!S.editing)send(r?{type:'run'
 export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S.prog.converged?'Search again':'Run');}
 export function showError(msg){S.frameErr=S.frameErr||new Error(msg);S.running=false;runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
-export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f){S.followZ=Math.max(S.cam.z,7);if(S.replay===0){S.replay=1;setSeg($('#replaySeg'),1);}}}
+export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too
 export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearGhost').hidden=!g;$('#capGhost').hidden=!g;$('#gapWrap').hidden=!g;$('#deltaRow').hidden=!g;$('#tele').classList.toggle('noghost',!g);}
 
 // ---------- readouts (also redrawn by the solver client's hooks)
@@ -128,6 +128,6 @@ export function bindButtons(){
   $('#colorSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;const m=S.colorMode=b.dataset.v;setSeg($('#colorSeg'),m);$('#legSpeed').hidden=m!=='speed';$('#legPedal').hidden=m!=='pedal';$('#legUtil').hidden=m!=='util';send({type:'view',util:m==='util'});};
   $('#tagSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.tagMode=b.dataset.v;setSeg($('#tagSeg'),S.tagMode);};
   $('#deltaSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.deltaMode=b.dataset.v;setSeg($('#deltaSeg'),S.deltaMode);};
-  $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);if(S.replay===0&&S.follow)setFollow(false);};
+  $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);}; // 0 = Pause: the clock stops, the car and its readouts stay
   $('#dynBtn').onclick=()=>{S.running=false;runLabel();send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
 }

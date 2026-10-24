@@ -68,8 +68,8 @@ new MutationObserver(refreshColors).observe(document.documentElement,{attributes
 
 // ---------- drawing (views in src/views/map2d/)
 function draw(){
-  const {disp,ghost,T}=S,on=S.replay>0,rt=raceClock(ghost?[disp.t,ghost.t]:[disp.t],S.animT);
-  const cs=on&&disp.t>0?pose(disp,rt,S.info):null,gs=on&&ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs)cam.frame(gs?[cs,gs]:[cs],S.followZ,FOLLOW_MARGIN);
+  const {disp,ghost,T}=S,rt=raceClock(ghost?[disp.t,ghost.t]:[disp.t],S.animT); // replay 0 (Pause) freezes the clock, not the car
+  const cs=disp.t>0?pose(disp,rt,S.info):null,gs=ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs)cam.frame(gs?[cs,gs]:[cs],S.followZ,FOLLOW_MARGIN);
   // each car against the other at the same place (both lines index the track's stations; a track change clears the ghost)
   const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
   const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};

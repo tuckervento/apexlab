@@ -41,7 +41,7 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 **Read the result**
 - The map colours the line by speed, pedal state (brake, at the limit, throttle) or tyre use (per-axle grip utilisation).
 - Corner labels show each corner's minimum speed.
-- Replay at 1×, 4× or 12×, with an optional follow camera.
+- Replay at ½×, 1×, 4× or 12×, or paused (car, ghost and readouts held where they are), with an optional follow camera.
 - **Telemetry:** the best lap, plus live readouts during replay: speed, gear, lateral and longitudinal g, and the forces on the car: each axle's load, lateral and longitudinal tyre force and grip use, downforce and drag. Forces come from inverse dynamics on the lap model's speed profile.
 - **Map tags** beside the car and the ghost show speed, g or grip use.
 - Telemetry plots speed over lap distance against the centreline.
