@@ -83,3 +83,16 @@ test('simple: more downforce gives more lateral g at 200 km/h', () => {
     assert.ok(rows.at(-1)[1].cla > rows[0][1].cla, `${base}: the Downforce knob moves CL·A`);
   }
 });
+
+test('simple: a grippier tyre gives more lateral g at 100 and 200 km/h', () => {
+  const compounds = knob('tyre').opts.map(o => o[0]).filter(t => t !== 'base');
+  for (const base of BASES) {
+    const rows = compounds.map(tyre => { const p = deriveParams({ ...defaults(base), tyre }); return [tyre, p.mu, core.describeCar(core.buildCar(p))]; })
+      .sort((a, b) => a[1] - b[1]);
+    assert.equal(new Set(rows.map(r => r[1])).size, compounds.length, `${base}: every compound has its own μ`);
+    for (let i = 1; i < rows.length; i++) for (const j of [0, 1]) {
+      const [t0, , d0] = rows[i - 1], [t1, , d1] = rows[i], l0 = d0.balance.lateral[j], l1 = d1.balance.lateral[j];
+      assert.ok(l1.g > l0.g, `${base} at ${l0.kmh} km/h: ${t0} ${l0.g} vs ${t1} ${l1.g}`);
+    }
+  }
+});
