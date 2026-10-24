@@ -142,7 +142,7 @@ export function bindButtons(){
 let pendingLoad=null,liveSha=null,pickMode=null;
 liveHash(PHYSICS.files,async f=>{const r=await fetch(new URL('../'+f,import.meta.url));if(!r.ok)throw new Error(`${f}: HTTP ${r.status}`);return r.arrayBuffer();})
   .then(h=>{liveSha=h;},e=>console.error('physics hash:',e));
-const ctrlEqual=(a,b)=>a.length===b.length&&a.every((p,i)=>p[0]===b[i][0]&&p[1]===b[i][1]);
+const ctrlEqual=(a,b)=>a.length===b.length&&a.every((p,i)=>p[0]===b[i][0]&&p[1]===b[i][1]&&(p[2]||0)===(b[i][2]||0)); // heights too (absent = 0)
 const short=h=>h?h.slice(0,7):'unknown';
 // File contents are untrusted: lines go in as text nodes, never as HTML.
 function runMsg(...lines){$('#runInfo').replaceChildren(...lines.flatMap((l,i)=>i?[document.createElement('br'),l]:[l]));}

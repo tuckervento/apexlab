@@ -91,7 +91,9 @@ test('run file: survives JSON, and loads back to the recorded lap', () => {
 test('run file: refuses what it cannot use, and says what', () => {
   const { file, args } = recorded(), refuses = (mutate, re) => { const f = JSON.parse(JSON.stringify(file)); mutate(f); assert.throws(() => readRunFile(f), re); };
   refuses(f => { f.format = 'other'; }, /format: expected "apexlab-run", got "other"/);
-  refuses(f => { f.version = 2; }, /version: file is format v2; this build reads v1/);
+  refuses(f => { f.version = 3; }, /version: file is format v3; this build reads v1 and v2/);
+  refuses(f => { f.track.ctrl[2] = f.track.ctrl[2].slice(0, 2); }, /track\.ctrl\[2\]: expected \[x, y, z\]/);
+  refuses(f => { delete f.result.snapshot.pz; }, /snapshot\.pz: expected an array/);
   refuses(f => { delete f.car.mu; delete f.car.sens; }, /car: missing fields mu, sens/);
   refuses(f => { f.car.turbo = 1; }, /car: unknown field turbo/);
   refuses(f => { f.line.off.pop(); }, /line\.off: expected \d+ values, got \d+/);
@@ -158,4 +160,32 @@ test('cross-version: a v1 run file from before elevation loads to its recorded l
     assert.equal(snap.lap, run.result.lap, 'lap of the recorded line, re-scored by this build');
     sameArrays(snap.line.off, run.line.off, 'line.off');
   });
+});
+
+// The v1 -> v2 migration, explicitly: the pre-elevation fixture comes back with heights 0 everywhere (exact: v1 is flat).
+test('run file: a v1 file migrates to v2 with z = 0 and pz = 0', () => {
+  const run = readRunFile(JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/run-v1-gt-harrow.apexlab.json', import.meta.url)), 'utf8')));
+  assert.equal(run.version, 1, 'the file\'s own version is reported');
+  assert.ok(run.track.ctrl.every(p => p.length === 3 && p[2] === 0), 'control points [x, y, 0]');
+  assert.equal(run.result.snapshot.pz.length, run.line.N); assert.ok(run.result.snapshot.pz.every(z => z === 0), 'pz = 0');
+  assert.ok(core.buildTrack(run.track.ctrl, run.track.width).flat, 'the migrated circuit is flat');
+});
+
+// A hilly run, v2: exported from a solver on a hilly circuit, through JSON, loaded into a fresh solver.
+test('run file: a hilly run survives JSON and loads back to its recorded lap and heights', () => {
+  const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), hills = ctrl.map((p, i) => [p[0], p[1], 30 * u[i]]);
+  const { s, ev } = boot(); s.handle({ type: 'setTrack', rev: 3, ctrl: hills, width: WIDTH, keepLine: true }); noErrors(ev);
+  const snap = ev.filter(e => e.type === 'snapshot').at(-1);
+  const file = makeRunFile({ P: { ...core.CARS[CAR] }, ctrl: hills, width: WIDTH, trackName: 'Edited', seed: null, disp: { ...snap.line, t: snap.lap },
+    prog: { converged: false, evals: 0 }, refT: snap.ref.t, dyn: null, physics: { sha256: PHYSICS.sha256, live: PHYSICS.sha256 }, exported: '2026-10-24T00:00:00.000Z', userAgent: 'test' });
+  assert.equal(file.version, 2);
+  const back = readRunFile(JSON.parse(JSON.stringify(file)));
+  assert.deepEqual(back.track.ctrl, hills, 'control points with their heights');
+  sameArrays(back.result.snapshot.pz, snap.line.pz, 'snapshot.pz');
+  const b2 = boot(), n0 = b2.ev.length;
+  b2.s.handle({ type: 'load', rev: 3, params: back.car, ctrl: back.track.ctrl, width: back.track.width, off: back.line.off, run: false });
+  const got = b2.ev.slice(n0); noErrors(got);
+  const again = got.find(e => e.type === 'snapshot');
+  assert.equal(again.lap, back.result.lap, 'lap of the hilly line loaded from the file');
+  sameArrays(again.line.pz, back.result.snapshot.pz, 'heights after loading');
 });

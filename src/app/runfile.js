@@ -4,7 +4,8 @@
 // is a different car). A change to the car parameters or this layout bumps RUN_VERSION and adds an explicit migration.
 import { CARS } from './presets.js';
 
-export const RUN_FORMAT = 'apexlab-run', RUN_VERSION = 1;
+// v1: flat circuits. v2 (elevation): control points [x, y, z] and the recorded line's heights (snapshot.pz).
+export const RUN_FORMAT = 'apexlab-run', RUN_VERSION = 2, READS = [1, 2];
 export const CAR_KEYS = Object.keys(CARS['GT racer']);
 const LINE_ARRAYS = ['px', 'py', 'v', 'ds', 'k']; // snapshot arrays of length N (tc has N + 1)
 
@@ -28,11 +29,12 @@ export function makeRunFile({ P, ctrl, width, trackName, seed, disp, prog, refT,
   const arr = (name, a) => Array.from(a, (x, i) => num(`${name}[${i}]`, x));
   const N = disp.off.length;
   const snapshot = Object.fromEntries([...LINE_ARRAYS, 'tc'].map(k => [k, arr(`snapshot.${k}`, disp[k])]));
+  snapshot.pz = arr('snapshot.pz', disp.pz);
   snapshot.phys = Object.fromEntries(Object.entries(disp.phys).map(([k, a]) => [k, arr(`snapshot.phys.${k}`, a)]));
   return {
     format: RUN_FORMAT, version: RUN_VERSION, exported, userAgent, physics,
     car: Object.fromEntries(CAR_KEYS.map(k => [k, P[k]])),
-    track: { name: trackName, seed, width: num('width', width), ctrl: ctrl.map((p, i) => [num(`ctrl[${i}][0]`, p[0]), num(`ctrl[${i}][1]`, p[1])]) },
+    track: { name: trackName, seed, width: num('width', width), ctrl: ctrl.map((p, i) => [num(`ctrl[${i}][0]`, p[0]), num(`ctrl[${i}][1]`, p[1]), num(`ctrl[${i}][2]`, p.length > 2 ? p[2] : 0)]) },
     line: { N, off: arr('line.off', disp.off) },
     result: {
       lap: num('lap', disp.t), converged: !!prog.converged, evals: num('evals', prog.evals), ref: num('ref', refT),
@@ -43,12 +45,15 @@ export function makeRunFile({ P, ctrl, width, trackName, seed, disp, prog, refT,
 }
 
 // ---------- read
-// Returns the file with every array a Float64Array; throws an Error saying what is wrong and where.
+// Returns the file, migrated to the current version, with every array a Float64Array; throws an Error saying what is
+// wrong and where. Migration v1 -> v2: control points gain z = 0 and the recorded line pz = 0, which is exact: a v1
+// run can only be flat. version (returned) is the file's own.
 export function readRunFile(o) {
   const bad = (where, why) => { throw new Error(`Run file: ${where}: ${why}`); };
   const isObj = x => x && typeof x === 'object' && !Array.isArray(x);
   if (!isObj(o) || o.format !== RUN_FORMAT) bad('format', `expected "${RUN_FORMAT}", got ${JSON.stringify(isObj(o) ? o.format : o)?.slice(0, 60)}; not an Apex Lab run file`);
-  if (o.version !== RUN_VERSION) bad('version', `file is format v${o.version}; this build reads v${RUN_VERSION}`);
+  if (!READS.includes(o.version)) bad('version', `file is format v${o.version}; this build reads v${READS.join(' and v')}`);
+  const v1 = o.version === 1;
   const need = (parent, key, where) => { if (!isObj(parent) || !isObj(parent[key])) bad(where, 'missing'); return parent[key]; };
   const fin = (where, x) => { if (typeof x !== 'number' || !Number.isFinite(x)) bad(where, `expected a finite number, got ${JSON.stringify(x)}`); return x; };
   const arr = (where, a, len) => {
@@ -65,7 +70,10 @@ export function readRunFile(o) {
   const tr = need(o, 'track', 'track'), width = fin('track.width', tr.width);
   if (!(width > 0)) bad('track.width', `expected > 0, got ${width}`);
   if (!Array.isArray(tr.ctrl) || tr.ctrl.length < 4) bad('track.ctrl', 'expected at least 4 control points');
-  const ctrl = tr.ctrl.map((p, i) => { if (!Array.isArray(p) || p.length !== 2) bad(`track.ctrl[${i}]`, 'expected [x, y]'); return [fin(`track.ctrl[${i}][0]`, p[0]), fin(`track.ctrl[${i}][1]`, p[1])]; });
+  const ctrl = tr.ctrl.map((p, i) => {
+    if (!Array.isArray(p) || p.length !== (v1 ? 2 : 3)) bad(`track.ctrl[${i}]`, v1 ? 'expected [x, y]' : 'expected [x, y, z]');
+    return [fin(`track.ctrl[${i}][0]`, p[0]), fin(`track.ctrl[${i}][1]`, p[1]), v1 ? 0 : fin(`track.ctrl[${i}][2]`, p[2])];
+  });
 
   const ln = need(o, 'line', 'line'), N = ln.N;
   if (!Number.isInteger(N) || N < 2) bad('line.N', `expected an integer >= 2, got ${JSON.stringify(N)}`);
@@ -74,6 +82,7 @@ export function readRunFile(o) {
   const res = need(o, 'result', 'result'), sn = need(res, 'snapshot', 'result.snapshot'), snapshot = {};
   for (const k of LINE_ARRAYS) snapshot[k] = arr(`result.snapshot.${k}`, sn[k], N);
   snapshot.tc = arr('result.snapshot.tc', sn.tc, N + 1);
+  snapshot.pz = v1 ? new Float64Array(N) : arr('result.snapshot.pz', sn.pz, N);
   const ph = need(sn, 'phys', 'result.snapshot.phys');
   snapshot.phys = Object.fromEntries(Object.keys(ph).map(k => [k, arr(`result.snapshot.phys.${k}`, ph[k], N)]));
   let dyn = null;
@@ -82,7 +91,7 @@ export function readRunFile(o) {
   const ph2 = need(o, 'physics', 'physics');
   if (typeof ph2.sha256 !== 'string') bad('physics.sha256', 'expected a string');
   return {
-    exported: typeof o.exported === 'string' ? o.exported : null, userAgent: typeof o.userAgent === 'string' ? o.userAgent : null,
+    version: o.version, exported: typeof o.exported === 'string' ? o.exported : null, userAgent: typeof o.userAgent === 'string' ? o.userAgent : null,
     physics: { sha256: ph2.sha256, live: typeof ph2.live === 'string' ? ph2.live : null },
     car: { ...car }, track: { name: typeof tr.name === 'string' ? tr.name : '', seed: Number.isFinite(tr.seed) ? tr.seed : null, width, ctrl },
     line: { N, off },

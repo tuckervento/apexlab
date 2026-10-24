@@ -4,17 +4,17 @@
 // A command or slice that throws emits {type:'error', rev} (the command's rev, null for a slice) and pauses the solver,
 // which stays usable.
 import { buildCar, describeCar, buildTrack, makeBounds, makeScratch, lapEval, Optimizer } from '../core/index.js';
-import { dynSetup, dynNominal, DynCheck } from '../dynamics/index.js';
+import { dynSetup, dynNominal, grades, DynCheck } from '../dynamics/index.js';
 
 const PUBLISH_MS=50; // snapshots and progress at most ~20 Hz while searching
-// The lap model needs load tables on a hilly circuit, and this solver doesn't build them yet (elevation P5): refuse
-// the pairing before any state changes, rather than take the new track and then fail on every command after it.
-function supported(T,car){if(T&&car&&!T.flat&&!car.load)throw new Error('Hilly circuits are not supported by the solver yet (the car has no load tables)');}
+// A hilly circuit needs a car with load tables (buildCar {loads: true}, ~250 ms instead of ~16): built only once a
+// circuit has hills, and kept if it goes flat again (the tables are then simply unused).
+const needsLoads=T=>!!T&&!T.flat;
 
 export class Solver{
   constructor(emit,now=()=>performance.now()){
     this.emit=emit;this.now=now;this.opt=new Optimizer();
-    this.car=null;this.T=null;this.B=null;this.off=null;this.pub=null;this.ref=null;this.refDirty=false;
+    this.car=null;this.params=null;this.T=null;this.B=null;this.off=null;this.pub=null;this.ref=null;this.refDirty=false;
     this.carRev=0;this.trackRev=0;this.lineRev=0;this.running=false;this.util=false;this.dyn=null;this.dynRevs=null;
     this.pending=false;this.lastPub=-Infinity;this.lastProg=-Infinity;this.lap=NaN;
   }
@@ -60,9 +60,8 @@ export class Solver{
   need(){if(!this.car||!this.T)throw new Error('Solver needs setCar and setTrack before this command');}
 
   setCar(c){
-    const car=buildCar(c.params),info=describeCar(car); // throws on invalid params, leaving the solver unchanged
-    supported(this.T,car);
-    this.car=car;this.carRev=c.rev;this.dyn=null;
+    const car=buildCar(c.params,{loads:needsLoads(this.T)}),info=describeCar(car); // throws on invalid params, leaving the solver unchanged
+    this.car=car;this.params=c.params;this.carRev=c.rev;this.dyn=null;
     this.emitCar(info,c.rev);
     if(!this.T)return;
     this.B=makeBounds(this.T,car);
@@ -72,8 +71,9 @@ export class Solver{
   }
   setTrack(c){
     const T=buildTrack(c.ctrl,c.width);
-    supported(T,this.car);
-    this.T=T;this.trackRev=c.rev;this.dyn=null;
+    // the same car (same params, same revision) with load tables, if hills arrive with this circuit; built first, so a throw changes nothing
+    const car=needsLoads(T)&&this.car&&!this.car.load?buildCar(this.params,{loads:true}):this.car;
+    this.T=T;this.car=car;this.trackRev=c.rev;this.dyn=null;
     this.emitTrack(T,c.rev);
     if(!this.car)return;
     this.B=makeBounds(T,this.car);
@@ -84,14 +84,13 @@ export class Solver{
   // track than it was recorded on. The line is published exactly as given (clamped to the new bounds, resampled if the
   // station count differs), not as the optimiser's spline fit of it. run: start searching from it; otherwise stay paused.
   load(c){
-    const car=buildCar(c.params),info=describeCar(car),T=buildTrack(c.ctrl,c.width); // these throw before any state changes
+    const T=buildTrack(c.ctrl,c.width),car=buildCar(c.params,{loads:needsLoads(T)}),info=describeCar(car); // these throw before any state changes
     if(!c.off||!(c.off.length>=2)||!c.off.every(Number.isFinite))throw new Error('load: line must be an array of finite offsets');
     if(!(T.L>0))throw new Error('load: the circuit has no length (control points all in one place?)'); // buildTrack reports this neither by throwing nor in T.issue, and the lap would be NaN
-    supported(T,car);
     const B=makeBounds(T,car),N=T.N,off=c.off.length===N?Float64Array.from(c.off):this.resample(c.off,N);
     let n=0,max=0;
     for(let i=0;i<N;i++){const x=Math.min(B.hi[i],Math.max(B.lo[i],off[i])),d=Math.abs(x-off[i]);if(d>0){n++;max=Math.max(max,d);}off[i]=x;}
-    this.car=car;this.T=T;this.B=B;this.carRev=this.trackRev=c.rev;this.dyn=null;
+    this.car=car;this.params=c.params;this.T=T;this.B=B;this.carRev=this.trackRev=c.rev;this.dyn=null;
     this.emitCar(info,c.rev);this.emitTrack(T,c.rev);
     const line=Float64Array.from(off);
     this.off=off;this.opt.setup(T,car,B,off);off.set(line); // setup overwrites off with its spline fit; later rescores should start from the exact line
@@ -131,10 +130,11 @@ export class Solver{
     let vmin=1e9,vmax=0;for(let i=0;i<N;i++){vmin=Math.min(vmin,S.v[i]);vmax=Math.max(vmax,S.v[i]);}
     // forces on the car from inverse dynamics (telemetry), and with util the per-axle grip use for tyre-use colouring
     const th=new Float64Array(N);for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(S.py[j]-S.py[i],S.px[j]-S.px[i]);}
-    const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds},S.v); // fresh arrays: sent as they are
+    const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds,...grades(T)},S.v); // fresh arrays: sent as they are; S.ds is the 3D step on hills
     const phys={fxf:n.Fxf,fxr:n.Fxr,fyf:n.Fyf,fyr:n.Fyr,wf:n.Wf,wr:n.Wr,uf:n.uf,ur:n.ur,down:n.down,drag:n.drag};
     const off=Float64Array.from(this.pub); // the offsets themselves: a saved run needs the exact line, not just its points
-    const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys,off},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,off.buffer,...Object.values(phys).map(a=>a.buffer)];
+    const pz=Float64Array.from(T.z); // the line's heights (no banking: the track's at each station)
+    const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys,off,pz},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,off.buffer,pz.buffer,...Object.values(phys).map(a=>a.buffer)];
     if(this.util){line.u=Float64Array.from(n.uf,(x,i)=>Math.max(x,n.ur[i]));tr.push(line.u.buffer);}
     // warn: what the lap time hides: stations held at the 0.1 m/s floor (the car can't get through), pass steps read
     // airborne (n <= 0) or above the load grid (n > 2). All 0 on a flat circuit.

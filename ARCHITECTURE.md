@@ -265,18 +265,18 @@ A pinned ghost is a copy of `disp` (with `phys`), plus the car's `wb` and `track
 A car, the circuit it ran on, the line it converged to and the lap that line gave, so a run from an older build can be loaded into a newer one and compared.
 
 ```ts
-{ format: 'apexlab-run', version: 1, exported: ISO date, userAgent,
+{ format: 'apexlab-run', version: 2, exported: ISO date, userAgent,
   physics: { sha256, live },          // committed hash of the physics source; hash of what the exporting page fetched
   car: CarParams,                     // exactly the 25 fields of §7; no more, no fewer
-  track: { name, seed: number | null, width, ctrl: [x, y][] },     // control points, not the seed: genCtrl may change
+  track: { name, seed: number | null, width, ctrl: [x, y, z][] },  // control points, not the seed: genCtrl may change
   line: { N, off: number[] },
   result: { lap, converged, evals, ref /* centreline lap */,
             dyn: { frac, t, umax, uaxle, fail } | null,           // only a current dynamic result
-            snapshot: { px, py, v, ds, k /* N */, tc /* N + 1 */, phys: { …N each } } } }   // becomes the ghost
+            snapshot: { px, py, pz, v, ds, k /* N */, tc /* N + 1 */, phys: { …N each } } } }   // becomes the ghost
 ```
 
 - **Version identity.** `physics.sha256` is the SHA-256 of `core/`, `dynamics/` and `solver/solver.js` (`runSource()` in `tests/load-core.mjs`; the solver is in because it computes the published lap and telemetry, the presets are out because a file stores its car and circuit in full), committed as `src/app/physics-version.js`. `tests/make-physics-version.mjs --write` regenerates it and `tests/runfile.test.mjs` fails when it is stale, so `git log -S <hash>` finds the commit behind a file. The page also hashes the files it fetched (`liveHash`), so loading can say that it is running uncommitted edits. **The hash identifies source, not results**: a mechanical refactor changes it while the goldens still pass. `golden.json`'s `meta.sourceSha256` is a different, older hash (`coreSource()`, presets included, not kept current).
-- **Reading is strict.** `readRunFile` refuses a wrong `format` or `version`, any missing or unknown car field (all named), bad circuit data, wrong array lengths and non-finite numbers. It fills in nothing; a car with a field made up is a different car. A change to the car parameters or this layout bumps `version` and adds an explicit migration then. Value-level car checks stay with `carSpec` in the worker.
+- **Reading is strict.** `readRunFile` refuses a wrong `format` or `version`, any missing or unknown car field (all named), bad circuit data, wrong array lengths and non-finite numbers. It fills in nothing; a car with a field made up is a different car. A change to the car parameters or this layout bumps `version` and adds an explicit migration then. The first, v1 → v2 (elevation): control points gain z = 0 and the recorded line `pz` = 0, exact because a v1 run can only be flat; the committed v1 fixture (`tests/fixtures/`) must still reload to its recorded lap bit for bit. Value-level car checks stay with `carSpec` in the worker.
 - **Loading.** The `load` command (§10.1) replaces car, track and line in one step and publishes the line as given, not as the optimiser's spline fit, so an unchanged build reproduces the recorded lap bit for bit (tested for the GT racer on Harrow Ring). *Load run* stays paused on that line; *Run* then restarts the search from it through the coarse stages. *Load as ghost* keeps the current car and searches from the saved line.
 - **Ghost limits.** A ghost needs the saved lap's station count to equal the circuit's, and every telemetry channel the live snapshot has. If `buildTrack` ever changes N, a run still loads (the line is resampled) but gets no ghost, and the page says so.
 - JSON drops the sign of `-0`; nothing in the physics depends on it.
@@ -381,7 +381,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'carInfo',   carRev, info: CarInfo }       // describeCar (§7)
 { type: 'track',     trackRev, N, L, ds, cx, cy, nx, ny, kc, width, issue, z, dz, cth, kv, flat }   // elevation: §7 Track
 { type: 'snapshot',  carRev, trackRev, lineRev, lap, vmin, vmax,
-                     line: { px, py, v, k, ds, tc, u, phys, off }, ref?: { t, v }, warn: { stall, air, ntop } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7; off = the line's offsets; warn: §7 Scratch
+                     line: { px, py, pz, v, k, ds, tc, u, phys, off }, ref?: { t, v }, warn: { stall, air, ntop } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7; off = the line's offsets; pz = its heights; warn: §7 Scratch
 { type: 'loaded',    rev, N, clamped: { n, max } }   // after the load's snapshot; clamped: stations moved to fit this build's track limits, and by how much
 { type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
 { type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }

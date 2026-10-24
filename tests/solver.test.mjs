@@ -248,21 +248,34 @@ test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 *
   assert.deepEqual(bad.slice(0, 3), [], `${bad.length} of ${checked} snapshots showed a line the optimiser had not accepted`);
 });
 
-// Until the solver builds load tables (elevation P5), a hilly circuit is refused before any state changes, so the
-// solver keeps working on what it had; snapshots carry the lap model's warnings (all 0 on a flat circuit). (The
-// dynamic check itself handles hills since P4: tests/elevation.test.mjs.)
-test('solver: a hilly circuit is refused without disturbing the current car, track and line', () => {
-  const b = boot(), s = b.s, before = { car: s.car, T: s.T, B: s.B, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev };
-  assert.deepEqual(b.last('snapshot').warn, { stall: 0, air: 0, ntop: 0 }, 'flat boot snapshot warnings');
-  const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), hills = ctrl.map((p, i) => [p[0], p[1], 30 * u[i]]);
-  for (const cmd of [{ type: 'setTrack', rev: 3, ctrl: hills, width: WIDTH, keepLine: true },
-    { type: 'load', rev: 4, params: { ...core.CARS[CAR] }, ctrl: hills, width: WIDTH, off: Array.from(s.pub), run: false }]) {
-    const n0 = b.ev.length; s.handle(cmd);
-    const got = b.ev.slice(n0);
-    assert.deepEqual(got.map(e => e.type), ['error'], `${cmd.type}: events`);
-    assert.match(got[0].message, /Hilly circuits are not supported/, `${cmd.type}: message`);
-    assert.equal(got[0].rev, cmd.rev, `${cmd.type}: error names its command`);
-    assert.deepEqual({ car: s.car, T: s.T, B: s.B, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev }, before, `${cmd.type}: state`);
-  }
-  const n0 = b.ev.length; s.handle({ type: 'setCar', rev: 5, params: { ...core.CARS['Kart'] } }); noErrors(b.ev.slice(n0)); // still usable
+// Hills through the protocol (elevation P5): a hilly circuit gets a car with load tables (the same params, so the same
+// car revision and no new carInfo), snapshots carry the line's heights and the lap model's warnings, the optimiser and
+// the dynamic check run on it, and going flat again keeps the loaded car.
+test('solver: a hilly circuit builds load tables under the same car revision and publishes heights', t => {
+  const b = boot(), s = b.s, tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), hills = ctrl.map((p, i) => [p[0], p[1], 30 * u[i]]);
+  assert.equal(s.car.load, null, 'a flat circuit builds no load tables');
+  const step = cmd => { const n0 = b.ev.length; s.handle(cmd); const got = b.ev.slice(n0); noErrors(got); return got; };
+  let got = step({ type: 'setTrack', rev: 3, ctrl: hills, width: WIDTH, keepLine: true });
+  const trk = got.find(e => e.type === 'track'), snap = got.find(e => e.type === 'snapshot');
+  assert.deepEqual(got.map(e => e.type).filter(x => x === 'carInfo'), [], 'no carInfo: the car is the same car');
+  assert.equal(trk.flat, false); assert.ok(s.car.load, 'load tables built');
+  assert.deepEqual([snap.carRev, snap.trackRev], [1, 3]);
+  assert.ok(Number.isFinite(snap.lap) && snap.lap > 0);
+  assert.deepEqual(snap.warn, { stall: 0, air: 0, ntop: 0 });
+  assert.equal(snap.line.pz.length, s.T.N);
+  for (let i = 0; i < s.T.N; i++) if (snap.line.pz[i] !== s.T.z[i]) assert.fail(`pz[${i}]`);
+  assert.ok(snap.line.pz.some(z => z !== 0), 'heights published');
+  // the optimiser improves a hilly lap, and the dynamic check runs on it
+  step({ type: 'run' }); const t0 = performance.now(); while (performance.now() - t0 < 2000 && s.tick(200));
+  const after = b.last('snapshot'); t.diagnostic(`hilly lap ${snap.lap.toFixed(3)} -> ${after.lap.toFixed(3)} s after 2 s of search`);
+  assert.ok(after.lap < snap.lap, 'no improvement on the hilly circuit');
+  step({ type: 'dynCheck' }); while (s.tick(1000));
+  const dr = b.last('dynResult'); t.diagnostic(`dynamic check on hills: ${(dr.result.frac * 100).toFixed(1)}%`);
+  assert.ok(dr.result.frac >= 0.85 && dr.result.frac <= 1, `fraction ${dr.result.frac}`);
+  // a car change on hills builds its own tables; going flat keeps them, and the heights go to 0
+  got = step({ type: 'setCar', rev: 4, params: { ...core.CARS['Kart'] } }); assert.ok(s.car.load && got.some(e => e.type === 'carInfo'));
+  got = step({ type: 'setTrack', rev: 5, ctrl, width: WIDTH, keepLine: false });
+  assert.ok(s.car.load && s.T.flat && got.find(e => e.type === 'snapshot').line.pz.every(z => z === 0), 'flat again');
+  got = step({ type: 'load', rev: 6, params: { ...core.CARS[CAR] }, ctrl: hills, width: WIDTH, off: new Float64Array(s.T.N), run: false });
+  assert.ok(s.car.load && got.some(e => e.type === 'loaded'), 'a hilly run loads');
 });
