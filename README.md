@@ -118,7 +118,7 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 1. ~Decouple sim and UI~
 2. ~"car" camera expands to fit ghost~
 3. ~more physics observability~
-4. Add Z axis / elevation changes
+4. ~Add Z axis / elevation changes~
 5. ~save/load car config + simmed line~
 6. support comparison of cars/simmed lines between apex lab versions
 7. improved tyre physics (maybe not full temperatures, but some sort of deg is needed)

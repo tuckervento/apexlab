@@ -2,7 +2,7 @@
 
 Apex Lab finds the minimum-time racing line around a closed circuit for a configurable car, then checks how much of that pace a time-stepped vehicle model can actually hold.
 
-This document describes the current code (physics in ES modules under `src/`, the app in `index.html`; the original single-page prototype is frozen in `prototype/apex-lab.html`) and the plan for splitting it into a physics core, a solver that runs off the main thread, and interchangeable views (the existing 2D map first, a 3D view later).
+This document describes the current code (physics, solver, views and app in ES modules under `src/`; `index.html` is markup and CSS; the original single-page prototype is frozen in `prototype/apex-lab.html`) and the plan for splitting it into a physics core, a solver that runs off the main thread, and interchangeable views (the existing 2D map first, a 3D view later).
 
 ---
 
@@ -14,7 +14,7 @@ This document describes the current code (physics in ES modules under `src/`, th
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
   - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
   - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
-  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
+  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `telemetry` (live readout, map-tag text), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
   - `index.html` — markup and CSS, plus `<script type="module" src="./src/app/main.js">`.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
 - **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
@@ -66,7 +66,7 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 
 ### 3.3 App (everything else)
 
-The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core it uses only `genCtrl` and `G` (and the views use `G`).
+The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core the app uses only `genCtrl`, `genElev` and `G`; the views import nothing from core.
 
 - `setCar`/`setTrack` are coalesced: one in flight per kind, and only the latest pending one is sent next, so a slider or handle drag can't queue up ~60 ms rebuilds.
 - A snapshot never steps back to an older car or track, and a new track is swapped in together with its first snapshot (stations change with the track).
@@ -239,7 +239,8 @@ Fields whose unit changes are renamed, so a reader that still expects UI units f
   vstep, n,                                  // speed grid: sample i is at i·vstep m/s, i < n
   curves: { drive, traction, resist,         // N at the wheels, per sample
             gears: Float64Array[],           // per-gear force, NaN outside its rpm range; [] for EV
-            gear: Int8Array },               // selected gear, 0 = none
+            gear: Int8Array,                 // selected gear, 0 = none
+            rpm: Float64Array },             // engine speed as a fraction of redline, per sample
   balance: { lateral: [{ kmh: 100, g, axle }, { kmh: 200, g, axle }],   // axle: 'front' | 'rear' (limiting)
              braking: { kmh: 150, g, axle } },                         // first axle to lock
   derived: { vTop /* m/s */, powerToWeight /* kW/t */ }
@@ -263,7 +264,7 @@ Plain objects are frozen; arrays are fresh copies.
   stall /* stations held at the 0.1 m/s floor */, air /* pass steps read airborne, n <= 0 */, ntop /* … above the load grid */ }
 ```
 
-### Display snapshot (`disp`, built by `refreshDisplay`)
+### Display snapshot (`disp`: the `line` of the worker's `snapshot` event, built by `Solver.publish` in `src/solver/solver.js`; `client.js` stores it in `S.disp` with `t`, `vmin`, `vmax` and the three revisions)
 
 ```ts
 { px[], py[], v[], ds[], k[], tc[] /* cumulative time, length N+1 */, off[] /* the line's lateral offsets */, t, vmin, vmax, u[] | null,
@@ -272,9 +273,6 @@ Plain objects are frozen; arrays are fresh copies.
 ```
 
 A pinned ghost is a copy of `disp` (with `phys`), plus the car's `wb` and `track`.
-
-```
-```
 
 ### Run file (`src/app/runfile.js`; `*.apexlab.json`)
 
@@ -350,7 +348,7 @@ Golden values depend on `genCtrl` and `buildTrack`. Any change to the generator 
 3. **Views reach into internals.**
    - ✅ The tractive-force chart, balance readout and HUD gear read raw `CarModel` tables. Now behind `describeCar` (step 4).
    - ✅ Tyre-use colouring called `dynNominal` from the display path. Now the solver puts utilisation in the snapshot (`line.u`) when asked (step 5).
-4. **No pose contract.** The car's position is interpolated inside the 2D drawing code (`carState`).
+4. ✅ **No pose contract.** The car's position was interpolated inside the 2D drawing code (`carState`). Now `playback.pose()` (step 7).
 5. ✅ **Staleness is ad hoc.** `dynStale` compared lap times. Now it's car/track/line revisions (step 5).
 6. **Flat world.** ✅ Elevation and grade, crests and compressions (step 8). Still no banking; still a y-down screen convention.
 
@@ -471,7 +469,7 @@ Each step keeps behaviour identical and is checked against §8.
    ✅ Normalise parameter units at the boundary (`carSpec`). Goldens and prototype parity unchanged, bit for bit.
 4. ✅ **Add `describeCar()`** and move chart and readout data behind it. `index.html` reads no `car.<field>`; readouts and the force chart are pixel-identical for every preset. Tyre-use colouring stays on `dynNominal` until step 5.
 5. ✅ **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only. A run through the protocol reproduces the convergence fixture and its dynamic check bit for bit (`tests/solver.test.mjs`). In headless Chrome, convergence takes 9 s instead of 32 s, at the same 1:18.348.
-6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences are the stale HUD gear digit (§12) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
+6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences were the stale HUD gear digit (since fixed, `0f3d61f`) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
 7. ✅ **Add `playback.pose()`**; the 2D car marker and ghost use it. Both sources supported (§10.2). `dynLap`'s trace records the car's state (+0.2 ms on the one traced lap per check). Replay-off rendering is identical to step 6, and the lap pose equals the old `carState` bit for bit.
 8. ✅ **Elevation** (grade, crests and compressions; no banking): heights in the track model, grip tables on a load-factor axis, gravity and load in the lap model and its adjoint, the same in the bicycle model, the solver building load tables for hilly circuits, run files v2 (the first explicit migration), and the app's Hills slider, height editing, elevation chart, height tint and telemetry. Flat circuits are bit-identical (goldens, parity, the pre-elevation run file); six hilly combos added to the goldens. §4.7.
 9. **3D view** as a second client of the protocol and pose contract.

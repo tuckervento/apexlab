@@ -62,7 +62,7 @@ robustness change, and a `golden.json` diff means something went wrong.
 | L10 | The same convergence runs several times in the suite | Low | S | no | any |
 | L8 | An adjoint nit that can't be reached | Low | XS | maybe | any |
 | L9, L11 | Dead code; DOM refs stored on shared constants | Low | XS | no | any |
-| — | Docs drift (11 spots) | Low | S | no | any |
+| — | Docs drift (3 of 11 left, all waiting on M6 and L3) | Low | S | no | any |
 | G1, G2 | Camera lives in app state; three shapes of the track | Growth | M | no | before 3D |
 
 Suggested order: **M6 + L2 together** (both are "a hand-edited run file or a bad circuit reaches the solver and nothing
@@ -218,15 +218,15 @@ revision rules are what the architecture leans on.
 
 Line numbers are for `ARCHITECTURE.md` unless noted.
 
-- [ ] `:5` says "the app in `index.html`"; the app is in `src/app/`.
-- [ ] `:17` lists `src/app` without `telemetry`.
-- [ ] `:69` says "(and the views use `G`)"; no view imports `G`, only `telemetry.js` does.
-- [ ] `:240` `CarInfo.curves` omits `rpm` (`src/core/describe.js`). Not re-read after elevation.
-- [ ] `:266` says the snapshot is "built by `refreshDisplay`"; no such function exists.
-- [ ] `:276` is an empty code fence.
+- [x] `:5` says "the app in `index.html`"; the app is in `src/app/`.
+- [x] `:17` lists `src/app` without `telemetry`.
+- [x] `:69` says "(and the views use `G`)"; no view imports `G`, only `telemetry.js` does.
+- [x] `:240` `CarInfo.curves` omits `rpm` (`src/core/describe.js`). Not re-read after elevation.
+- [x] `:266` says the snapshot is "built by `refreshDisplay`"; no such function exists.
+- [x] `:276` is an empty code fence.
 - [ ] `:300` `DynCheck.result.dyn` is documented as `{ t, trace }`; at runtime it is the whole `LapRun` (also `stV`, `stE`, `trouble`, …; `src/dynamics/bicycle.js:148`) (L3).
-- [ ] `:353` §9 item 4 ("No pose contract") isn't ticked, although migration step 7 is done.
-- [ ] `:474` cites the "stale HUD gear digit (§12)"; that item is fixed (`0f3d61f`) and is no longer in §12.
+- [x] `:353` §9 item 4 ("No pose contract") isn't ticked, although migration step 7 is done.
+- [x] `:474` cites the "stale HUD gear digit (§12)"; that item is fixed (`0f3d61f`) and is no longer in §12.
 - [ ] `:295` says "Value-level car checks stay with `carSpec` in the worker"; they don't (M6).
 - [ ] `src/solver/solver.js:3` says everything emitted is a fresh copy and transferable; `dynResult` is neither (L3).
 

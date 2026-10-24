@@ -255,15 +255,15 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 
 ### Docs drift (all VERIFIED against code at `9955ccf`)
 
-- [ ] `ARCHITECTURE.md:5` says "the app in `index.html`"; the app is now in `src/app/`.
-- [ ] `ARCHITECTURE.md:17` lists `src/app` without `telemetry`. (The save/load commit added `runfile` and `physics-version` to that line but not `telemetry`.)
-- [ ] `ARCHITECTURE.md:68` says "(and the views use G)"; no view imports `G`, only `telemetry.js` does.
-- [ ] `ARCHITECTURE.md:224-226`: `CarInfo.curves` omits `rpm` (`describe.js:17`).
-- [ ] `ARCHITECTURE.md:247` says "built by `refreshDisplay`"; no such function exists. (The save/load commit edited this snapshot block to add `off` and left the heading.)
-- [ ] `ARCHITECTURE.md:257-258` is an empty code fence.
+- [x] `ARCHITECTURE.md:5` says "the app in `index.html`"; the app is now in `src/app/`.
+- [x] `ARCHITECTURE.md:17` lists `src/app` without `telemetry`. (The save/load commit added `runfile` and `physics-version` to that line but not `telemetry`.)
+- [x] `ARCHITECTURE.md:68` says "(and the views use G)"; no view imports `G`, only `telemetry.js` does.
+- [x] `ARCHITECTURE.md:224-226`: `CarInfo.curves` omits `rpm` (`describe.js:17`).
+- [x] `ARCHITECTURE.md:247` says "built by `refreshDisplay`"; no such function exists. (The save/load commit edited this snapshot block to add `off` and left the heading.)
+- [x] `ARCHITECTURE.md:257-258` is an empty code fence.
 - [ ] `ARCHITECTURE.md:262-269` documents `DynCheck.result.dyn` as `{t, trace}`; it is the full `LapRun` (see L3). (Line numbers shifted by the new run-file section.)
-- [ ] `ARCHITECTURE.md:331` §9 item 4 ("No pose contract") is not ticked, although step 7 is done.
-- [ ] `ARCHITECTURE.md:452` cites "stale HUD gear digit (§12)"; that item is fixed (commit 0f3d61f) and no longer in §12.
+- [x] `ARCHITECTURE.md:331` §9 item 4 ("No pose contract") is not ticked, although step 7 is done.
+- [x] `ARCHITECTURE.md:452` cites "stale HUD gear digit (§12)"; that item is fixed (commit 0f3d61f) and no longer in §12.
 - [ ] `src/solver/solver.js:3` header says everything emitted is a fresh copy and transferable; `dynResult` is neither (see L3).
 - [ ] **New:** the run-file section of `ARCHITECTURE.md` says "Value-level car checks stay with `carSpec` in the worker"; `carSpec` checks type and finiteness and `slipPk>0` only (see M6).
 - [x] **New:** `client.js`'s `sendLoad` comment said it "holds both kinds busy until the worker has answered"; the load's own `carInfo`/`track` events released the hold early. Now true (see M5). `ARCHITECTURE.md` §10.1 updated for the `error` `rev` and the load hold.
