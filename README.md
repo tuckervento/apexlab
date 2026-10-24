@@ -102,7 +102,7 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 ## TODO
 
 1. ~Decouple sim and UI~
-2. "car" camera expands to fit ghost
+2. ~"car" camera expands to fit ghost~
 2. Add Z axis / elevation changes
 3. save/load car config + simmed line
 4. support comparison of cars/simmed lines between apex lab versions

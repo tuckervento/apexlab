@@ -54,7 +54,7 @@ export function setRunning(r,fresh){S.running=r;if(!S.editing)send(r?{type:'run'
 export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S.prog.converged?'Search again':'Run');}
 export function showError(msg){S.frameErr=S.frameErr||new Error(msg);S.running=false;runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
-export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f){S.cam.z=Math.max(S.cam.z,7);if(S.replay===0){S.replay=1;setSeg($('#replaySeg'),1);}}}
+export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f){S.followZ=Math.max(S.cam.z,7);if(S.replay===0){S.replay=1;setSeg($('#replaySeg'),1);}}}
 export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearGhost').hidden=!g;$('#capGhost').hidden=!g;$('#gapWrap').hidden=!g;}
 
 // ---------- readouts (also redrawn by the solver client's hooks)

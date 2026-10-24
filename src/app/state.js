@@ -10,7 +10,7 @@ export const S={
   P:{...CARS['GT racer']}, info:null,
   trackIdx:0, width:12, ctrl, origCtrl:ctrl.map(p=>p.slice()), fitPending:false,
   T:null, refT:0, refV:null, disp:null, prog:null, ghost:null, corners:[],
-  running:true, colorMode:'speed', replay:4, animT:0, editing:false, follow:false, frameErr:null,
+  running:true, colorMode:'speed', replay:4, animT:0, editing:false, follow:false, followZ:7 /* closest follow zoom, px/m */, frameErr:null,
   hist:[], pal:null /* {colors, ramp} from the page's CSS */, cam:new Camera(), carPos:-1, carV:0,
   dynRes:null, dynStale:false, dynRunning:false,
 };

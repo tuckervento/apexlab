@@ -17,9 +17,12 @@ connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap});
 const cv=$('#view'),ctx=cv.getContext('2d'),cam=S.cam;
 function resize(){cam.resize(cv,$('#stage').getBoundingClientRect(),window.devicePixelRatio);}
 const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy),zoomAt=(f,sx,sy)=>cam.zoomAt(f,sx,sy);
+// Following, zoom sets the closest the camera may go (S.followZ); draw() zooms out further to keep the ghost in view.
+// Zooming out scales the current zoom (visible at once); zooming in raises S.followZ (cam.z never exceeds it).
+const zoomFollow=f=>{S.followZ=Math.max(0.05,Math.min(40,(f<1?cam.z:S.followZ)*f));},FOLLOW_MARGIN=40;
 $('#zFollow').onclick=()=>setFollow(!S.follow);
-$('#zIn').onclick=()=>zoomAt(1.5,cam.cw/2,cam.ch/2);$('#zOut').onclick=()=>zoomAt(1/1.5,cam.cw/2,cam.ch/2);$('#zFit').onclick=()=>{setFollow(false);fit();};
-cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),f=Math.exp(-e.deltaY*0.0015);if(S.follow)zoomAt(f,cam.cw/2,cam.ch/2);else zoomAt(f,e.clientX-r.left,e.clientY-r.top);},{passive:false});
+$('#zIn').onclick=()=>S.follow?zoomFollow(1.5):zoomAt(1.5,cam.cw/2,cam.ch/2);$('#zOut').onclick=()=>S.follow?zoomFollow(1/1.5):zoomAt(1/1.5,cam.cw/2,cam.ch/2);$('#zFit').onclick=()=>{setFollow(false);fit();};
+cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),f=Math.exp(-e.deltaY*0.0015);if(S.follow)zoomFollow(f);else zoomAt(f,e.clientX-r.left,e.clientY-r.top);},{passive:false});
 
 const ptrs=new Map();let drag=null,lastTap={t:0,idx:-1};
 function handleAt(sx,sy){let best=-1,bd=22;S.ctrl.forEach((p,i)=>{const d=Math.hypot(SX(p[0])-sx,SY(p[1])-sy);if(d<bd){bd=d;best=i;}});return best;}
@@ -34,7 +37,7 @@ cv.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId)||!drag)return;const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
   ptrs.set(e.pointerId,{x:sx,y:sy});
   if(drag.type==='pinch'&&ptrs.size===2){const [a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
-    if(!S.follow){cam.x-=(mx-drag.mx)/cam.z;cam.y-=(my-drag.my)/cam.z;}zoomAt(d/drag.d,S.follow?cam.cw/2:mx,S.follow?cam.ch/2:my);drag.d=d;drag.mx=mx;drag.my=my;return;}
+    if(S.follow)zoomFollow(d/drag.d);else{cam.x-=(mx-drag.mx)/cam.z;cam.y-=(my-drag.my)/cam.z;zoomAt(d/drag.d,mx,my);}drag.d=d;drag.mx=mx;drag.my=my;return;}
   if(Math.hypot(sx-drag.sx,sy-drag.sy)>4) drag.moved=true;
   if(drag.type==='handle'&&drag.moved){S.ctrl[drag.idx]=[WX(sx),WY(sy)];$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);}
   else if(drag.type==='pan'&&drag.moved){if(S.follow)setFollow(false);cam.x-=(sx-drag.lx)/cam.z;cam.y-=(sy-drag.ly)/cam.z;}
@@ -65,7 +68,7 @@ new MutationObserver(refreshColors).observe(document.documentElement,{attributes
 // ---------- drawing (views in src/views/map2d/)
 function draw(){
   const {disp,ghost,T}=S,on=S.replay>0,rt=raceClock(ghost?[disp.t,ghost.t]:[disp.t],S.animT);
-  const cs=on&&disp.t>0?pose(disp,rt,S.info):null,gs=on&&ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs){cam.x=cs.x;cam.y=cs.y;}
+  const cs=on&&disp.t>0?pose(disp,rt,S.info):null,gs=on&&ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs)cam.frame(gs?[cs,gs]:[cs],S.followZ,FOLLOW_MARGIN);
   drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl});
   // HUD
   if(cs){
