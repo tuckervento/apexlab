@@ -122,7 +122,8 @@ export function buildTrackUI(){
 export function bindButtons(){
   $('#runBtn').onclick=()=>{if(!S.running&&S.prog&&S.prog.converged){S.hist=[];setRunning(true,true);}else setRunning(!S.running);};
   $('#resetC').onclick=()=>{send({type:'setLine'});S.hist=[];setRunning(true);};
-  $('#pinBtn').onclick=()=>{const d=S.disp;S.ghost={px:Float64Array.from(d.px),py:Float64Array.from(d.py),v:Float64Array.from(d.v),ds:Float64Array.from(d.ds),k:Float64Array.from(d.k),tc:Float64Array.from(d.tc),pz:Float64Array.from(d.pz),t:d.t,wb:S.P.wb,track:S.P.track,
+  // Pin is disabled until the display is settled (main.js), so the ghost, its circuit and its car are the ones shown
+  $('#pinBtn').onclick=()=>{if(!settled())return;const d=S.disp;S.ghost={px:Float64Array.from(d.px),py:Float64Array.from(d.py),v:Float64Array.from(d.v),ds:Float64Array.from(d.ds),k:Float64Array.from(d.k),tc:Float64Array.from(d.tc),pz:Float64Array.from(d.pz),t:d.t,wb:S.P.wb,track:S.P.track,carRev:d.carRev,trackRev:d.trackRev,
     phys:Object.fromEntries(Object.entries(d.phys).map(([k,a])=>[k,Float64Array.from(a)]))};S.animT=0;updGhostUI();};
   $('#clearGhost').onclick=()=>{S.ghost=null;updGhostUI();};
   $('#colorSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;const m=S.colorMode=b.dataset.v;setSeg($('#colorSeg'),m);$('#legSpeed').hidden=m!=='speed';$('#legPedal').hidden=m!=='pedal';$('#legUtil').hidden=m!=='util';send({type:'view',util:m==='util'});};
@@ -150,7 +151,7 @@ function physicsNote(run){
   return s;
 }
 const runSummary=(run,name)=>[`${name} · exported ${run.exported?run.exported.slice(0,10):'(no date)'} · recorded lap ${fmtTime(run.result.lap)}${run.result.dyn?` · dynamic check ${(run.result.dyn.frac*100).toFixed(1)}%`:''}${run.result.converged?'':' · search not converged'}`,physicsNote(run)];
-const pinGhost=g=>{S.ghost=g;S.animT=0;updGhostUI();};
+const pinGhost=g=>{S.ghost={...g,carRev:S.disp.carRev,trackRev:S.disp.trackRev};S.animT=0;updGhostUI();}; // on the displayed circuit
 // The recorded lap as a ghost on the displayed circuit; throws why it can't be compared.
 function ghostFrom(run){
   if(S.T.N!==run.line.N)throw new Error(`No ghost: the file's lap has ${run.line.N} stations but this circuit has ${S.T.N}.`);

@@ -24,7 +24,8 @@ export function sendLoad(body,view){ // view: () => {setCar, setTrack}, the page
 export const settled=()=>{const d=S.disp,f=flight;return !!d&&!loadRev&&!f.setCar.busy&&!f.setCar.next&&!f.setTrack.busy&&!f.setTrack.next&&d.carRev===carEv&&d.trackRev===trackEv;};
 function landed(f){f.busy=0;if(f.next){const c=f.next;f.next=null;f.busy=c.rev;if(S.editing)c.resume=false;send(c);}} // c was queued before the circuit edit began, whose pause its resume would undo
 // hooks: {renderDerived(), renderDyn(), runLabel(), showError(msg), trackArrived(), dynLap(n), loaded(m), loadFailed(msg),
-//   refused(kind, message, view): the worker refused a setCar/setTrack and nothing newer is queued; view is the last accepted}
+//   refused(kind, message, view): the worker refused a setCar/setTrack and nothing newer is queued; view is the last accepted,
+//   ghostDropped(): a new circuit replaced the one the ghost was pinned on}
 export function connect(hooks){ui=hooks;}
 
 solver.onmessage=({data:m})=>{
@@ -65,7 +66,10 @@ solver.onerror=e=>{
 function onSnapshot(m){
   const d=S.disp;
   if(d&&(m.carRev<d.carRev||m.trackRev<d.trackRev))return; // never step back to an older car or track
-  if(pendingT&&m.trackRev===pendingT.trackRev){S.T=pendingT;pendingT=null;ui.trackArrived();}
+  if(pendingT&&m.trackRev===pendingT.trackRev){
+    S.T=pendingT;pendingT=null;ui.trackArrived();
+    if(S.ghost&&S.ghost.trackRev!==m.trackRev){S.ghost=null;ui.ghostDropped();} // its stations are another circuit's
+  }
   if(!S.T||m.trackRev!==S.T.trackRev)return;
   if(m.ref){S.refT=m.ref.t;S.refV=m.ref.v;}
   S.disp={...m.line,t:m.lap,vmin:m.vmin,vmax:m.vmax,warn:m.warn,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};

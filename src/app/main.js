@@ -2,7 +2,7 @@
 // editing), the requestAnimationFrame loop, the lap readout and live telemetry; everything it draws comes from S
 // (src/app/state.js).
 import { S, $ } from './state.js';
-import { send, sendState, connect } from './client.js';
+import { send, sendState, connect, settled } from './client.js';
 import { bindButtons, bindRun, buildCarUI, buildTrackUI, carView, dynLap, fit, loaded, loadFailed, rebuildTrack, refused, renderDerived, renderDyn,
   runLabel, selectHandle, setFollow, showError, trackArrived, updGhostUI, updHillsUI } from './controls.js';
 import { fmtTime, fmtDelta } from '../views/format.js';
@@ -12,7 +12,7 @@ import { pose, stationPose, raceClock } from '../playback/pose.js';
 import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
 
-connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed,refused});
+connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed,refused,ghostDropped:updGhostUI});
 
 // ---------- canvas + map input
 const cv=$('#view'),ctx=cv.getContext('2d'),cam=S.cam;
@@ -105,6 +105,7 @@ function frameBody(ts){
   if(S.frameErr&&S.running)S.frameErr=null;
   const dt=Math.min(0.1,(ts-lastTs)/1000||0);lastTs=ts;frameN++;
   const {T,disp,prog:p,ghost}=S;
+  const pin=$('#pinBtn'),unsettled=!settled();if(pin.disabled!==unsettled)pin.disabled=unsettled; // a change still being built: its ghost would be stale
   if(!T||!disp||!p)return; // nothing from the solver yet
   S.animT+=dt*S.replay;
   const st=$('#status'),s=S.editing?'editing':!S.running?(p.converged?'converged':'paused'):(p.polish?'refining':'searching');

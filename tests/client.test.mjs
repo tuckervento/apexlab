@@ -16,6 +16,7 @@ client.connect({
   showError: msg => calls.push(['showError', msg]), dynLap: n => calls.push(['dynLap', n]),
   loaded: m => calls.push(['loaded', m.rev]), loadFailed: () => calls.push(['loadFailed']),
   refused: (kind, msg, view) => calls.push(['refused', kind, msg, view]),
+  ghostDropped: () => calls.push(['ghostDropped']),
 });
 console.error = () => {}; // the client logs every solver error; these tests deliver them on purpose
 const deliver = m => worker.onmessage({ data: m });
@@ -180,4 +181,19 @@ test('client: a refused command leaves the search alone and puts the page back t
   assert.equal(S.running, true, 'still searching'); assert.equal(S.dynRunning, true, 'check still running');
   assert.ok(sent.every(c => !('view' in c) && !('P' in c)), 'views stay on the page');
   S.dynRunning = false; S.running = false;
+});
+
+// A ghost indexes the stations of the circuit it was pinned on (review L5): when another circuit is swapped in, a ghost
+// from a different track revision is dropped, not drawn against stations it doesn't match.
+test('client: a new circuit drops a ghost pinned on another one', () => {
+  mark();
+  S.T = { trackRev: 940 }; S.ghost = { trackRev: 940 };
+  deliver({ type: 'track', trackRev: 950, N: 300 });
+  deliver({ type: 'snapshot', carRev: 950, trackRev: 950, lineRev: 1, lap: 90, line: {}, vmin: 1, vmax: 2, warn: {} });
+  assert.equal(S.T.trackRev, 950, 'the new circuit is shown');
+  assert.equal(S.ghost, null); assert.deepEqual(calls.filter(c => c[0] === 'ghostDropped'), [['ghostDropped']]);
+  S.ghost = { trackRev: 950 }; // pinned on it
+  deliver({ type: 'snapshot', carRev: 950, trackRev: 950, lineRev: 2, lap: 89, line: {}, vmin: 1, vmax: 2, warn: {} });
+  assert.deepEqual(S.ghost, { trackRev: 950 }, 'a ghost on the shown circuit stays');
+  S.ghost = null;
 });
