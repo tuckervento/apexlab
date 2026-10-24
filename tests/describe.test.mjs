@@ -68,3 +68,15 @@ test('describeCar copies its arrays and freezes its objects', () => {
   for (const o of [info, info.curves, info.curves.gears, info.balance, info.balance.lateral, info.balance.lateral[0], info.balance.braking, info.derived])
     assert.ok(Object.isFrozen(o), 'describeCar returned an unfrozen object');
 });
+
+test('describeCar rpm: the best-gear rpm table (fraction of redline), copied', () => {
+  for (const { name, car, info } of presets) {
+    const rpm = info.curves.rpm;
+    assert.equal(rpm.length, info.n, `${name} rpm length`);
+    for (let i = 0; i < info.n; i++) {
+      if (!Object.is(rpm[i], car.rpm[i])) assert.fail(`${name} rpm[${i}] ${rpm[i]} vs car.rpm ${car.rpm[i]}`);
+      assert.ok(rpm[i] >= 0 && rpm[i] <= 1, `${name} rpm[${i}] = ${rpm[i]}`);
+    }
+    assert.notEqual(rpm, car.rpm, `${name}: rpm must be a copy`);
+  }
+});

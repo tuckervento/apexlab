@@ -58,7 +58,7 @@ export class Solver{
     const car=buildCar(c.params),info=describeCar(car); // throws on invalid params, leaving the solver unchanged
     this.car=car;this.carRev=c.rev;this.dyn=null;
     const cv=info.curves;
-    this.emit({type:'carInfo',carRev:c.rev,info},[cv.drive.buffer,cv.traction.buffer,cv.resist.buffer,cv.gear.buffer,...cv.gears.map(g=>g.buffer)]);
+    this.emit({type:'carInfo',carRev:c.rev,info},[cv.drive.buffer,cv.traction.buffer,cv.resist.buffer,cv.gear.buffer,cv.rpm.buffer,...cv.gears.map(g=>g.buffer)]);
     if(!this.T)return;
     this.B=makeBounds(this.T,car);
     if(!this.off){this.resetLine(null);return;}

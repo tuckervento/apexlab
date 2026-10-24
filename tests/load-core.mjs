@@ -1,4 +1,4 @@
-// Loads the physics from the src/ ES modules (core, dynamics, solver, presets) as one namespace object.
+// Loads the physics from the src/ ES modules (core, dynamics, solver, playback, presets) as one namespace object.
 // APEX_SRC=<dir> loads a copy of src/ instead (used to check that the tests fail on deliberately broken code).
 // Modules are cached per process, so every loadCore() call in a test file shares one instance (the core keeps no
 // mutable module-level state; DYN and the presets are frozen).
@@ -8,7 +8,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SRC = process.env.APEX_SRC || fileURLToPath(new URL('../src', import.meta.url));
-const ENTRIES = ['core/index.js', 'dynamics/index.js', 'solver/solver.js', 'app/presets.js'];
+const ENTRIES = ['core/index.js', 'dynamics/index.js', 'solver/solver.js', 'playback/pose.js', 'app/presets.js'];
 
 export async function loadCore(srcDir = SRC) {
   const mods = await Promise.all(ENTRIES.map(e => import(pathToFileURL(join(srcDir, e)).href)));

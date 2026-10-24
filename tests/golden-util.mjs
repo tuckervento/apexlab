@@ -57,10 +57,8 @@ function meanAbs(a) {
   return s / a.length;
 }
 
-// §8.4: constant speed around an 80 m circle (a C² spline through 16 points, so |k| ripples ±1.4%).
-// fr is the fraction of the lap model's v² on the circle; for the Road car (CL·A = 0.10) that is ≈ the fraction of
-// its lateral limit. The line is built from lapEval the same way the DynCheck constructor builds it.
-export function skidpad(core, carName, fr) {
+// The skidpad circle, its line (as the DynCheck constructor builds it) and constant target speeds at fraction fr.
+export function skidpadSetup(core, carName, fr) {
   const { R, points, width } = SKIDPAD;
   const car = core.buildCar({ ...core.CARS[carName] });
   const ctrl = Array.from({ length: points }, (_, i) => [R * Math.cos(2 * Math.PI * i / points), R * Math.sin(2 * Math.PI * i / points)]);
@@ -69,7 +67,14 @@ export function skidpad(core, carName, fr) {
   const th = new Float64Array(N), ds = new Float64Array(N);
   for (let i = 0; i < N; i++) { const j = (i + 1) % N; th[i] = Math.atan2(S.py[j] - S.py[i], S.px[j] - S.px[i]); ds[i] = Math.hypot(S.px[j] - S.px[i], S.py[j] - S.py[i]); }
   const line = { N, px: Float64Array.from(S.px), py: Float64Array.from(S.py), k: Float64Array.from(S.k), th, ds };
-  const v = new Float64Array(N).fill(S.v[0] * Math.sqrt(fr));
+  return { T, car, line, v: new Float64Array(N).fill(S.v[0] * Math.sqrt(fr)) };
+}
+
+// §8.4: constant speed around an 80 m circle (a C² spline through 16 points, so |k| ripples ±1.4%).
+// fr is the fraction of the lap model's v² on the circle; for the Road car (CL·A = 0.10) that is ≈ the fraction of
+// its lateral limit. The line is built from lapEval the same way the DynCheck constructor builds it.
+export function skidpad(core, carName, fr) {
+  const { T, car, line, v } = skidpadSetup(core, carName, fr), N = T.N;
   const r = core.dynLap(T, car, core.dynSetup(car), line, v, false);
   let se = 0;
   for (let i = 0; i < N; i++) se += Math.abs(r.stE[i]);
