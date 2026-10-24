@@ -22,7 +22,9 @@ references were re-read; nothing else in those files was.
 | M5 edit during a load diverges solver and panel | load holds both kinds until `loaded`; sections `inert` meanwhile | `b1d4c6f` |
 | M3 `running` has several owners; frame error doesn't pause | worker owns it, `S.running` mirrors `progress`; `resume` flag on `setCar`/`setTrack` | `b98ddd0`, `3a90158` |
 | M4 (part) app layer untested | `tests/client.test.mjs` covers `client.js` | `b1d4c6f`, `3a90158` |
-| L2 (part) zero-length circuit | `load` refuses it; `setTrack` still doesn't (see L2 below) | `e4f467c` |
+| M6 `carSpec` doesn't range-check | throws outside physical limits (not the slider ranges, which moved to `src/app/sliders.js`) | `8859d07` |
+| L2 zero-length circuit | `buildTrack` refuses `L < width` (identical points give L ~ 1e-13 m, so `L > 0` was not enough); `publish` throws on a non-finite lap | `e4f467c`, `385bbb2` |
+| L7, L9, L10, L11 | `STAGES` frozen; dead code removed; solver tests share one converged run; telemetry DOM refs per table | `67eebe5`, `e6d0fc6`, `eb81506`, `f3408e8` |
 
 ## Needs a person at a browser first
 
@@ -51,27 +53,25 @@ robustness change, and a `golden.json` diff means something went wrong.
 
 | ID | Item | Severity | Size | Hash? | Order |
 |---|---|---|---|---|---|
-| M6 | `carSpec` doesn't range-check; a run file can feed in `mass: 0` | Medium | S | yes | 1 |
-| L2 | `setTrack` still publishes a NaN lap for a zero-length circuit | Low | S | yes | 1 |
 | L4 | `setTrack`/`setCar`/`load` can fail after they start changing state | Low (suspected) | S–M | yes | 2 |
 | M2 | A car change mid-polish seeds the re-score from a rejected line | Medium (small effect) | S–M | yes | 3 |
 | L3 | `dynResult` isn't a copy and is much bigger than documented | Low | S | yes | 4 |
-| L7 | `STAGES` is exported unfrozen | Low | XS | yes | 4 |
 | L5 | A ghost can be pinned on the previous circuit's stations | Low (suspected) | S | no | 2 |
 | M4 | The rest of the app layer has no tests | Medium | M | no | 3 |
-| L10 | The same convergence runs several times in the suite | Low | S | no | any |
 | L8 | An adjoint nit that can't be reached | Low | XS | maybe | any |
-| L9, L11 | Dead code; DOM refs stored on shared constants | Low | XS | no | any |
-| — | Docs drift (3 of 11 left, all waiting on M6 and L3) | Low | S | no | any |
+| — | Docs drift (2 of 11 left, both waiting on L3) | Low | S | no | any |
 | G1, G2 | Camera lives in app state; three shapes of the track | Growth | M | no | before 3D |
 
-Suggested order: **M6 + L2 together** (both are "a hand-edited run file or a bad circuit reaches the solver and nothing
-says no"; one new test next to the existing `load: bad input` test covers both), then **L4 + L5** (state that can end up
+Suggested order: M6 and L2 are done (`8859d07`, `385bbb2`). Next **L4 + L5** (state that can end up
 half-changed or mismatched), then **M2 with M4** (M2's test needs the paused-loaded-run case), then the cleanups.
 
 ---
 
-## M6. Range checks in `carSpec` (Medium, hash)
+## M6. Range checks in `carSpec` (Medium, hash) — done, `8859d07`
+
+**Done.** Decided: physical limits in `carSpec`, not the slider ranges (narrowing a slider must not refuse older run
+files). The slider table moved to `src/app/sliders.js`; a test checks every slider min/max on every preset passes. The
+clamps stay, commented: top gear below 1st is reachable from the sliders. Kept below for the record.
 
 **Why.** `carSpec` accepts any finite number. A run file's reader checks that the car's *fields* are exactly the expected
 set, not their values, so `Solver.load` accepts values the sliders never allow and publishes the result with no `error`
@@ -105,7 +105,10 @@ clamps in `powertrain.js` and `dynamics/bicycle.js` are unreachable and can beco
 `mass: 0`, `mass: -500`, `gears: 0.4`, `mu: -1`: each must give exactly one `error` and unchanged state. All 24 flat goldens
 and the hilly ones must still pass untouched. Also check every preset car and every `SPEC` slider min/max passes.
 
-## L2. Zero-length circuit through `setTrack` (Low, hash)
+## L2. Zero-length circuit through `setTrack` (Low, hash) — done, `385bbb2`
+
+**Done.** `buildTrack` refuses `L < width`: identical control points give L ~ 4e-13 m from spline rounding, so `L > 0`
+would not have caught them. Kept below for the record.
 
 **Why.** `load` refuses `T.L > 0` being false (`src/solver/solver.js:89`), with a comment saying `buildTrack` reports this
 neither by throwing nor in `T.issue`. `setTrack` has no such check, so `rebuildTrack` with all control points in one place
@@ -233,7 +236,7 @@ Line numbers are for `ARCHITECTURE.md` unless noted.
 - [ ] `:300` `DynCheck.result.dyn` is documented as `{ t, trace }`; at runtime it is the whole `LapRun` (also `stV`, `stE`, `trouble`, …; `src/dynamics/bicycle.js:148`) (L3).
 - [x] `:353` §9 item 4 ("No pose contract") isn't ticked, although migration step 7 is done.
 - [x] `:474` cites the "stale HUD gear digit (§12)"; that item is fixed (`0f3d61f`) and is no longer in §12.
-- [ ] `:295` says "Value-level car checks stay with `carSpec` in the worker"; they don't (M6).
+- [x] `:295` says "Value-level car checks stay with `carSpec` in the worker"; now true (M6, `8859d07`).
 - [ ] `src/solver/solver.js:3` says everything emitted is a fresh copy and transferable; `dynResult` is neither (L3).
 
 ## Growth: before the 3D view (migration step 9)

@@ -43,7 +43,7 @@ No Critical or High issues, before or after save/load. The physics core and its 
 | M3 | frame error doesn't pause the worker; two owners of `running` | **Fixed** 2026-10-24 (uncommitted): worker owns `running`, `S.running` mirrors `progress`, `resume` flag on `setCar`/`setTrack`; browser check pending |
 | M4 | app layer untested | **Partly done**: `client.js` now has `tests/client.test.mjs` (7 tests); `controls.js`, `telemetry.js`, `main.js` still untested |
 | L1 | tick error breaks the one-in-flight invariant | **Fixed** 2026-10-24 (uncommitted) with L12 |
-| L2 | degenerate track publishes NaN | **Partly fixed**: `load` refuses `T.L>0` false; `setTrack` still doesn't |
+| L2 | degenerate track publishes NaN | **Fixed** 2026-10-24 (`385bbb2`): `buildTrack` refuses `L < width` for every caller |
 | L3 | `dynResult` not a copy, wrong shape | **Open**, unchanged |
 | L4 | non-atomic `setTrack`/`setCar` | **Open** for both; `load` validates first (tested) but can still fail after it mutates |
 | L5 | ghost/track mismatch race | **Open** for `#pinBtn`; the new load paths use `ghostFrom`, which checks N and telemetry channels but not `trackRev` |
@@ -163,7 +163,7 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
   - `controls.js` `lockPanel`: the car, circuit and saved-runs sections are `inert` (dimmed by a `[inert]` rule in `index.html`) from `sendLoad` until `loaded` or `loadFailed`. **Not covered by a Node test** (`controls.js` fetches at import); needs the browser check.
   - Side effect, also fixed: a `carInfo` from a setCar that was in flight *before* the load was sent used to release the hold early too.
 
-#### [ ] M6. A run file can feed unchecked car values into the solver; garbage or NaN laps are published and `loaded` fires (VERIFIED; was L6, severity raised)
+#### [x] M6. A run file can feed unchecked car values into the solver; garbage or NaN laps are published and `loaded` fires (VERIFIED; was L6, severity raised)
 
 - **Where:** `src/core/units.js:6-8` (`carSpec` checks `typeof number`/finite and `slipPk>0` only); `src/app/runfile.js` `readRunFile` checks that car fields are present and no others are unknown, but not their values; ARCHITECTURE §7 says "Value-level car checks stay with `carSpec` in the worker", which is not what `carSpec` does.
 - **Evidence (`probe5.mjs`, `Solver.load` on the GT racer, Harrow Ring, no `error` event in any case):**
@@ -190,7 +190,7 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 - **Impact:** harmless for correctness (the worker processes commands in order), but "one in flight" no longer holds.
 - **Fixed 2026-10-24 (uncommitted), with L12:** `Solver.guard(fn, rev)` emits `{type:'error', rev, …}` (the command's rev, `null` for a slice or a command without one; test in `solver.test.mjs`). The client lands a flight only when `m.rev` equals its `busy`. Test: "only the error of the command in flight releases it". `physics-version.js` was regenerated (hash line only; `golden.json` untouched).
 
-#### [ ] L2. Degenerate track publishes NaN silently (VERIFIED; partly fixed)
+#### [x] L2. Degenerate track publishes NaN silently (VERIFIED; partly fixed)
 
 - **Fixed for `load`:** `solver.js` `load` throws `load: the circuit has no length` when `!(T.L>0)`, and the test covers it. The comment there confirms the original finding: "`buildTrack` reports this neither by throwing nor in `T.issue`".
 - **Still open:** `setTrack` has no such guard (`solver.js`, `setTrack`), so `rebuildTrack` with all control points coincident still publishes `L=0`, `issue=null`, a NaN lap and non-finite `v`/`tc` with no `error` event (`probe2.mjs`).

@@ -33,7 +33,7 @@ The hilly physics and its adjoint are in very good shape:
 
 | ID | Finding | Area | Hash | Goldens |
 |---|---|---|---|---|
-| E-H1 | The snapshot's `warn` (stall / airborne / over-range) never reaches the page | app (`client.js`) | no | no |
+| E-H1 | The snapshot's `warn` (stall / airborne / over-range) never reaches the page — **fixed**, `8db6b21` | app (`client.js`) | no | no |
 | E-M1 | n ≤ 0 is clamped to 0, so a downforce car keeps its downforce grip while it is really off the ground | core, dynamics | yes | hilly maybe; flat no |
 | E-M2 | Height editing reaches 125–158% grades and 16 m crests, far outside what the model and tests cover, with no guard | app | no | no |
 | E-L1 | Speed is capped at the flat `vTop` even downhill (undocumented) | core | yes, if changed | hilly yes |
@@ -50,7 +50,7 @@ The hilly physics and its adjoint are in very good shape:
 
 ### High
 
-#### [ ] E-H1. The lap's warnings (stall, airborne, over-range) never reach the page (VERIFIED)
+#### [x] E-H1. The lap's warnings (stall, airborne, over-range) never reach the page (VERIFIED)
 
 - **Why it matters:**
   - `Scratch.stall/air/ntop` exist so that a lap time distorted by the 0.1 m/s floor or the load clamps is never presented as real. CLAUDE.md says "don't hide them". ARCHITECTURE §4.7 (line 143) says they are "shown over the map".

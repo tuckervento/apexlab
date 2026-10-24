@@ -20,12 +20,12 @@ and delete or update it here when it lands.
 | A7 | Rolling resistance under real normal load | low–medium | S | low | **yes** |
 | A8 | Merge the flat and hilly code paths | maintainability | M | medium | must not |
 | A9 | Cosmetic: height tint, label collisions | low | S | none | no |
-| A10 | "Needs load tables" checked at the boundary | robustness | S | none | no |
+| A10 | "Needs load tables" checked at the boundary — **already true**, pinned by a test (`385bbb2`) | robustness | — | none | no |
 | A11 | Dynamic traces have no height | low (until 3D) | S | none | no |
 | B1 | Saved runs: show more of the comparison | medium (TODO #6) | S | none | no |
 | B2 | Ghost from a run whose station count changed | low | S–M | low | no |
 
-Suggested order: A3 and A10 (cheap, felt or safety), then A1 (the visible win), then A2 (the next physics step; it
+Suggested order: A3 (cheap and felt), then A1 (the visible win), then A2 (the next physics step; it
 reshapes A4, so do A4 with or after it). A5 can ride along with A2. A7 on its own, with its own golden review.
 
 ---
@@ -89,6 +89,10 @@ mode.
 track overlaps itself.
 
 ## A2. Banking
+
+**Prerequisites** (`reviews/2026-10-24-elevation-review.md`): E-L6, property tests for the hill terms that today only the
+bit-exact goldens guard (banking rewrites exactly those, and its golden regeneration could carry a wrong one in); and
+E-M1, n ≤ 0 clamped to 0 keeps downforce grip off the ground.
 
 **Why.** Many real hilly corners are banked, which adds `g·sinφ` of lateral support. Without it, hilly corners here are
 harder than real ones (`ARCHITECTURE.md` §4.7). It's the natural next physics step after step 8.
@@ -217,6 +221,10 @@ them. Weigh the speed cost on flat circuits (the hilly path is ~1.7× slower).
   avoid each other (`placed`), so handle labels could join that.
 
 ## A10. "Needs load tables" checked at the boundary
+
+**Already true** (found 2026-10-24, by a probe and by the elevation review): `Optimizer.setup` and the `DynCheck`
+constructor both evaluate a lap, so they throw at construction. `tests/elevation.test.mjs` pins it (`385bbb2`). The
+original note is kept below.
 
 **Why.** `lapEval` throws "a hilly circuit needs a car built with {loads: true}" deep in the hot loop
 (`src/core/lap.js:82` onwards). The solver always builds the right car now, but other callers
