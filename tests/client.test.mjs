@@ -149,3 +149,13 @@ test('client: a queued resume is dropped if the circuit is being edited by the t
   assert.deepEqual(of('setCar').slice(-2).map(c => [c.params.tag, c.resume]), [['c', true], ['d', true]], 'not editing: kept');
   land();
 });
+
+// The snapshot's warn (stations at the speed floor, airborne steps, loads past the tables) is a sibling of line, not part
+// of it; the map's warning line reads it from S.disp (review E-H1: it was dropped, so no lap warning ever showed).
+test('client: a snapshot keeps its warn on S.disp', () => {
+  mark();
+  S.T = { trackRev: 900 };
+  const line = { px: [0], py: [0] }, warn = { stall: 3, air: 0, ntop: 1 };
+  deliver({ type: 'snapshot', carRev: 900, trackRev: 900, lineRev: 1, lap: 99, line, vmin: 1, vmax: 2, warn });
+  assert.deepEqual(S.disp.warn, warn);
+});

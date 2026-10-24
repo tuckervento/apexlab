@@ -84,7 +84,7 @@ function draw(){
 // ---------- warnings over the map: the circuit's own (overlaps, tight corners) and what the lap time hides (snapshot warn)
 function showWarn(T,w){
   const parts=[];if(T.issue)parts.push(T.issue+' — results may look odd');
-  if(w&&w.stall)parts.push(`The car can't get through ${w.stall} station${w.stall>1?'s':''} (a climb too steep for it): the lap time isn't a real one`);
+  if(w&&w.stall)parts.push(`The car can't get through ${w.stall} station${w.stall>1?'s':''} (${T.flat?'':'a climb too steep, or '}too little power or grip): the lap time isn't a real one`);
   if(w&&w.air)parts.push('The car leaves the ground over a crest');
   if(w&&w.ntop)parts.push('A compression loads the car beyond the model\'s range (2 g)');
   const el=$('#warn'),txt=parts.join(' · ');if(el.textContent!==txt)el.textContent=txt;el.hidden=!txt;

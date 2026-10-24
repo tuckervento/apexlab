@@ -58,7 +58,7 @@ function onSnapshot(m){
   if(pendingT&&m.trackRev===pendingT.trackRev){S.T=pendingT;pendingT=null;ui.trackArrived();}
   if(!S.T||m.trackRev!==S.T.trackRev)return;
   if(m.ref){S.refT=m.ref.t;S.refV=m.ref.v;}
-  S.disp={...m.line,t:m.lap,vmin:m.vmin,vmax:m.vmax,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};
+  S.disp={...m.line,t:m.lap,vmin:m.vmin,vmax:m.vmax,warn:m.warn,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};
   const st=!!S.dynRes&&!dynCurrent();if(st!==S.dynStale){S.dynStale=st;ui.renderDyn();}
 }
 // A dynamic result is current only while the car, track and line it was computed on are the ones displayed.
