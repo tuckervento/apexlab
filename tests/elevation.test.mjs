@@ -365,3 +365,67 @@ test('a hilly circuit with a car built without load tables is refused at setup a
   assert.throws(() => new core.Optimizer().setup(T, car, core.makeBounds(T, car), off), msg, 'Optimizer.setup');
   assert.throws(() => new core.DynCheck(T, car, off), msg, 'DynCheck');
 });
+
+// Closed forms for the hill terms that otherwise only the bit-exact goldens guard (elevation review E-L6), so a physics
+// change that regenerates the goldens can't carry a wrong term in with it. One circuit: a stadium whose first straight
+// is a parabolic crest, z = −x²/(2·RV) (z'' = −1/RV exactly, which a cubic spline reproduces; slopes to 25 %), level
+// elsewhere. Checks stay 150 m inside the straight, clear of the spline's ringing at its kinked ends.
+// Not covered on purpose: kv's 5-station smoothing. On a smooth profile it changes nothing a closed form can see (the
+// unsmoothed crest is within 0.04 %), and its station-to-station roughness on the presets overlaps with and without it
+// (0.11–0.46 against 0.12–0.84), so no threshold would be more than fitted. The goldens guard it.
+const CREST = (() => {
+  const S = 1000, R = 120, RV = 2000, zAt = s => s < S ? -((s - S / 2) ** 2) / (2 * RV) : -((S / 2) ** 2) / (2 * RV);
+  const T = core.buildTrack(stadium(S, R, zAt), WIDTH), slope = s => -(s - S / 2) / RV, on = [];
+  for (let i = 0; i < T.N; i++) if (i * T.ds >= 150 && i * T.ds <= S - 150) on.push(i);
+  return { S, RV, T, slope, on };
+})();
+
+test('track: vertical curvature at a crest apex is −1/RV', () => {
+  const { T, S, RV } = CREST;
+  for (let i = 0; i < T.N; i++) if (Math.abs(i * T.ds - S / 2) <= 50) // slope ≤ 2.5 %, so z'' and true curvature agree
+    assert.ok(Math.abs(T.kv[i] * RV + 1) < 0.005, `station ${i}: kv ${T.kv[i]}, expected ${-1 / RV}`);
+});
+
+test('track: cos-grade on the crest is 1/√(1 + slope²), the slope taken mid-step', () => {
+  const { T, slope, on } = CREST;
+  for (const i of on) { const g = slope(i * T.ds + T.ds / 2), c = 1 / Math.sqrt(1 + g * g);
+    assert.ok(Math.abs(T.cth[i] - c) < 2e-4, `station ${i}: cth ${T.cth[i]}, expected ${c}`); }
+});
+
+// The cth term of n = cth + v²·kv/g in the corner-speed solve, with a cth from buildTrack: a linear tyre and no
+// downforce corner at v = √(μ·g·cth / k) on a grade (the crest test above passes cth = 1, so it can't see this term).
+test('lap: corner speed on a grade matches v = √(μg·cth / k), with cth from the track', () => {
+  const { T, on } = CREST, car = core.buildCar({ ...core.CARS['Road car'], mu: 1, sens: 0, cla: 0 }, { loads: true });
+  const i = on[0], c = T.cth[i], k = 1 / 60, v = core.vCornerN(car, k, car.load.kcrit, c, 0, new Float64Array(2));
+  assert.ok(c < 0.99, `the station should be steep enough to matter (0.5 % from cth = 1): cth ${c}`);
+  assert.ok(Math.abs(v / Math.sqrt(core.G * c / k) - 1) < 0.002, `${v} vs ${Math.sqrt(core.G * c / k)} (cth ${c})`);
+});
+
+test('dynamics: the grade sine at a station is the slope there, sin θ = s/√(1 + s²) (central, not one-sided)', () => {
+  const { T, slope, on } = CREST, sn = core.grades(T).sn;
+  for (const i of on) { const g = slope(i * T.ds), s = g / Math.sqrt(1 + g * g); // one-sided is ds/(2·RV) = 1e-3 off
+    assert.ok(Math.abs(sn[i] - s) < 2e-4, `station ${i}: sn ${sn[i]}, expected ${s}`); }
+});
+
+// With v² linear in distance along the road (3D), the path acceleration is exactly half its slope; dynNominal's ax is
+// that plus g·sin θ. Measured on plan steps instead, it would be 1/cos θ too large (2 % at 20 % grade).
+test('dynamics: dynNominal takes the path acceleration along the road, not its plan view', () => {
+  const { T, on } = CREST, car = core.buildCar(core.CARS['GT racer'], { loads: true }), line = new core.DynCheck(T, car, new Float64Array(T.N)).line;
+  const s3 = new Float64Array(T.N); for (let i = 1; i < T.N; i++) s3[i] = s3[i - 1] + line.ds3[i - 1];
+  const B = 2, v = Float64Array.from(s3, s => Math.sqrt(400 + B * s)), nom = core.dynNominal(car, core.dynSetup(car), line, v);
+  for (const i of on) assert.ok(Math.abs((nom.ax[i] - core.G * line.sn[i]) / (B / 2) - 1) < 1e-9, `station ${i}: ax ${nom.ax[i]}`);
+});
+
+// The time-stepped car, driving 90 % of the lap model's speeds, should match that profile's own time as closely on the
+// crest as on the same stadium laid flat (measured: 0.23 % and 0.25 %). Covering plan ground at v rather than v·cos θ
+// finishes the crest early (−0.16 %).
+test('dynamics: dynLap follows a hilly lap as closely as the same lap flat', () => {
+  const gap = (T, car) => {
+    const d = new core.DynCheck(T, car, new Float64Array(T.N)), st = d.line.ds3 || d.line.ds, r = d.lap(0.9, false);
+    let t = 0; for (let i = 0; i < T.N; i++) t += 2 * st[i] / (0.9 * (d.vq[i] + d.vq[(i + 1) % T.N]));
+    assert.ok(r.complete, 'lap completes'); return r.t / t - 1;
+  };
+  const flat = core.buildTrack(stadium(CREST.S, 120, () => 0), WIDTH);
+  const gF = gap(flat, core.buildCar(core.CARS['GT racer'])), gH = gap(CREST.T, core.buildCar(core.CARS['GT racer'], { loads: true }));
+  assert.ok(Math.abs(gH - gF) < 0.001, `gap to the target profile: hilly ${gH}, flat ${gF}`);
+});
