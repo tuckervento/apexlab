@@ -104,7 +104,7 @@ function frame(ts){
 function frameBody(ts){
   if(S.frameErr&&S.running)S.frameErr=null;
   const dt=Math.min(0.1,(ts-lastTs)/1000||0);lastTs=ts;frameN++;
-  const {T,disp,prog:p,ghost,hist}=S;
+  const {T,disp,prog:p,ghost}=S;
   if(!T||!disp||!p)return; // nothing from the solver yet
   S.animT+=dt*S.replay;
   const st=$('#status'),s=S.editing?'editing':!S.running?(p.converged?'converged':'paused'):(p.polish?'refining':'searching');
@@ -116,7 +116,6 @@ function frameBody(ts){
   $('#evals').textContent=p.evals.toLocaleString()+' laps simulated';
   $('#legMin').textContent=Math.round(disp.vmin*3.6);$('#legMax').textContent=Math.round(disp.vmax*3.6);
   showWarn(T,disp.warn);
-  $('#convCap').textContent=hist.length?'':'';
   draw();
   const dpr=cam.dpr,pal=S.pal;
   if(frameN%2===0){drawSpeedChart($('#speedChart'),dpr,pal,{T,disp,refV:S.refV,ghost,carPos:S.carPos});if(!T.flat)drawElevChart($('#elevChart'),dpr,pal,{T,carPos:S.carPos});drawConv($('#convChart'),dpr,pal,S.hist);if(ghost)drawGapChart($('#gapChart'),dpr,pal,{T,disp,ghost,carPos:S.carPos});}

@@ -205,9 +205,10 @@ revision rules are what the architecture leans on.
   are floored by `VSTEP`/the backward pass), and elevation added a `stall` counter for stations at that floor (`lap.js:23`).
   Document it at the line; if the adjoint is ever touched, re-check against central finite differences (≥4 sig figs, hard
   and `tau > 0`, flat and hilly) and regenerate the hash.
-- **L9.** Dead code: `$('#convCap').textContent=hist.length?'':''` (`src/app/main.js:119`), `(cw<560?0:0)`
-  (`src/views/map2d/map.js:45`). `drawConv`'s null-gap handling (`charts.js`) was flagged as unreachable but not re-checked.
-  Trace git history before deleting each.
+- [x] **L9.** Dead code: the `convCap` line in `main.js` and `(cw<560?0:0)` in `map.js` are removed (both were already in
+  the initial commit, so they never did anything). `drawConv`'s null-gap handling (`charts.js`) was checked and **kept**:
+  nothing pushes a null into `S.hist` (the only writers push `[evals, t]` or reset to `[]`), but the pen-up marker is part
+  of that pure view's input contract, so it is unreachable from today's callers only.
 - **L10.** The GT/Harrow convergence runs three times (`convergence.test.mjs`; `solver.test.mjs` "converges" and "publishes
   only accepted"), about 8 s each, and `runfile.test.mjs`'s bit-for-bit load test compares against the same golden. Let the
   solver tests share `converged()` (`solver.test.mjs:21`); the suite is 26 s now.

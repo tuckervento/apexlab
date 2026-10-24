@@ -42,7 +42,7 @@ export function drawMap(ctx,cam,pal,sc){
   }
   function drawScaleBar(){
     const nice=[5,10,20,50,100,200,500,1000];let L=nice[0];for(const n of nice) if(n*cam.z<=120) L=n;
-    const px=L*cam.z,x1=cw-16-(cw<560?0:0),x0=x1-px,y=ch-22;
+    const px=L*cam.z,x1=cw-16,x0=x1-px,y=ch-22;
     ctx.strokeStyle=colors.ink;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x0,y-5);ctx.lineTo(x0,y);ctx.lineTo(x1,y);ctx.lineTo(x1,y-5);ctx.stroke();
     ctx.fillStyle=colors.ink;ctx.font=`11px ${colors.mono}`;ctx.textAlign='center';ctx.fillText(L>=1000?(L/1000)+' km':L+' m',(x0+x1)/2,y-7);
   }

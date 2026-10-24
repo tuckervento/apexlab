@@ -50,7 +50,7 @@ No Critical or High issues, before or after save/load. The physics core and its 
 | L6 | no range checks in `carSpec` | **Raised to Medium (M6)**: a run file can now feed unchecked values in; verified |
 | L7 | `STAGES` unfrozen | **Open** |
 | L8 | adjoint nit | **Open**, theoretical |
-| L9 | dead code | **Open** (`main.js:107`, `map.js:44`; `drawConv` null handling not re-checked) |
+| L9 | dead code | **Done** (`drawConv` null handling kept: unreachable from callers, part of the view's contract) |
 | L10 | repeated convergence in tests | **Open** |
 | Docs drift | 10 items | **Open** (see list); save/load added its own docs, plus one inaccurate sentence (below) |
 
@@ -230,12 +230,13 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 - **Impact:** unreachable in practice, since speeds are floored by `VSTEP`/the backward pass. Otherwise the adjoint reads correctly through the yaw, shift and GGV terms, and the gradient test exercises those branches with coverage assertions.
 - **Fix:** probably document it. If touched, re-run finite-difference checks (≥4 sig figs, hard and `tau > 0`) and regenerate `physics-version.js`.
 
-#### [ ] L9. Dead code (unchanged)
+#### [x] L9. Dead code (unchanged)
 
 - `src/app/main.js:107`: `convCap` is set to `''` in both branches.
 - `src/views/map2d/map.js:44`: `(cw<560?0:0)`.
 - `src/views/map2d/charts.js:26,29`: `drawConv` handles null gaps, but `hist` never contains null (not re-checked in this update).
 - Per Chesterton's fence, trace git history before deleting each.
+- **Done 2026-10-24:** both dead expressions removed (present since the initial commit `456a0fc`, never non-trivial). `drawConv`'s null handling re-checked: no writer of `hist` pushes null, but it is kept as part of the view's input contract.
 
 #### [ ] L10. Test cost
 
