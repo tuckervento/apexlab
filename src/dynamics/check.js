@@ -1,6 +1,6 @@
 // Moved verbatim from prototype/apex-lab.html (migration step 2).
 import { makeScratch, lapEval } from '../core/lap.js';
-import { dynSetup, dynNominal, dynLap } from './bicycle.js';
+import { dynSetup, dynNominal, dynLap, grades } from './bicycle.js';
 
 // The check: (1) inverse dynamics along the line at the lap sim's speeds gives each axle's grip use, yaw inertia
 // included; (2) the time-stepped car drives the line at a uniform fraction of the lap sim's speeds, and a bisection
@@ -8,12 +8,12 @@ import { dynSetup, dynNominal, dynLap } from './bicycle.js';
 // fraction is the line's dynamic weak spot.
 export class DynCheck{
   constructor(T,car,off){
-    if(!T.flat)throw new Error('DynCheck: hilly circuits are not modelled by the dynamic check yet (no grade or vertical load)');
     const N=T.N;this.T=T;this.car=car;this.dc=dynSetup(car);this.N=N;
     const S=makeScratch(N);this.qss=lapEval(T,car,off,S);this.vq=Float64Array.from(S.v);
     const px=S.px,py=S.py,th=new Float64Array(N),ds=new Float64Array(N);
     for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(py[j]-py[i],px[j]-px[i]);ds[i]=Math.hypot(px[j]-px[i],py[j]-py[i]);}
-    this.line={N,px:Float64Array.from(px),py:Float64Array.from(py),k:Float64Array.from(S.k),th,ds};
+    this.line={N,px:Float64Array.from(px),py:Float64Array.from(py),k:Float64Array.from(S.k),th,ds}; // ds: plan-view steps (geometry)
+    const hl=grades(T);if(hl)Object.assign(this.line,hl,{ds3:Float64Array.from(S.ds)}); // hilly: grades, and the 3D steps for speed changes
     const n0=dynNominal(car,this.dc,this.line,this.vq);this.uf=n0.uf;this.ur=n0.ur;
     this.lo=0.80;this.hi=1.0;this.iter=0;this.done=false;this.result=null;this.fail=null;this.loRes=null;
   }

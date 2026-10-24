@@ -249,7 +249,8 @@ test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 *
 });
 
 // Until the solver builds load tables (elevation P5), a hilly circuit is refused before any state changes, so the
-// solver keeps working on what it had; snapshots carry the lap model's warnings (all 0 on a flat circuit).
+// solver keeps working on what it had; snapshots carry the lap model's warnings (all 0 on a flat circuit). (The
+// dynamic check itself handles hills since P4: tests/elevation.test.mjs.)
 test('solver: a hilly circuit is refused without disturbing the current car, track and line', () => {
   const b = boot(), s = b.s, before = { car: s.car, T: s.T, B: s.B, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev };
   assert.deepEqual(b.last('snapshot').warn, { stall: 0, air: 0, ntop: 0 }, 'flat boot snapshot warnings');
@@ -264,6 +265,4 @@ test('solver: a hilly circuit is refused without disturbing the current car, tra
     assert.deepEqual({ car: s.car, T: s.T, B: s.B, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev }, before, `${cmd.type}: state`);
   }
   const n0 = b.ev.length; s.handle({ type: 'setCar', rev: 5, params: { ...core.CARS['Kart'] } }); noErrors(b.ev.slice(n0)); // still usable
-  const T = core.buildTrack(hills, WIDTH), car = core.buildCar(core.CARS[CAR], { loads: true });
-  assert.throws(() => new core.DynCheck(T, car, new Float64Array(T.N)), /not modelled by the dynamic check yet/);
 });

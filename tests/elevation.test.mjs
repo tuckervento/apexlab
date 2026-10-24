@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore } from './load-core.mjs';
-import { stadium } from './golden-util.mjs';
+import { stadium, loadGolden, comboKey } from './golden-util.mjs';
 
 const core = await loadCore(), WIDTH = 12;
 const withZ = (ctrl, z) => ctrl.map((p, i) => [p[0], p[1], typeof z === 'number' ? z : z[i]]);
@@ -261,4 +261,77 @@ test('lap: the load-factor corner limit never rises with speed, and vCornerN fin
   const want = Object.keys(core.CARS).length * 3 * 3 * kvs.length * (NT - 2); // every car, table, grade and curvature; node pairs from 1
   assert.equal(pairs, want, `node pairs checked`);
   assert.ok(searches > 1000, `only ${searches} searches compared`);
+});
+
+// ---- dynamics (P4): the bicycle model on hills, consistent with the lap model
+
+// Axle loads add up to the static weight at the load factor, plus downforce (transfer moves load between the axles).
+test('dynamics: axle loads sum to m·g·n plus downforce', () => {
+  for (const [name, P] of Object.entries(core.CARS)) {
+    const dc = core.dynSetup(core.buildCar(P));
+    for (const n of [0.2, 0.6, 1, 1.4]) for (const [v, ax] of [[20, 3], [50, -6]]) {
+      const [Wf, Wr, DF] = core.axleLoads(dc, v, ax, n), want = dc.m * core.G * n + DF;
+      assert.ok(Math.abs(Wf + Wr - want) < 1e-9 * want || Wf === 0 || Wr === 0, `${name} n ${n} v ${v}: ${Wf + Wr} vs ${want}`);
+    }
+  }
+});
+
+// The dynamic check on hills meets the same sanity bounds as on flat circuits (fraction in [0.85, 1], peak tyre use on
+// the lap model's profile <= 1.15, clean final lap). Harrow Ring at 25 m on each car's converged flat line (a good line
+// on the same plan view). Measured when written: fractions 91.6-100% (flat 91.3-99.1%), peak use <= 1.117.
+test('dynamics: the dynamic check on a hilly circuit stays within the flat-circuit bounds', t => {
+  const g = loadGolden(), tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), T = core.buildTrack(withZ(ctrl, u.map(x => 25 * x)), WIDTH);
+  for (const name of Object.keys(core.CARS)) {
+    const fx = g.combos[comboKey(name, tr.name)], car = core.buildCar(core.CARS[name], { loads: true });
+    assert.equal(fx.N, T.N, 'hills keep the plan view, so the flat line fits');
+    const dc = new core.DynCheck(T, car, Float64Array.from(fx.off)); while (!dc.done) dc.step();
+    const r = dc.result, d = r.dyn;
+    t.diagnostic(`${name}: ${(r.frac * 100).toFixed(1)}% (flat ${(fx.frac * 100).toFixed(1)}%), peak use ${r.umax.toFixed(3)}`);
+    assert.ok(r.frac >= 0.85 && r.frac <= 1, `${name}: fraction ${r.frac}`);
+    assert.ok(r.umax <= 1.15, `${name}: peak tyre use ${r.umax}`);
+    assert.ok(d && d.complete && !d.spun && d.trouble.length === 0, `${name}: final lap not clean`);
+  }
+});
+
+// The time-stepped car must load its tyres by the same load factor as the lap model. If it didn't, the lap model would
+// promise grip in compressions (and over crests take less) that the car doesn't have, and the fraction collapses.
+// Kestrel Point at 150 m, centreline. Measured when written: 89.1-97.2% here; with dynLap ignoring n, 81.3-91.6%.
+test('dynamics: on big hills the dynamic car and the lap model agree on grip (fraction stays in bounds)', t => {
+  const tr = core.TRACKS[1], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), T = core.buildTrack(withZ(ctrl, u.map(x => 150 * x)), WIDTH);
+  for (const name of Object.keys(core.CARS)) {
+    const car = core.buildCar(core.CARS[name], { loads: true }), dc = new core.DynCheck(T, car, new Float64Array(T.N)); while (!dc.done) dc.step();
+    t.diagnostic(`${name}: ${(dc.result.frac * 100).toFixed(1)}%`);
+    assert.ok(dc.result.frac >= 0.85 && dc.result.frac <= 1, `${name}: fraction ${dc.result.frac}`);
+  }
+});
+
+// Gravity in the time-stepped car matches the driver's feedforward: on a 6% ramp it tracks its target speed as closely
+// as on the flat. If either side lacked m·g·sinθ, the speed controller (1.5 s⁻¹) would settle ~g·sinθ/1.5 = 0.4 m/s
+// off. Measured when written: 0.033 m/s mean error climbing and descending; 0.34-0.38 m/s with no gravity in dynLap.
+test('dynamics: up and down a ramp the dynamic car holds its target speed', t => {
+  const S = 1500, R = 120, g = 0.06, top = g * S, z = s => s <= S ? g * s : s <= S + Math.PI * R ? top : s <= 2 * S + Math.PI * R ? top - g * (s - S - Math.PI * R) : 0;
+  const T = core.buildTrack(stadium(S, R, z), WIDTH), car = core.buildCar(core.CARS['GT racer'], { loads: true });
+  const dc = new core.DynCheck(T, car, new Float64Array(T.N)), r = dc.lap(0.9, false);
+  const err = s0 => { let e = 0, n = 0; for (let i = Math.round((s0 + 0.3 * S) / T.ds); i < Math.round((s0 + 0.8 * S) / T.ds); i++) { e += Math.abs(r.stV[i] - 0.9 * dc.vq[i]); n++; } return e / n; };
+  const up = err(0), down = err(S + Math.PI * R);
+  t.diagnostic(`mean |v - target|: climbing ${up.toFixed(3)} m/s, descending ${down.toFixed(3)} m/s`);
+  assert.ok(r.complete && !r.spun, 'lap not completed');
+  assert.ok(up < 0.1 && down < 0.1, `speed error climbing ${up}, descending ${down}`);
+});
+
+// Inverse dynamics loads the tyres by the load factor too: where the lap model slowed a corner for a crest, the
+// tyres are at their (reduced) limit, not at the fraction of a 1 g limit they'd be at if the crest were ignored.
+// Kestrel Point at 250 m. Measured when written: use 1.03 at corner-limited stations with n < 0.8 (0.75 if ignored).
+test('dynamics: over a crest the inverse dynamics finds the tyres at their reduced limit', t => {
+  const tr = core.TRACKS[1], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), T = core.buildTrack(withZ(ctrl, u.map(x => 250 * x)), WIDTH);
+  for (const name of ['GT racer', 'Road car']) {
+    const car = core.buildCar(core.CARS[name], { loads: true }), N = T.N, dc = new core.DynCheck(T, car, new Float64Array(N)), S = core.makeScratch(N);
+    core.lapEval(T, car, new Float64Array(N), S);
+    const low = [];
+    for (let i = 0; i < N; i++) if (S.ff[i] === 0 && S.fb[i] === 0 && T.cth[i] + S.v[i] * S.v[i] * T.kv[i] / core.G < 0.8) low.push(Math.max(dc.uf[i], dc.ur[i]));
+    const mean = low.reduce((a, b) => a + b, 0) / low.length;
+    t.diagnostic(`${name}: ${low.length} corner-limited stations with n < 0.8, mean tyre use ${mean.toFixed(3)}`);
+    assert.ok(low.length > 0, `${name}: no crest-limited corner on this circuit`);
+    assert.ok(mean >= 0.9 && mean <= 1.15, `${name}: tyre use ${mean} at crest-limited corners`);
+  }
 });
