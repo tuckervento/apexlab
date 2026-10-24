@@ -168,12 +168,19 @@ Risks:
 
 ---
 
-## Open decisions
+## Decisions (Q, 2026-10-24)
 
-| Decision | Options | Recommendation |
-|---|---|---|
-| Balance knob reference | relative to base car; or absolute 0 = neutral, via a new worker command that solves for neutral `rollF` | relative now; the finding above shows a closed form is wrong, and the solver route widens the protocol |
-| Knob set | the 7 above; add Engine character and/or Layout | the 7, add extras only if wanted |
-| Advanced edits | detach the simple panel; or knobs apply as changes on top of the current car | detach: knob positions keep a stable meaning |
-| Knob positions in run files | no; or run-file v3 with a migration | no: the 25 fields are the truth |
-| Default mode for new users | Simple; or Advanced | open |
+Step 1 (`src/app/simple.js`, `tests/simple.test.mjs`) landed with: Balance relative to the base car; the 7 knobs, no
+extras; brake bias kept as the base car's; knob positions not stored in run files.
+
+For step 2 (UI):
+
+| Decision | Answer |
+|---|---|
+| Default mode for new users | **Simple** |
+| Layout | **one panel with two pages** (Simple / Advanced) in the car section, not two panels |
+| Weight and Power (% knobs) | show the resulting kg and kW beside them |
+| Gearbox knob on an EV | hidden |
+| Switching Type on a preset | fine to use the preset's unused fields (EV saloon as ICE becomes a 1-gear car) |
+| Weight and Downforce moving the gearing | fine |
+| An Advanced edit of a knob's field | **open, needs a design:** Q's direction is per knob, so the knobs whose fields were edited by hand grey out (stop applying) rather than the whole page detaching. Question to settle: the gearing fields (`vTopG`, `v1`, `evMax`, `evBase`) come from Power, Weight and Downforce together, so a hand-edited top gear would grey all three; and how a greyed knob comes back (reset to base?) |
