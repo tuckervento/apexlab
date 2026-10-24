@@ -188,10 +188,10 @@ details p{margin:6px 0 0}
         <tbody id="teleBody"></tbody>
       </table>
       <div class="row" id="deltaRow" hidden>
-        <span class="ctl-label">Δ at</span>
-        <div class="seg" id="deltaSeg"><button aria-pressed="true" data-v="time">Same time</button><button aria-pressed="false" data-v="place">Same place</button></div>
+        <span class="ctl-label">Compare</span>
+        <div class="seg" id="deltaSeg"><button aria-pressed="true" data-v="time">Same time</button><button aria-pressed="false" data-v="place">Same place</button><button aria-pressed="false" data-v="max">Lap max</button></div>
       </div>
-      <p class="note">Forces are what the lap model's speed profile asks of each axle (inverse dynamics), at the replay car. Lateral values are magnitudes; longitudinal ones are + drive, − braking.</p>
+      <p class="note">Forces are what the lap model's speed profile asks of each axle (inverse dynamics), at the replay car. Lateral values are magnitudes; longitudinal ones are + drive, − braking. <i>Lap max</i> compares each lap's highest values, with left and right turns, drive and braking apart.</p>
       <div class="chart-wrap">
         <canvas class="chart" id="speedChart" height="150"></canvas>
         <div class="chart-cap"><span><i style="background:var(--ink)"></i>Racing line</span><span><i style="background:var(--muted)"></i>Centreline</span><span id="capGhost" hidden><i style="background:var(--ghost)"></i>Ghost</span><span>km/h over lap distance</span></div>

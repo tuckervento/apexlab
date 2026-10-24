@@ -385,6 +385,7 @@ pose(source: LapSnapshot | DynTrace, t: seconds, info?: CarInfo) → {
   steer, slipF, slipR, beta /* sideslip */, yawRate
 }
 stationPose(snapshot, station, frac, info?) → pose   // the second half of a lap pose; samples one lap where another car is
+lapExtremes(snapshot) → {speed, ax, ay, phys: {…}}   // each {max, min} over the lap; bounds every pose (telemetry Lap max)
 raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker waits 1 s at the line
 ```
 

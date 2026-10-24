@@ -87,6 +87,28 @@ test('playback: stationPose reproduces the lap pose; phys interpolates the snaps
   assert.ok(n > 500, `only ${n} poses compared`);
 });
 
+// lapExtremes is what "Lap max" shows: it must equal the brute-force range over every station's pose, and bound
+// every pose the replay can produce (a dense sample of the lap).
+test('playback: lapExtremes is the range of the lap poses', () => {
+  for (const { info, snaps } of LAPS) for (const d of [snaps[0], snaps.at(-1)]) {
+    const x = core.lapExtremes(d), N = d.px.length, get = { speed: p => p.speed, ax: p => p.ax, ay: p => p.ay };
+    for (const k of Object.keys(d.phys)) get['phys.' + k] = p => p.phys[k];
+    const ext = { speed: x.speed, ax: x.ax, ay: x.ay };
+    for (const k of Object.keys(d.phys)) ext['phys.' + k] = x.phys[k];
+    for (const [name, f] of Object.entries(get)) {
+      let max = -Infinity, min = Infinity;
+      for (let i = 0; i < N; i++) { const v = f(core.stationPose(d, i, 0, info)); max = Math.max(max, v); min = Math.min(min, v); }
+      assert.ok(Object.is(ext[name].max, max) && Object.is(ext[name].min, min), `${name}: ${ext[name].min}..${ext[name].max} vs stations ${min}..${max}`);
+      const tol = 1e-9 * Math.max(1, Math.abs(max), Math.abs(min));
+      for (let q = 0; q <= 4000; q++) {
+        const v = f(core.pose(d, d.t * q / 4000, info));
+        if (v > max + tol || v < min - tol) assert.fail(`${name} at t=${d.t * q / 4000}: ${v} outside ${min}..${max}`);
+      }
+    }
+    assert.ok(x.ay.max > 0 && x.ay.min < 0 && x.ax.max > 0 && x.ax.min < 0, 'a lap has left and right turns, drive and braking');
+  }
+});
+
 test('playback: raceClock', () => {
   assert.equal(core.raceClock([80], 100), 20);
   assert.equal(core.raceClock([80, 78], 100), 100 % 81, 'the quicker car waits 1 s at the line');

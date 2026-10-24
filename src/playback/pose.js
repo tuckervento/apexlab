@@ -30,6 +30,19 @@ export function stationPose(d,lo,f,info){
   return p;
 }
 
+// The range of what a lap snapshot's poses can show: {speed, ax, ay, phys: {…}}, each {max, min}. speed and phys
+// interpolate linearly within a segment and ax, ay are constant over it, so station values (stationPose at frac 0,
+// same expressions) bound every pose along the lap.
+export function lapExtremes(d){
+  const N=d.px.length,mm=()=>({max:-Infinity,min:Infinity}),o={speed:mm(),ax:mm(),ay:mm(),phys:{}},keys=d.phys?Object.keys(d.phys):[];
+  const put=(e,x)=>{if(x>e.max)e.max=x;if(x<e.min)e.min=x;};
+  for(const k of keys)o.phys[k]=mm();
+  for(let i=0;i<N;i++){const j=(i+1)%N;
+    put(o.speed,d.v[i]);put(o.ax,(d.v[j]*d.v[j]-d.v[i]*d.v[i])/(2*d.ds[i]+1e-9));put(o.ay,d.v[i]*d.v[i]*d.k[i]);
+    for(const k of keys)put(o.phys[k],d.phys[k][i]);}
+  return o;
+}
+
 // Dynamic trace {t[], x[], y[], v[] (=vx), vy[], psi[], r[], delta[], alf[], alr[], ax[], ay[], gear[], st[], s[]}.
 function tracePose(tr,rt,info){
   const n=tr.t.length,t=Math.min(Math.max(rt,tr.t[0]),tr.t[n-1]);

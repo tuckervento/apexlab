@@ -9,7 +9,7 @@ import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
 import { pose, stationPose, raceClock } from '../playback/pose.js';
-import { buildTelemetry, renderTelemetry, tagText } from './telemetry.js';
+import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart } from '../views/map2d/charts.js';
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap});
@@ -74,7 +74,7 @@ function draw(){
   const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
   const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};
   drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,tags});
-  renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV'});
+  renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV',mode:ghost?S.deltaMode:'time',carLap:disp,ghostLap:ghost});
   if(ghost)$('#liveGap').textContent=cs?fmtDelta(disp.tc[cs.station]-ghost.tc[cs.station],2)+' s':'—';
   if(cs){S.carPos=cs.station;S.carV=cs.speed;}else S.carPos=-1;
 }
@@ -112,7 +112,7 @@ function frameBody(ts){
 }
 
 // ---------- boot
-refreshColors();bindButtons();buildCarUI();buildTrackUI();buildTelemetry();
+refreshColors();bindButtons();buildCarUI();buildTrackUI();
 new ResizeObserver(()=>{const first=!cam.cw;resize();if(first&&S.T)fit();}).observe($('#stage'));
 resize();sendState('setCar',{params:{...S.P}});S.fitPending=true;rebuildTrack(false);setRunning(true);
 document.fonts&&document.fonts.ready.then(refreshColors);

@@ -45,7 +45,7 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 - **Telemetry:** the best lap, plus live readouts during replay: speed, gear, lateral and longitudinal g, and the forces on the car: each axle's load, lateral and longitudinal tyre force and grip use, downforce and drag. Forces come from inverse dynamics on the lap model's speed profile.
 - **Map tags** beside the car and the ghost show speed, g or grip use.
 - Telemetry plots speed over lap distance against the centreline.
-- **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart. The readouts gain ghost and Δ columns, compared at the same race time or the same place on track. Each map tag adds a Δ against the other car at that same spot.
+- **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart. The readouts gain ghost and Δ columns, compared at the same race time or the same place on track, or as each lap's maxima (left and right turns, drive and braking apart). Each map tag adds a Δ against the other car at that same spot.
 
 **Dynamic check**
 - A time-stepped bicycle model drives the optimised line. It has yaw inertia, Pacejka-style tyres, load-transfer lag and a steering-rate limit.
