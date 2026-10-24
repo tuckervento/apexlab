@@ -17,7 +17,7 @@ export function dynSetup(car){
   const p=car.spec,m=car.m,wr=p.wr,wf=1-wr,a=car.aCG,b=car.bCG,L=p.wb,h=p.cg;
   const tireF=Fz=>{if(Fz<=0)return 0;let k=1-p.sens*(Fz/FZ0-1);if(k<0.25)k=0.25;return p.mu*k*Fz;};
   const apk=p.slipPeak,B=Math.tan(Math.PI/(2*DYN.C))/apk;
-  const Izz=Math.max(0.3,p.yawDI)*m*a*b;
+  const Izz=Math.max(0.3,p.yawDI)*m*a*b; // carSpec allows any yawDI > 0 (panel: 0.6–1.4); the lap model's yaw limit (car.js) isn't floored
   return {p,m,wr,wf,a,b,L,h,tireF,apk,B,Izz,aF:p.aF,rF:p.rF,bF:p.bF,awd:p.drive==='AWD'};
 }
 export function fyCurve(alpha,D,B){return D*Math.sin(DYN.C*Math.atan(B*alpha));}

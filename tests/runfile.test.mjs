@@ -9,6 +9,7 @@ import { loadCore, runSource } from './load-core.mjs';
 import { loadGolden, assertRuntime, comboKey } from './golden-util.mjs';
 import { PHYSICS } from '../src/app/physics-version.js';
 import { liveHash, makeRunFile, readRunFile, toGhost, CAR_KEYS } from '../src/app/runfile.js';
+import { SPEC } from '../src/app/sliders.js';
 
 const core = await loadCore(), CAR = 'GT racer', TRACK = core.TRACKS[0], WIDTH = 12;
 
@@ -113,6 +114,16 @@ test('run file: CAR_KEYS is every preset field, and carSpec needs each one', () 
   }
 });
 
+// carSpec's limits are physical (units.js); the panel's ranges must sit inside them, or a slider could build a car the
+// worker refuses.
+test('carSpec accepts every preset, and every slider at its min and max on every preset', () => {
+  for (const [name, P] of Object.entries(core.CARS)) {
+    core.carSpec(P);
+    for (const { k, min, max } of SPEC) if (min !== undefined) for (const v of [min, max])
+      assert.doesNotThrow(() => core.carSpec({ ...P, [k]: v }), `${name}, ${k} = ${v}`);
+  }
+});
+
 test('load: another station count is resampled; run:true searches; bad input changes nothing', async t => {
   const ctrl = core.genCtrl(TRACK.seed, WIDTH), params = { ...core.CARS[CAR] };
 
@@ -137,6 +148,21 @@ test('load: another station count is resampled; run:true searches; bad input cha
       const got = ev.slice(n0);
       assert.deepEqual(got.map(e => e.type), ['error'], `${why}: events`);
       assert.deepEqual({ car: s.car, T: s.T, B: s.B, off: s.off, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev, running: s.running }, { ...before, running: false }, `${why}: state`);
+    }
+  });
+  // Finite but outside what the formulas mean (review M6): each was published as a lap (NaN, or 10⁴ s) with no error.
+  await t.test('a car value outside its physical limits is refused by name, and changes nothing', () => {
+    const bad = [['mass', 0], ['mass', -500], ['cg', -0.1], ['track', 0], ['wb', 0], ['yawDI', 0], ['rear', 0], ['rear', 100],
+      ['rollF', 101], ['power', 0], ['nT', 76], ['nRed', 0], ['gears', 0.4], ['gears', 2.5], ['shiftT', -0.1], ['v1', 0],
+      ['vTopG', 0], ['evBase', 0], ['evMax', 0], ['cla', -1], ['aeroF', -1], ['cda', -0.1], ['brakeF', 101], ['mu', 0],
+      ['mu', -1], ['sens', -0.5]];
+    for (const [k, v] of bad) {
+      const { s, ev } = boot(), before = { car: s.car, T: s.T, off: s.off, pub: s.pub, carRev: s.carRev, lineRev: s.lineRev }, n0 = ev.length;
+      s.handle({ type: 'load', rev: 3, params: { ...params, [k]: v }, ctrl, width: WIDTH, off: new Float64Array(s.T.N), run: true });
+      const got = ev.slice(n0);
+      assert.deepEqual(got.map(e => e.type), ['error'], `${k} = ${v}: events`);
+      assert.match(got[0].message, new RegExp(`carSpec: ${k}\\b`), `${k} = ${v}: message`);
+      assert.deepEqual({ car: s.car, T: s.T, off: s.off, pub: s.pub, carRev: s.carRev, lineRev: s.lineRev }, before, `${k} = ${v}: state`);
     }
   });
 });

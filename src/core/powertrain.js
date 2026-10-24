@@ -10,11 +10,13 @@ export function enginePower(n,nT){const c3=1/(2*(1-nT)),c2=nT/(1-nT),c1=(3-4*nT)
 export function buildPowertrain(p){ // p: CarSpec (units.js)
   const m=p.mass,Pm=p.Pmax*ETA,drv=new Float64Array(NT),gear=new Int8Array(NT),rpm=new Float64Array(NT),gearF=[];
   if(p.pt==='EV'){
-    const vb=Math.max(1,p.vBase),vm=p.vMotor;
+    const vb=Math.max(1,p.vBase),vm=p.vMotor; // carSpec allows any base speed > 0; under 1 m/s the floor keeps Pm/vb sane
     for(let i=0;i<NT;i++){const v=i*VSTEP;drv[i]=v>vm?0:(v<vb?Pm/vb:Pm/v)/m;gear[i]=v>vm?0:1;rpm[i]=Math.min(1,v/vm);}
     gearF.push(Array.from(drv,a=>a*m));
     return {drv,gear,rpm,gearF};
   }
+  // carSpec makes gears a whole number ≥ 1, so G_ is just p.gears. Top gear below 1st is reachable from the sliders: all
+  // gears then sit at 1st's ratio.
   const G_=Math.max(1,Math.round(p.gears)),v1=p.vGear1,vt=Math.max(p.vGear1,p.vGearTop),nT=p.nTorque,nR=p.nRedline,nMin=0.3;
   const vr=[];for(let g=0;g<G_;g++)vr.push(G_===1?vt:v1*Math.pow(vt/v1,g/(G_-1)));
   for(let g=0;g<G_;g++)gearF.push(new Float64Array(NT));
