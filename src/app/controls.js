@@ -14,12 +14,24 @@ import { SPEC } from './sliders.js';
 // ---------- actions
 export function rebuildTrack(keepLine){
   S.dynRes=null;S.dynStale=false;if(S.dynRunning)S.dynRunning=false;renderDyn();
-  sendState('setTrack',{ctrl:S.ctrl.map(p=>p.slice(0,3)),width:S.width,keepLine,resume:!S.editing});S.hist=[];
+  sendState('setTrack',{ctrl:S.ctrl.map(p=>p.slice(0,3)),width:S.width,keepLine,resume:!S.editing},trackView());S.hist=[];
 }
 export function carChanged(){
   if(S.dynRunning){S.dynRunning=false;renderDyn();}
-  sendState('setCar',{params:{...S.P},resume:!S.editing});S.hist=[];
+  sendState('setCar',{params:{...S.P},resume:!S.editing},carView());S.hist=[];
 }
+// The page's state behind a car or circuit command, for the client to put back if the worker refuses a later one.
+export const carView=()=>({P:{...S.P},preset:$('#carPreset').value});
+export const trackView=()=>({ctrl:S.ctrl.map(p=>p.slice()),origCtrl:S.origCtrl.map(p=>p.slice()),trackIdx:S.trackIdx,width:S.width,hills:S.hills,preset:$('#trackPreset').value});
+// The worker refused a car or circuit change and kept what it had: put the panel back to the last state it accepted (v;
+// null if it never accepted one) and say what was refused, until the next accepted change of that kind.
+export function refused(kind,msg,v){
+  if(kind==='setCar'){if(v){S.P={...v.P};$('#carPreset').value=v.preset;syncFields();}refusedNote('#carRefused',msg);return;}
+  if(v){S.ctrl=v.ctrl.map(p=>p.slice());S.origCtrl=v.origCtrl.map(p=>p.slice());S.trackIdx=v.trackIdx;S.width=v.width;S.hills=v.hills;
+    $('#trackPreset').value=v.preset;$('#f-width').value=S.width;$('#o-width').textContent=S.width+' m';selectHandle(-1);updHillsUI();}
+  refusedNote('#trackRefused',msg);
+}
+function refusedNote(id,msg){const el=$(id);el.textContent='Not applied, so nothing changed: '+msg;el.hidden=false;}
 // The search never runs while editing the track (the worker is paused then); fresh = "Search again" from the current line.
 // The worker owns `running`: this only asks, and S.running follows from its next progress event.
 export function setRunning(r,fresh){if(!S.editing)send(r?{type:'run',fresh:!!fresh}:{type:'pause'});runLabel();}
@@ -38,6 +50,7 @@ export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearG
 // ---------- readouts (also redrawn by the solver client's hooks)
 function setSeg(el,v){el.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(v))));}
 export function renderDerived(){
+  $('#carRefused').hidden=true; // a car the worker accepted
   const {lateral:[l1,l2],braking:bk}=S.info.balance,d=S.info.derived,lim=b=>b.axle==='front'?'front · understeer':'rear · oversteer';
   $('#derived').innerHTML=`<div>Power / weight<b>${Math.round(d.powerToWeight)} kW/t</b></div><div>Top speed<b>${Math.round(d.vTop*3.6)} km/h</b></div>`+
     `<div>Lateral @ ${l1.kmh}<b>${l1.g.toFixed(2)} g</b></div><div>Lateral @ ${l2.kmh}<b>${l2.g.toFixed(2)} g</b></div>`+
@@ -45,6 +58,7 @@ export function renderDerived(){
     `<div>Braking @ ${bk.kmh}<b>${bk.g.toFixed(2)} g</b></div><div>First to lock<b>${bk.axle} axle</b></div>`;
 }
 export function trackArrived(){
+  $('#trackRefused').hidden=true; // a circuit the worker accepted
   const T=S.T;S.corners=findCorners(T);if(S.fitPending&&S.cam.cw){fit();S.fitPending=false;}
   $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+S.corners.length+' turns'; // (#warn: main.js, with the lap's own warnings)
   $('#elevWrap').hidden=T.flat;$('#legElev').hidden=T.flat;
@@ -168,7 +182,7 @@ async function loadPicked(file,mode){
       pinGhost(ghostFrom(run));runMsg(...runSummary(run,file.name),'Recorded lap pinned as the ghost.');return;
     }
     const keep=mode==='ghost';
-    pendingLoad={mode,run,name:file.name,rev:sendLoad({params:keep?{...S.P}:run.car,ctrl:run.track.ctrl,width:run.track.width,off:run.line.off,run:keep})};
+    pendingLoad={mode,run,name:file.name,rev:sendLoad({params:keep?{...S.P}:run.car,ctrl:run.track.ctrl,width:run.track.width,off:run.line.off,run:keep},()=>({setCar:carView(),setTrack:trackView()}))};
     lockPanel(true);
     runMsg(`Loading ${file.name}…`);
   }catch(e){runMsg(e.message);}
@@ -197,7 +211,7 @@ export function loaded(m){
   try{pinGhost(ghostFrom(run));notes.push('Recorded lap pinned as the ghost.');}catch(e){S.ghost=null;updGhostUI();notes.push(e.message);}
   runMsg(...notes);
 }
-export function loadFailed(){pendingLoad=null;lockPanel(false);runMsg('Not loaded: the solver refused the file (see the status line). Nothing was changed.');}
+export function loadFailed(msg){pendingLoad=null;lockPanel(false);runMsg(`Not loaded: the solver refused the file (${msg}). Nothing was changed.`);}
 export function bindRun(){
   const input=$('#runFile');
   $('#exportRun').onclick=exportRun;

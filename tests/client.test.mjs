@@ -15,6 +15,7 @@ client.connect({
   renderDerived() {}, renderDyn() {}, runLabel: () => calls.push(['runLabel']), trackArrived() {},
   showError: msg => calls.push(['showError', msg]), dynLap: n => calls.push(['dynLap', n]),
   loaded: m => calls.push(['loaded', m.rev]), loadFailed: () => calls.push(['loadFailed']),
+  refused: (kind, msg, view) => calls.push(['refused', kind, msg, view]),
 });
 console.error = () => {}; // the client logs every solver error; these tests deliver them on purpose
 const deliver = m => worker.onmessage({ data: m });
@@ -158,4 +159,25 @@ test('client: a snapshot keeps its warn on S.disp', () => {
   const line = { px: [0], py: [0] }, warn = { stall: 3, air: 0, ntop: 1 };
   deliver({ type: 'snapshot', carRev: 900, trackRev: 900, lineRev: 1, lap: 99, line, vmin: 1, vmax: 2, warn });
   assert.deepEqual(S.disp.warn, warn);
+});
+
+// A command the worker refused changed nothing there (paused: false, review L4): the search and a dynamic check go on,
+// and once nothing newer of that kind is queued, the page goes back to the last state the worker accepted. The view a
+// command carries for that is the page's, never sent to the worker.
+test('client: a refused command leaves the search alone and puts the page back to the last accepted state', () => {
+  mark();
+  const refused = () => calls.filter(c => c[0] === 'refused');
+  client.sendState('setCar', { params: { tag: 'a' } }, { P: 'A' });
+  deliver({ type: 'carInfo', carRev: of('setCar').at(-1).rev, info: {} });
+  S.running = true; S.dynRunning = true;
+  client.sendState('setCar', { params: { tag: 'b' } }, { P: 'B' });
+  client.sendState('setCar', { params: { tag: 'c' } }, { P: 'C' }); // queued behind b
+  deliver({ type: 'error', rev: of('setCar').at(-1).rev, paused: false, message: 'b refused', stack: '' });
+  assert.deepEqual(of('setCar').slice(-2).map(c => c.params.tag), ['b', 'c'], 'c goes next');
+  assert.deepEqual(refused(), [], 'c is newer: its answer decides');
+  deliver({ type: 'error', rev: of('setCar').at(-1).rev, paused: false, message: 'c refused', stack: '' });
+  assert.deepEqual(refused(), [['refused', 'setCar', 'c refused', { P: 'A' }]]);
+  assert.equal(S.running, true, 'still searching'); assert.equal(S.dynRunning, true, 'check still running');
+  assert.ok(sent.every(c => !('view' in c) && !('P' in c)), 'views stay on the page');
+  S.dynRunning = false; S.running = false;
 });

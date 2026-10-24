@@ -228,6 +228,7 @@ details p{margin:6px 0 0}
     <section id="carSection">
       <h2>Car</h2>
       <div class="row"><select id="carPreset" aria-label="Car preset"></select></div>
+      <p class="note" id="carRefused" role="status" hidden></p>
       <div class="derived" id="derived"></div>
       <div class="chart-wrap">
         <canvas class="chart" id="forceChart" height="160"></canvas>
@@ -242,6 +243,7 @@ details p{margin:6px 0 0}
         <select id="trackPreset" aria-label="Circuit"></select>
         <button class="btn" id="randTrack">New random</button>
       </div>
+      <p class="note" id="trackRefused" role="status" hidden></p>
       <div class="field">
         <label for="f-width">Track width</label><output id="o-width">12 m</output>
         <input type="range" id="f-width" min="8" max="18" step="0.5" value="12">

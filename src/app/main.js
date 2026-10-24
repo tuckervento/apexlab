@@ -3,7 +3,7 @@
 // (src/app/state.js).
 import { S, $ } from './state.js';
 import { send, sendState, connect } from './client.js';
-import { bindButtons, bindRun, buildCarUI, buildTrackUI, dynLap, fit, loaded, loadFailed, rebuildTrack, renderDerived, renderDyn,
+import { bindButtons, bindRun, buildCarUI, buildTrackUI, carView, dynLap, fit, loaded, loadFailed, rebuildTrack, refused, renderDerived, renderDyn,
   runLabel, selectHandle, setFollow, showError, trackArrived, updGhostUI, updHillsUI } from './controls.js';
 import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
@@ -12,7 +12,7 @@ import { pose, stationPose, raceClock } from '../playback/pose.js';
 import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
 
-connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed});
+connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed,refused});
 
 // ---------- canvas + map input
 const cv=$('#view'),ctx=cv.getContext('2d'),cam=S.cam;
@@ -125,6 +125,6 @@ function frameBody(ts){
 // ---------- boot
 refreshColors();bindButtons();bindRun();buildCarUI();buildTrackUI();
 new ResizeObserver(()=>{const first=!cam.cw;resize();if(first&&S.T)fit();}).observe($('#stage'));
-resize();sendState('setCar',{params:{...S.P}});S.fitPending=true;rebuildTrack(false);
+resize();sendState('setCar',{params:{...S.P}},carView());S.fitPending=true;rebuildTrack(false);
 document.fonts&&document.fonts.ready.then(refreshColors);
 requestAnimationFrame(frame);
