@@ -138,3 +138,24 @@ test('load: another station count is resampled; run:true searches; bad input cha
     }
   });
 });
+
+// A run file recorded by an earlier build (tests/fixtures/run-v1-gt-harrow.apexlab.json: format v1, physics 6a38517c,
+// made in Node before elevation existed) must load into this build and reproduce its recorded lap. The lap is
+// per-runtime like every golden, so the bit-exact part is gated on the goldens' V8 build.
+test('cross-version: a v1 run file from before elevation loads to its recorded lap', async t => {
+  const text = readFileSync(fileURLToPath(new URL('./fixtures/run-v1-gt-harrow.apexlab.json', import.meta.url)), 'utf8');
+  const run = readRunFile(JSON.parse(text)), { s, ev } = boot(), n0 = ev.length;
+  s.handle({ type: 'load', rev: 3, params: run.car, ctrl: run.track.ctrl, width: run.track.width, off: run.line.off, run: false });
+  const got = ev.slice(n0); noErrors(got);
+  const snap = got.find(e => e.type === 'snapshot'), loaded = got.find(e => e.type === 'loaded');
+  t.diagnostic(`recorded ${run.result.lap}  now ${snap.lap}  recorded physics ${run.physics.sha256.slice(0, 8)}, this build ${PHYSICS.sha256.slice(0, 8)}`);
+  await t.test('property', () => {
+    assert.equal(loaded.N, run.line.N); assert.equal(loaded.clamped.n, 0);
+    assert.ok(Math.abs(snap.lap - run.result.lap) < 0.5, `lap ${snap.lap} far from recorded ${run.result.lap}`);
+  });
+  await t.test('golden', () => {
+    assertRuntime(loadGolden());
+    assert.equal(snap.lap, run.result.lap, 'lap of the recorded line, re-scored by this build');
+    sameArrays(snap.line.off, run.line.off, 'line.off');
+  });
+});
