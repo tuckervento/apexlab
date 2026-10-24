@@ -67,8 +67,10 @@ export function dynLap(T,car,dc,line,v,keepTrace){
   let i0=0;{let bk=Infinity;for(let i=0;i<N;i++){let s=0;for(let d=-3;d<=3;d++)s+=Math.abs(k[(i+d+N)%N]);if(s<bk){bk=s;i0=i;}}}
   let x=px[i0],y=py[i0],vx=v[i0],vy=nom.vy[i0],r=nom.r[i0],psi=th[i0]-Math.atan2(vy,vx),delta=nom.delta[i0];
   let axF=nom.ax[i0],ayF=vx*vx*k[i0],idx=i0,prog=0,t=0,eI=0,shiftLeft=0,curG=car.gear[Math.min(NT-1,Math.round(vx/VSTEP))];
-  const trouble=[],tr=keepTrace?{x:[],y:[],v:[],e:[],t:[],st:[]}:null,stV=new Float64Array(N),stE=new Float64Array(N);
-  let maxOff=0,maxE=0,maxDB=0,maxAf=0,maxAr=0,spun=false,lastSt=-1,FyfP=0,FyrP=0;
+  // trace (every 6th step): position, speed v (=vx), line error e, time, station; and for playback (pose) the car's
+  // state: heading psi, vy, yaw rate r, steering delta, slip angles alf/alr, body accelerations ax/ay, gear, path length s
+  const trouble=[],tr=keepTrace?{x:[],y:[],v:[],e:[],t:[],st:[],psi:[],vy:[],r:[],delta:[],alf:[],alr:[],ax:[],ay:[],gear:[],s:[]}:null,stV=new Float64Array(N),stE=new Float64Array(N);
+  let maxOff=0,maxE=0,maxDB=0,maxAf=0,maxAr=0,spun=false,lastSt=-1,FyfP=0,FyrP=0,path=0;
   const steps=Math.ceil(900/dt);
   for(let it=0;it<steps;it++){
     let best=idx,bd=Infinity,bdd=0;
@@ -105,14 +107,15 @@ export function dynLap(T,car,dc,line,v,keepTrace){
     const FX=Fxf*cd-Fyf*sd+Fxr-drag,FY=Fxf*sd+Fyf*cd+Fyr,MZ=a*(Fxf*sd+Fyf*cd)-b*Fyr;
     const ax=FX/m,ay=FY/m,kf=Math.min(1,dt/DYN.lag);axF+=(ax-axF)*kf;ayF+=(ay-ayF)*kf;
     vx+=(ax+vy*r)*dt;vy+=(ay-vx*r)*dt;r+=MZ/Izz*dt;if(vx<1)vx=1;
-    psi+=r*dt;const c=Math.cos(psi),s=Math.sin(psi);x+=(vx*c-vy*s)*dt;y+=(vx*s+vy*c)*dt;t+=dt;
+    psi+=r*dt;const c=Math.cos(psi),s=Math.sin(psi);x+=(vx*c-vy*s)*dt;y+=(vx*s+vy*c)*dt;t+=dt;if(tr)path+=Math.hypot(vx,vy)*dt;
     const o=(x-T.cx[idx])*T.nx[idx]+(y-T.cy[idx])*T.ny[idx],over=Math.abs(o)-hwTrack;
     const dB=Math.abs(Math.atan2(vy,vx)-Math.atan2(vyN,Math.max(1,vt)));
     if(over>maxOff)maxOff=over;if(Math.abs(e)>maxE)maxE=Math.abs(e);if(dB>maxDB)maxDB=dB;if(Math.abs(alf)>maxAf)maxAf=Math.abs(alf);if(Math.abs(alr)>maxAr)maxAr=Math.abs(alr);
     if(idx!==lastSt){stV[idx]=vx;stE[idx]=e;lastSt=idx;}
     if(over>DYN.tolOff||dB>0.1)trouble.push(idx);
     if(over>3||dB>0.45){spun=true;break;}
-    if(tr&&it%6===0){tr.x.push(x);tr.y.push(y);tr.v.push(vx);tr.e.push(e);tr.t.push(t);tr.st.push(idx);}
+    if(tr&&it%6===0){tr.x.push(x);tr.y.push(y);tr.v.push(vx);tr.e.push(e);tr.t.push(t);tr.st.push(idx);
+      tr.psi.push(psi);tr.vy.push(vy);tr.r.push(r);tr.delta.push(delta);tr.alf.push(alf);tr.alr.push(alr);tr.ax.push(ax);tr.ay.push(ay);tr.gear.push(curG);tr.s.push(path);}
   }
   return {t,start:i0,spun,complete:!spun&&prog>=N,trouble,maxOff,maxE,maxDB,maxAf,maxAr,stV,stE,trace:tr,endIdx:idx,nom};
 }
