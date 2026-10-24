@@ -96,3 +96,18 @@ test('simple: a grippier tyre gives more lateral g at 100 and 200 km/h', () => {
     }
   }
 });
+
+// Balance moves the car toward oversteer: the front axle's lateral limit gains on the rear's. Not asserted: that the
+// knob's ends flip the limiting axle. They don't on every base car (Hot hatch stays front-limited at +1, Kart stays
+// rear-limited at −1: its gap spans only +0.43 to −0.17 % over the whole rollF slider range).
+test('simple: Balance moves every base car from understeer toward oversteer', () => {
+  const { VSTEP } = core, ix = kmh => Math.round(kmh / 3.6 / VSTEP);
+  for (const base of BASES) for (const kmh of [100, 200]) {
+    const gaps = [];
+    for (let i = 0; i <= 8; i++) {
+      const balance = -1 + i / 4, c = core.buildCar(deriveParams({ ...defaults(base), balance })), f = c.ayF[ix(kmh)], r = c.ayR[ix(kmh)];
+      gaps.push((f - r) / Math.max(f, r));
+    }
+    for (let i = 1; i < gaps.length; i++) assert.ok(gaps[i] > gaps[i - 1], `${base} at ${kmh} km/h: front-rear gap ${gaps.map(g => (100 * g).toFixed(2)).join(' ')} %`);
+  }
+});
