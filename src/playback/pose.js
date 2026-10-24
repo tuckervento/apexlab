@@ -1,6 +1,6 @@
 // Playback (ARCHITECTURE.md §10.2): the car's pose at time t along a lap snapshot (lap-model speeds: the racing line,
 // ghosts) or a dynamic-check trace (dynLap with keepTrace: true yaw, steering and slip), and the race clock for ghosts.
-// Pure, no DOM. Pose: station, s (m along the line, or travelled for a trace), x, y, z (0: flat world), heading
+// Pure, no DOM. Pose: station, s (m along the line, or travelled for a trace), x, y, z (height, from the snapshot's pz; 0 without it, and for traces), grade (rise over run in plan; lap poses), heading
 // (rad, screen frame), speed (m/s), ax (longitudinal) and ay (lateral, signed like curvature) in m/s²; with info
 // (describeCar) also gear and rpm (fraction of redline, from the best-gear table). Traces add steer, slipF, slipR,
 // beta (sideslip) and yawRate, and report the gear the driver model was actually in. Lap poses add frac (how far
@@ -23,7 +23,8 @@ function lapPose(d,rt,info){
 export function stationPose(d,lo,f,info){
   const N=d.px.length,j=(lo+1)%N;
   let s=0;for(let i=0;i<lo;i++)s+=d.ds[i];s+=f*d.ds[lo];
-  const p={station:lo,frac:f,s,x:d.px[lo]+(d.px[j]-d.px[lo])*f,y:d.py[lo]+(d.py[j]-d.py[lo])*f,z:0,heading:Math.atan2(d.py[j]-d.py[lo],d.px[j]-d.px[lo]),
+  const pz=d.pz,dz=pz?pz[j]-pz[lo]:0; // heights (absent before elevation: flat); grade = rise over run in plan
+  const p={station:lo,frac:f,s,x:d.px[lo]+(d.px[j]-d.px[lo])*f,y:d.py[lo]+(d.py[j]-d.py[lo])*f,z:pz?pz[lo]+dz*f:0,grade:dz/Math.sqrt(Math.max(1e-12,d.ds[lo]*d.ds[lo]-dz*dz)),heading:Math.atan2(d.py[j]-d.py[lo],d.px[j]-d.px[lo]),
     speed:d.v[lo]+(d.v[j]-d.v[lo])*f,ax:(d.v[j]*d.v[j]-d.v[lo]*d.v[lo])/(2*d.ds[lo]+1e-9),ay:d.v[lo]*d.v[lo]*d.k[lo]};
   if(d.phys){const ph={};for(const k in d.phys){const a=d.phys[k];ph[k]=a[lo]+(a[j]-a[lo])*f;}p.phys=ph;}
   if(info){const i=at(info,p.speed);p.gear=info.curves.gear[i];p.rpm=info.curves.rpm[i];}

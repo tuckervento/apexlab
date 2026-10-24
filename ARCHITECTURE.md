@@ -252,7 +252,7 @@ Plain objects are frozen; arrays are fresh copies.
 ```ts
 { px[], py[], v[], ds[], k[], tc[] /* cumulative time, length N+1 */, off[] /* the line's lateral offsets */, t, vmin, vmax, u[] | null,
   phys: { fxf[], fxr[], fyf[], fyr[] /* axle tyre forces */, wf[], wr[] /* axle loads */, uf[], ur[] /* grip use */,
-          down[], drag[] /* drag: aero + rolling */ } }   // N; from dynNominal on the line at v (inverse dynamics)
+          down[], drag[] /* drag: aero + rolling */, nz[] /* load factor, 1 on level ground */ } }   // N; from dynNominal on the line at v (inverse dynamics)
 ```
 
 A pinned ghost is a copy of `disp` (with `phys`), plus the car's `wb` and `track`.

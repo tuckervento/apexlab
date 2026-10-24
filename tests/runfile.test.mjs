@@ -163,12 +163,13 @@ test('cross-version: a v1 run file from before elevation loads to its recorded l
 });
 
 // The v1 -> v2 migration, explicitly: the pre-elevation fixture comes back with heights 0 everywhere (exact: v1 is flat).
-test('run file: a v1 file migrates to v2 with z = 0 and pz = 0', () => {
+test('run file: a v1 file migrates to v2 with z = 0, pz = 0 and load factor nz = 1', () => {
   const run = readRunFile(JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/run-v1-gt-harrow.apexlab.json', import.meta.url)), 'utf8')));
   assert.equal(run.version, 1, 'the file\'s own version is reported');
   assert.ok(run.track.ctrl.every(p => p.length === 3 && p[2] === 0), 'control points [x, y, 0]');
   assert.equal(run.result.snapshot.pz.length, run.line.N); assert.ok(run.result.snapshot.pz.every(z => z === 0), 'pz = 0');
   assert.ok(core.buildTrack(run.track.ctrl, run.track.width).flat, 'the migrated circuit is flat');
+  assert.ok(run.result.snapshot.phys.nz.length === run.line.N && run.result.snapshot.phys.nz.every(x => x === 1), 'load factor filled with 1 (level ground)');
 });
 
 // A hilly run, v2: exported from a solver on a hilly circuit, through JSON, loaded into a fresh solver.

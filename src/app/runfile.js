@@ -85,6 +85,9 @@ export function readRunFile(o) {
   snapshot.pz = v1 ? new Float64Array(N) : arr('result.snapshot.pz', sn.pz, N);
   const ph = need(sn, 'phys', 'result.snapshot.phys');
   snapshot.phys = Object.fromEntries(Object.keys(ph).map(k => [k, arr(`result.snapshot.phys.${k}`, ph[k], N)]));
+  // The load factor nz joined the telemetry with elevation. On level ground it is exactly 1, so a run without it there
+  // (every v1 file) gets it; a hilly run without it stays without, and can't be compared as a ghost (it says why).
+  if (!('nz' in snapshot.phys) && ctrl.every(p => p[2] === ctrl[0][2])) snapshot.phys.nz = new Float64Array(N).fill(1);
   let dyn = null;
   if (res.dyn != null) { const d = need(res, 'dyn', 'result.dyn'); dyn = { frac: fin('result.dyn.frac', d.frac), t: d.t == null ? null : fin('result.dyn.t', d.t), umax: fin('result.dyn.umax', d.umax), uaxle: d.uaxle, fail: d.fail ?? null }; }
 

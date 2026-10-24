@@ -131,7 +131,7 @@ export class Solver{
     // forces on the car from inverse dynamics (telemetry), and with util the per-axle grip use for tyre-use colouring
     const th=new Float64Array(N);for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(S.py[j]-S.py[i],S.px[j]-S.px[i]);}
     const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds,...grades(T)},S.v); // fresh arrays: sent as they are; S.ds is the 3D step on hills
-    const phys={fxf:n.Fxf,fxr:n.Fxr,fyf:n.Fyf,fyr:n.Fyr,wf:n.Wf,wr:n.Wr,uf:n.uf,ur:n.ur,down:n.down,drag:n.drag};
+    const phys={fxf:n.Fxf,fxr:n.Fxr,fyf:n.Fyf,fyr:n.Fyr,wf:n.Wf,wr:n.Wr,uf:n.uf,ur:n.ur,down:n.down,drag:n.drag,nz:n.nz}; // nz: load factor (1 on level ground)
     const off=Float64Array.from(this.pub); // the offsets themselves: a saved run needs the exact line, not just its points
     const pz=Float64Array.from(T.z); // the line's heights (no banking: the track's at each station)
     const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys,off,pz},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,off.buffer,pz.buffer,...Object.values(phys).map(a=>a.buffer)];

@@ -335,3 +335,22 @@ test('dynamics: over a crest the inverse dynamics finds the tyres at their reduc
     assert.ok(mean >= 0.9 && mean <= 1.15, `${name}: tyre use ${mean} at crest-limited corners`);
   }
 });
+
+// Playback on hills: a lap pose's height interpolates the line's heights within the station segment, and its grade
+// is rise over run in plan (the 3D step ds carries the rise: run = √(ds² − dz²)).
+test('pose: height and grade on a hilly lap snapshot', () => {
+  const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), ev = [], s = new core.Solver(e => ev.push(e));
+  s.handle({ type: 'setCar', rev: 1, params: { ...core.CARS['GT racer'] } });
+  s.handle({ type: 'setTrack', rev: 2, ctrl: withZ(ctrl, u.map(x => 30 * x)), width: WIDTH, keepLine: false });
+  const L = ev.filter(e => e.type === 'snapshot').at(-1).line, N = L.pz.length;
+  let checked = 0;
+  for (let i = 0; i < N; i += 37) for (const f of [0, 0.25, 0.8]) {
+    const p = core.stationPose(L, i, f), j = (i + 1) % N, dz = L.pz[j] - L.pz[i];
+    assert.ok(Math.abs(p.z - (L.pz[i] + dz * f)) < 1e-12, `z at station ${i} + ${f}`);
+    assert.ok(Math.abs(p.grade - dz / Math.sqrt(L.ds[i] ** 2 - dz ** 2)) < 1e-12, `grade at station ${i}`);
+    checked++;
+  }
+  assert.ok(checked > 50 && L.pz.some(z => z !== 0));
+  const flat = core.stationPose({ ...L, pz: undefined }, 3, 0.5); // a snapshot from before elevation has no heights
+  assert.deepEqual([flat.z, flat.grade], [0, 0]);
+});

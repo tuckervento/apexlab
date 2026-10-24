@@ -134,11 +134,12 @@ test('solver: emitted arrays are copies, never solver state', () => {
 // plus downforce: longitudinal transfer moves load between the axles but cancels in the sum.
 test('solver: every snapshot carries phys, and axle loads sum to weight plus downforce', t => {
   const b = converged(), N = b.s.T.N, m = b.s.car.m, snaps = b.of('snapshot');
-  const KEYS = ['fxf', 'fxr', 'fyf', 'fyr', 'wf', 'wr', 'uf', 'ur', 'down', 'drag'];
+  const KEYS = ['fxf', 'fxr', 'fyf', 'fyr', 'wf', 'wr', 'uf', 'ur', 'down', 'drag', 'nz'];
   let worst = 0;
   for (const [n, sn] of snaps.entries()) {
     const ph = sn.line.phys;
     assert.deepEqual(Object.keys(ph).sort(), [...KEYS].sort(), `snapshot ${n} phys keys`);
+    assert.ok(ph.nz.every(x => x === 1), `snapshot ${n}: load factor not exactly 1 on a flat circuit`);
     for (const k of KEYS) {
       assert.equal(ph[k].length, N, `snapshot ${n} phys.${k} length`);
       if (!ph[k].every(Number.isFinite)) assert.fail(`snapshot ${n} phys.${k} has a non-finite value`);
