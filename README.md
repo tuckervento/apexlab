@@ -124,3 +124,6 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 7. improved tyre physics (maybe not full temperatures, but some sort of deg is needed)
 8. weather?
 9. add "simple" controls that map to the full configurables
+
+### idea
+after finding ideal line, make 'driver' repeat laps with realistic deg, and it needs to try to maintain the line / compensate for the loss of grip.  this would provide another layer of 'competition' as we try to improve the driving algorithms and see if we can beat prior 'race times'
