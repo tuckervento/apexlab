@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Apex Lab: finds the minimum-time racing line around a closed circuit for a configurable car, then checks how much of that pace a time-stepped bicycle model can hold. Physics in ES modules under `src/`, app in `index.html`; no build, no dependencies, no package.json. The original single-file prototype is frozen in `prototype/apex-lab.html` (reference only — don't edit). `ARCHITECTURE.md` is the detailed reference (conventions, physics rules, optimiser stages, data shapes, protocol/migration plan) — read it before changing physics.
+Apex Lab: finds the minimum-time racing line around a closed circuit for a configurable car, then checks how much of that pace a time-stepped bicycle model can hold. Physics, solver, views and app in ES modules under `src/` (`index.html` is markup, CSS and one script tag); no build, no dependencies, no package.json. The original single-file prototype is frozen in `prototype/apex-lab.html` (reference only — don't edit). `ARCHITECTURE.md` is the detailed reference (conventions, physics rules, optimiser stages, data shapes, protocol/migration plan) — read it before changing physics.
 
 ## Running and testing
 
@@ -17,12 +17,13 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
 
 ## Architecture (big picture)
 
-Four layers; core, dynamics and solver have no DOM access and must stay that way (the solver runs in a Web Worker).
+Five layers; core, dynamics and solver have no DOM access and must stay that way (the solver runs in a Web Worker).
 
 1. **Core** (`src/core/`) — track (`genCtrl` → `buildTrack` spline → `makeBounds`), car (`buildCar` precomputes speed-indexed limit tables incl. the GGV), quasi-steady-state lap model `lapEval`, and `Optimizer` (staged spline L-BFGS).
 2. **Dynamics** (`src/dynamics/`) — `dynNominal` (inverse dynamics), `dynLap` (4 ms time-stepped lap with feedforward+feedback driver), `DynCheck` (bisects the fastest clean fraction of lap-model pace).
 3. **Solver** (`src/solver/`) — `Solver` owns car, track, line, `Optimizer` and `DynCheck` behind the `ARCHITECTURE.md` §10.1 protocol (commands in, events out, every array a copy, results tagged with car/track/line revisions); `worker.js` runs it in a Web Worker in 15 ms slices. No worker APIs in `solver.js`, so `tests/solver.test.mjs` drives it directly.
-4. **App** (inline module script in `index.html`; presets in `src/app/presets.js`) — a protocol client: owns the UI params `P`, renders `T`/`disp`/`info`/`prog`/`dynRes` from worker events, canvas drawing, charts, controls. Imports only `G` and `genCtrl` from core.
+4. **Views** (`src/views/map2d/`) — camera, palette, `drawMap`, charts. Pure functions of explicit inputs (canvas, camera, palette, data); they never import app state, so a second view (3D, step 9) can sit beside them.
+5. **App** (`src/app/`) — `state.js` (`S`, the one app state object), `client.js` (worker protocol client: applies events to `S`, calls UI hooks given to `connect()`), `controls.js` (panel, buttons, actions), `main.js` (map input, frame loop, HUD, boot), `presets.js`. Uses only `genCtrl` from core.
 
 Key couplings across the layers:
 - The main thread has no car, bounds, line or optimiser: everything physical arrives as worker events. Views get car data only from `carInfo` (`describeCar`), and the line only from `snapshot` (tyre use `u` too, after a `view` command).

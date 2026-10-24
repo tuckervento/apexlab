@@ -8,12 +8,13 @@ This document describes the current code (physics in ES modules under `src/`, th
 
 ## 1. Status
 
-- **Layers** (migration steps 1–5 done):
+- **Layers** (migration steps 1–6 done):
   - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
-  - `src/app/presets.js` — `CARS`, `TRACKS`.
-  - `index.html` — markup, CSS, and the app as one inline module script: a protocol client that renders what the worker sends, canvas drawing, charts, controls.
+  - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`; `carState`/`raceClock` until step 7), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
+  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`).
+  - `index.html` — markup and CSS, plus `<script type="module" src="./src/app/main.js">`.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
 - **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
 - **No build step, no dependencies.** Fonts load from Google Fonts; nothing else is external.
@@ -49,7 +50,7 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 | `buildCar(params) → CarModel` | Calls `carSpec`, then precomputes every speed-indexed limit table (§4). | About 60 ms; called on every slider change. `car.spec` is a frozen snapshot, not the caller's object. |
 | `describeCar(CarModel) → CarInfo` | Chart- and readout-ready car data: force curves on the speed grid, the balance readout, top speed, power/weight (§7). | The only car data views read; they treat `car` as an opaque handle. Arrays are copies. Becomes the `carInfo` payload in step 5. |
 | `lapEval(Track, CarModel, off, Scratch, grad?, tau?, lim?) → lapTime` | Quasi-steady-state lap of a given line. Fills `Scratch` with points, step lengths, curvature, speeds. Optionally writes the **exact gradient** `dT/d(off)` into `grad`. | `tau > 0` softens every hard `min()` for the optimiser. `lim = {cap, bs, ts}` adds per-station speed caps and braking/traction scales (no gradient). |
-| `class Optimizer` | `setup(Track, CarModel, Bounds, off)`, `step() → improved`, `rescore(CarModel, Bounds)`, plus `best`, `converged`, `stageInfo`, `evals`, `exactLap()`, `clamp(x)`. | **Mutates `off` in place.** See §5. |
+| `class Optimizer` | `setup(Track, CarModel, Bounds, off)`, `step() → improved`, `rescore(CarModel, Bounds)`, plus `best`, `converged`, `stageInfo`, `evals`, `exactLap()`, `clamp(x)`, `current(out)` (the accepted line: during the polish `off` can hold a rejected candidate). | **Mutates `off` in place.** See §5. |
 | `vCorner`, `tabAt`, `tab2`, `gg2`, `smin`, `solveDec`, `enginePower`, `buildPowertrain` | Helpers. | `vCorner(car, k, kc, out)` writes speed and `dv/d|k|` into `out`, like `tab2`/`gg2`. `lapEval`'s small output buffers live in `Scratch` (`t0`–`t3`), so it keeps no module-level state. |
 
 ### 3.2 Dynamics
@@ -63,7 +64,7 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 
 ### 3.3 App (everything else)
 
-The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread owns the UI parameters `P` and renders only what the worker sends: `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. It imports from core only `G` and `genCtrl`.
+The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core it uses only `genCtrl` (and the views use `G`).
 
 - `setCar`/`setTrack` are coalesced: one in flight per kind, and only the latest pending one is sent next, so a slider or handle drag can't queue up ~60 ms rebuilds.
 - A snapshot never steps back to an older car or track, and a new track is swapped in together with its first snapshot (stations change with the track).
@@ -319,9 +320,9 @@ src/
   solver/        Web Worker that owns Optimizer and DynCheck; message protocol
   playback/      pose(t) from a lap result or a dynamic trace; race clock for ghosts
   views/
-    map2d/       current canvas map + charts, as a client of the protocol
+    map2d/       current canvas map + charts, drawn from explicit inputs (step 6)
     scene3d/     future
-  app/           state store, controls, wiring
+  app/           state object, protocol client, controls, wiring (step 6)
 tests/
 ```
 
@@ -407,7 +408,7 @@ Each step keeps behaviour identical and is checked against §8.
    ✅ Normalise parameter units at the boundary (`carSpec`). Goldens and prototype parity unchanged, bit for bit.
 4. ✅ **Add `describeCar()`** and move chart and readout data behind it. `index.html` reads no `car.<field>`; readouts and the force chart are pixel-identical for every preset. Tyre-use colouring stays on `dynNominal` until step 5.
 5. ✅ **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only. A run through the protocol reproduces the convergence fixture and its dynamic check bit for bit (`tests/solver.test.mjs`). In headless Chrome, convergence takes 9 s instead of 32 s, at the same 1:18.348.
-6. **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots.
+6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences are the stale HUD gear digit (§12) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
 7. **Add `playback.pose()`**; the 2D car marker and ghost use it.
 8. **Elevation:** the track record (§10.3), physics terms, golden-value refresh with a new track-generator version.
 9. **3D view** as a second client of the protocol and pose contract.
@@ -419,6 +420,7 @@ Each step keeps behaviour identical and is checked against §8.
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.
 - **`buildCar` costs about 60 ms**, the GGV bisections included. Fine on slider release; heavy on continuous drag. Consider fewer bisection steps, or memoising by parameter hash.
 - **The dynamic check's driver gains were tuned on the GT and road presets.** Very different cars may need retuning before the margin can be trusted.
+- **With replay off, the HUD keeps the last gear shown** while speed and g go to "—" (the HUD's no-car branch doesn't reset `#carGear`). From the prototype; harmless.
 - **Lap model and dynamic model disagree more for some presets** (§8.5/8.6 table): Hot hatch AWD and EV saloon reach inverse-dynamics utilisation 1.11–1.12; the Road car holds only 91% of lap-model pace on two circuits; the Kart reaches 100% (the check can't find its limit). Not investigated: it could be the lap model, the bicycle model or the driver.
 
 ---
