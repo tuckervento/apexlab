@@ -37,11 +37,12 @@ export function runSource(srcDir = SRC) {
   return digest(srcDir, [...jsFiles(join(srcDir, 'core')), ...jsFiles(join(srcDir, 'dynamics')), join(srcDir, 'solver/solver.js')]);
 }
 
-// Build a preset circuit the way the app does (genCtrl -> buildTrack -> makeBounds).
-export function setupPreset(core, carName, { seed = core.TRACKS[0].seed, width = 12 } = {}) {
+// Build a preset circuit the way the app does (genCtrl -> buildTrack -> makeBounds); hills (m, lowest to highest point)
+// as the app's Hills slider sets them (genElev), with a car that has load tables. hills 0 is exactly the flat circuit.
+export function setupPreset(core, carName, { seed = core.TRACKS[0].seed, width = 12, hills = 0 } = {}) {
   const params = core.CARS[carName];
   if (!params) throw new Error(`Unknown car preset "${carName}"; have: ${Object.keys(core.CARS).join(', ')}`);
-  const P = { ...params }, car = core.buildCar(P);
-  const T = core.buildTrack(core.genCtrl(seed, width), width), B = core.makeBounds(T, car);
+  const P = { ...params }, car = core.buildCar(P, { loads: hills > 0 }), c = core.genCtrl(seed, width), u = hills > 0 ? core.genElev(seed, c) : null;
+  const T = core.buildTrack(u ? c.map((p, i) => [p[0], p[1], hills * u[i]]) : c, width), B = core.makeBounds(T, car);
   return { P, car, T, B };
 }

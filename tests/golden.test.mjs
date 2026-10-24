@@ -6,30 +6,31 @@
 import { describe, test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore, setupPreset } from './load-core.mjs';
-import { loadGolden, assertRuntime, comboKey, clampedZeros, dynSummary } from './golden-util.mjs';
+import { loadGolden, assertRuntime, comboKey, clampedZeros, dynSummary, HILLY, circuitName } from './golden-util.mjs';
 
 const FRAC_MIN = 0.85, UMAX_MAX = 1.15;
 const core = await loadCore(), g = loadGolden(), { CARS, TRACKS } = core;
-const combos = Object.keys(CARS).flatMap(car => TRACKS.map(track => ({ car, track, key: comboKey(car, track.name) })));
+const combos = Object.keys(CARS).flatMap(car => [...TRACKS.map(track => ({ car, track, hills: 0 })), ...HILLY.map(h => ({ car, track: TRACKS[h.track], hills: h.hills }))])
+  .map(c => ({ ...c, key: comboKey(c.car, circuitName(c.track.name, c.hills)) }));
 
 test('golden: centreline laps, all cars × circuits', () => {
   assertRuntime(g);
   const bad = [];
-  for (const { car, track, key } of combos) {
-    const { T, B, car: c } = setupPreset(core, car, { seed: track.seed });
+  for (const { car, track, hills, key } of combos) {
+    const { T, B, car: c } = setupPreset(core, car, { seed: track.seed, hills });
     const lap = core.lapEval(T, c, clampedZeros(B, T.N), core.makeScratch(T.N)), want = g.combos[key]?.centreLap;
     if (lap !== want) bad.push(`${key}: ${lap} !== ${want}`);
   }
   assert.deepEqual(bad, [], `centreline laps differ from goldens:\n${bad.join('\n')}`);
 });
 
-for (const { car, track, key } of combos) {
+for (const { car, track, hills, key } of combos) {
   describe(key, () => {
     let T, B, off, s, centreLap;
     before(() => {
       const fx = g.combos[key];
       if (!fx) throw new Error(`no fixture for ${key} in goldens; regenerate with node tests/make-golden.mjs --write`);
-      const p = setupPreset(core, car, { seed: track.seed });
+      const p = setupPreset(core, car, { seed: track.seed, hills });
       ({ T, B } = p);
       off = Float64Array.from(fx.off);
       centreLap = core.lapEval(T, p.car, clampedZeros(B, T.N), core.makeScratch(T.N));

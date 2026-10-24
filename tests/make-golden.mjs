@@ -12,28 +12,28 @@ import { writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { loadCore, setupPreset, coreSource } from './load-core.mjs';
-import { GOLDEN_PATH, SKIDPAD, comboKey, clampedZeros, dynSummary, skidpad } from './golden-util.mjs';
+import { GOLDEN_PATH, SKIDPAD, comboKey, clampedZeros, dynSummary, skidpad, HILLY, circuitName } from './golden-util.mjs';
 
 const MAX_STEPS = 5e6, SELF = fileURLToPath(import.meta.url), REPO = fileURLToPath(new URL('..', import.meta.url));
 const argv = process.argv.slice(2);
 
-async function runCombo(carName, trackIdx) {
-  const core = await loadCore(), track = core.TRACKS[trackIdx];
-  const { T, B, car } = setupPreset(core, carName, { seed: track.seed }), N = T.N;
+async function runCombo(carName, trackIdx, hills) {
+  const core = await loadCore(), track = core.TRACKS[trackIdx], name = circuitName(track.name, hills);
+  const { T, B, car } = setupPreset(core, carName, { seed: track.seed, hills }), N = T.N;
   const off = clampedZeros(B, N), centreLap = core.lapEval(T, car, off, core.makeScratch(N));
   const opt = new core.Optimizer(), t0 = performance.now();
   opt.setup(T, car, B, off);
   let steps = 0;
   while (!opt.converged) {
-    if (steps >= MAX_STEPS) throw new Error(`${carName} | ${track.name}: not converged after ${steps} steps (evals ${opt.evals})`);
+    if (steps >= MAX_STEPS) throw new Error(`${carName} | ${name}: not converged after ${steps} steps (evals ${opt.evals})`);
     opt.step(); steps++;
   }
   const secs = (performance.now() - t0) / 1000;
-  return { car: carName, track: track.name, secs, golden: { N, centreLap, evals: opt.evals, steps, ...dynSummary(core, T, car, off), off: Array.from(off) } };
+  return { car: carName, track: name, secs, golden: { N, centreLap, evals: opt.evals, steps, ...dynSummary(core, T, car, off), off: Array.from(off) } };
 }
 
 // exit only once the message is flushed: exiting straight after send() can drop it
-if (argv[0] === '--job') process.send(await runCombo(argv[1], +argv[2]), () => process.exit(0));
+if (argv[0] === '--job') process.send(await runCombo(argv[1], +argv[2], +argv[3]), () => process.exit(0));
 else await main();
 
 async function main() {
@@ -41,12 +41,12 @@ async function main() {
   if (argv.length && !out) throw new Error(`Usage: node tests/make-golden.mjs [--write | --out <path>]; got ${argv.join(' ')}`);
 
   const core = await loadCore(), jobs = [];
-  for (const car of Object.keys(core.CARS)) for (let t = 0; t < core.TRACKS.length; t++) jobs.push([car, t]);
-  const runJob = ([car, t]) => new Promise((resolve, reject) => {
+  for (const car of Object.keys(core.CARS)) { for (let t = 0; t < core.TRACKS.length; t++) jobs.push([car, t, 0]); for (const h of HILLY) jobs.push([car, h.track, h.hills]); }
+  const runJob = ([car, t, hills]) => new Promise((resolve, reject) => {
     let res = null;
-    const child = fork(SELF, ['--job', car, String(t)]);
+    const child = fork(SELF, ['--job', car, String(t), String(hills)]);
     child.on('message', m => { res = m; });
-    child.on('exit', code => code === 0 && res ? resolve(res) : reject(new Error(`job ${car} | ${core.TRACKS[t].name} exited with code ${code}`)));
+    child.on('exit', code => code === 0 && res ? resolve(res) : reject(new Error(`job ${car} | ${circuitName(core.TRACKS[t].name, hills)} exited with code ${code}`)));
   });
 
   const results = [], queue = jobs.slice(), t0 = performance.now();
@@ -67,7 +67,7 @@ async function main() {
   if (!out) return;
 
   // One combo per line so a regenerated file diffs per combo. JSON numbers round-trip doubles exactly.
-  const order = new Map(jobs.map(([c, t], i) => [comboKey(c, core.TRACKS[t].name), i]));
+  const order = new Map(jobs.map(([c, t, hills], i) => [comboKey(c, circuitName(core.TRACKS[t].name, hills)), i]));
   const combos = results.map(r => [comboKey(r.car, r.track), r.golden]).sort((a, b) => order.get(a[0]) - order.get(b[0]));
   const text = `{"meta":${JSON.stringify(meta)},\n"skidpad":${JSON.stringify({ car: SKIDPAD.car, results: skid })},\n"combos":{\n` +
     combos.map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',\n') + '\n}}\n';

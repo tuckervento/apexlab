@@ -46,9 +46,10 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 |---|---|---|
 | `genCtrl(seed, width) → ctrl[]` | Procedural circuit: 9–15 control points, a star-shaped polygon with random radii; retries until valid. | Seeded RNG (`mulberry32`). Preset circuits are just seeds. |
 | `buildTrack(ctrl, width) → Track` | Periodic C² cubic spline through the control points (chord-length knots), sampled densely (~0.25 m), resampled to stations. Computes centreline points, normals, smoothed curvature `kc`, minimum radius and an `issue` string for overlaps or too-tight corners. | C² matters: an earlier Catmull-Rom spline had curvature steps at every control point, which every racing line inherited. |
+| `genElev(seed, ctrl) → unit heights` | A smooth closed height profile for a circuit's control points (three harmonics of distance along the loop, its own random stream), lowest to highest point 1 apart. The app multiplies it by *Hills* (m). | Step 8. |
 | `makeBounds(Track, CarModel) → {lo, hi, hw}` | Usable lateral range per station: half width minus half the car's width, plus a fold limit `|off| < 0.8 / |kc|` on the inside of tight corners. | |
 | `carSpec(params) → CarSpec` | Validates `CarParams` and converts them to SI (§7). | Throws on any missing, non-finite or invalid field; no defaults. Result is frozen. |
-| `buildCar(params) → CarModel` | Calls `carSpec`, then precomputes every speed-indexed limit table (§4). | About 60 ms; called on every slider change. `car.spec` is a frozen snapshot, not the caller's object. |
+| `buildCar(params, {loads?}) → CarModel` | Calls `carSpec`, then precomputes every speed-indexed limit table (§4). With `loads: true` also `car.load`, the grip tables at 17 load factors (§4.7). | About 16 ms in Node v26 (measured in step 8; older notes said 60 ms), ~250 ms with `loads`; called on every slider change. `car.spec` is a frozen snapshot, not the caller's object. |
 | `describeCar(CarModel) → CarInfo` | Chart- and readout-ready car data: force curves on the speed grid, the balance readout, top speed, power/weight (§7). | The only car data views read; they treat `car` as an opaque handle. Arrays are copies. Becomes the `carInfo` payload in step 5. |
 | `lapEval(Track, CarModel, off, Scratch, grad?, tau?, lim?) → lapTime` | Quasi-steady-state lap of a given line. Fills `Scratch` with points, step lengths, curvature, speeds. Optionally writes the **exact gradient** `dT/d(off)` into `grad`. | `tau > 0` softens every hard `min()` for the optimiser. `lim = {cap, bs, ts}` adds per-station speed caps and braking/traction scales (no gradient). |
 | `class Optimizer` | `setup(Track, CarModel, Bounds, off)`, `step() → improved`, `rescore(CarModel, Bounds)`, plus `best`, `converged`, `stageInfo`, `evals`, `exactLap()`, `clamp(x)`, `current(out)` (the accepted line: during the polish `off` can hold a rejected candidate). | **Mutates `off` in place.** See §5. |
@@ -110,7 +111,7 @@ Drivetrain efficiency `ETA = 0.9` and rolling resistance `CRR = 0.012` are const
 
 ### 4.4 Rules applied by `lapEval`
 
-1. **Geometry:** line points from offsets, step lengths, three-point curvature.
+1. **Geometry:** line points from offsets, step lengths, three-point curvature (on hills: 3D steps, horizontal curvature; §4.7).
 2. **Corner speed per station** is the softer minimum of:
    - the steady lateral limit at `|k|`, and
    - the **yaw limit**: an effective curvature `|k| + l · |dk/ds|` checked against one axle's own limit. Tightening into a turn (`d|k|/ds > 0`) needs spare front grip, using `lF`; unwinding needs spare rear grip, using `lR`.
@@ -123,13 +124,26 @@ Drivetrain efficiency `ETA = 0.9` and rolling resistance `CRR = 0.012` are const
 
 ### 4.5 Gradient
 
-The reverse pass is hand-written and exact through every step above, including the yaw term, shift losses and GGV interpolation. It has been checked against central finite differences to at least four significant figures in both hard and softened (`tau > 0`) modes. **Any change to `lapEval` must keep this check passing** (§8).
+The reverse pass is hand-written and exact through every step above, including the yaw term, shift losses and GGV interpolation, and on hills the load factor's dependence on speed (`dn/du`) and the 3D steps (§4.7). It has been checked against central finite differences to at least four significant figures in both hard and softened (`tau > 0`) modes. **Any change to `lapEval` must keep this check passing** (§8).
 
 ### 4.6 Hard-coded ceilings
 
 - Speed tables stop at 110 m/s (about 396 km/h).
 - Tyre peak is never below 25% of μ·Fz.
 - The track fold limit is 0.8/|k|.
+
+### 4.7 Elevation (step 8): grade, crests and compressions
+
+No banking: a station's height doesn't depend on where the line crosses the track, so every elevation input is a per-station constant from the centreline (`buildTrack`): `z`, `dz` (rise to the next station), `cth` (cos of the grade) and `kv` (vertical curvature, > 0 in a compression). Control points carry `[x, y, z]`, splined like x/y.
+
+- **Flat stays flat, bit for bit.** A station with `dz = 0`, `cth = 1`, `kv = 0` runs the flat code expression for expression, adjoint included (the converged-line goldens depend on the gradient's bits). One height everywhere is flat (`T.flat`). The 24 flat goldens, prototype parity and the pre-elevation run file (`tests/fixtures/`) are unchanged.
+- **Gravity, exact.** Steps are 3D (`ds`); gravity does work `m·g·dz` over each, so the forward pass has `− 2g·dz[i]` in `v²` and the braking pass `+ 2g·dz[j]`. Path-independent, so no new gradient path.
+- **Load factor.** Static weight counts `n = cth + v²·kv/g` times (downforce and inertial demands unchanged). `buildCar({loads: true})` builds `car.load`: the lateral, `kcrit`/`kcF`/`kcR` and GGV tables at n = 0, 0.125, …, 2 (`gripTables(p, n)`, the flat computation with the weight scaled; n = 1 is the flat car's own). Lookups are linear in n, clamped to [0, 2]: within 0.29% (lateral, n ≥ 0.25) and 0.27 m/s² (GGV) of a direct solve.
+- **Corner speed** on a hilly station (`vCornerN`): `vCorner`'s search with each speed node read at the load the station gives at that speed, so crests unload faster cars more. It assumes that limit never rises with speed (pinned by a test over 271,998 node pairs). Within 0.03% of the closed form `v = √(μg / (k − μ·kv))` for a linear tyre.
+- **What the lap time hides is reported:** `Scratch.stall` (stations at the 0.1 m/s floor: a climb the car can't make), `.air` (steps read at n ≤ 0; a car with no downforce then has no grip and coasts), `.ntop` (n > 2). Carried on snapshots as `warn`, shown over the map.
+- **Simplifications:** grade and `kv` from the centreline, not the line driven (up to 44 ms of lap on 40 m hills); lateral demand uses the 3D speed (about 1.1% pessimistic at 15% grade); rolling resistance stays `g·CRR`; no banking.
+- **Cost:** `lapEval` with gradient 366 µs on 40 m hills against 220 µs flat (Harrow Ring, GT racer).
+- **Dynamics** (§6) apply the same terms, so the dynamic check stays consistent with the lap model.
 
 ---
 
@@ -163,6 +177,8 @@ The reverse pass is hand-written and exact through every step above, including t
 - **Tyres:** each axle has `Fy = D · sin(C · atan(B·α))` with `C = 1.45` and `B` set by the peak slip angle (`slipPk`). Peak `D` uses the same tyre law and load model as §4, with load transfer filtered at 60 ms.
 - **Combined slip:** longitudinal force takes its share of each axle's friction circle first.
 - **Integration:** 4 ms explicit steps.
+
+**On hills** (`grades(T)` gives the line its grade sine, cosine and vertical curvature; step 8): gravity pulls along the road at the car's station, tyre loads use the load factor `n = cth + v²·kv/g`, the nominal force includes `m·g·sinθ`, load transfer comes from the tyre acceleration less drag (as on the flat), and the car covers ground in plan at `v·cosθ`. Checked to track a 6% ramp within 0.033 m/s, and to keep the dynamic-check fraction in [0.85, 1] on 150 m hills (it collapses to 81–92% if the time-stepped car ignores the load factor).
 
 **Driver:** inverse dynamics plus feedback.
 - `dynNominal` solves the bicycle model backwards along the line: lateral and yaw-moment balance give the axle forces, the tyre curve gives slip angles, kinematics give steering and sideslip.
@@ -304,21 +320,24 @@ All six checks are ported to `tests/` (run with `node --test tests/`, ~15 s), wh
 1. **Gradient check** (`gradient.test.mjs`). On a random smooth offset field, compare the analytic gradient with a central finite difference along a random direction, in hard mode and with `tau = 0.5`, for all six presets, h = 1e-6. The error is measured against the gradient's scale `Σ|grad_i·d_i|`, not the net directional derivative, and must be below 1e-6. A random direction can cancel to a net 10⁵× smaller than its terms (Open-wheeler on Harrow Ring), so a net-relative "4 significant figures" fails on finite-difference roundoff alone (the lap time carries ~1e-12 s of rounding noise). The hard-mode run also asserts that the yaw limit binds and, for cars with shift time, that an upshift happens, so those adjoint branches are exercised. Single-line sign flips in the yaw and shift-loss adjoints both fail this test.
 2. **Run to convergence** (`convergence.test.mjs`). Drive `Optimizer.step()` until `converged`, polish included, GT racer on Harrow Ring. This would have caught the `clamp` freeze (verified: deleting `clamp` fails with a stack trace on the HTML line). Golden: lap, evaluation and step counts, and every station of the converged line match the fixture bit for bit.
 3. **Determinism and golden values** (`golden.test.mjs`, `make-golden.mjs`). Same seed and parameters give the same results, bit for bit, **within one JS runtime**. Node and Chrome compute the track geometry differently in the last bits (starting in `buildTrack`), and the optimiser's endpoint is chaotic, so their converged laps differ by tens of ms (`investigations/golden-lap.md`).
-   - `tests/golden.json` holds, for all 6 cars × 4 circuits: the centreline lap, the line converged from the centreline (the *fixture*) with its lap and optimiser effort, and the dynamic-check result on it, including the final traced lap's error maxima and mean error. It also holds the skidpad results. Its `meta` records Node/V8, commit, and a SHA-256 of the physics source.
-   - Regenerate with `node tests/make-golden.mjs --write` (~30 s, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
+   - `tests/golden.json` holds, for all 6 cars × 4 circuits and each car on Harrow Ring with 25 m of hills (step 8): the centreline lap, the line converged from the centreline (the *fixture*) with its lap and optimiser effort, and the dynamic-check result on it, including the final traced lap's error maxima and mean error. It also holds the skidpad results. Its `meta` records Node/V8, commit, and a SHA-256 of the physics source.
+   - Regenerate with `node tests/make-golden.mjs --write` (~1 min for the 30 combos in Node v26, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
    - Reference: GT racer on Harrow Ring (seed 27, 12 m), single run from the centreline: **78.3771 s** in Node v26.12.0 and v26.12.1 (V8 14.6.202.34); 78.348 s in Chrome 153. Restarting ("Search again") is a fresh draw, not a refinement: six consecutive restarts in Chrome gave 78.278–78.398 s.
    - Teeth: `CRR` 0.012 → 0.0121 fails every lap golden; `DYN.kr` 0.3 → 0.31 fails every dynamic golden and the skidpad goldens while all property checks still pass.
 4. **Skidpad** (`skidpad.test.mjs`). Road car, 80 m circle (a 16-point spline, so |k| ripples ±1.4%), constant speed at 90/95/98% of the lap model's v² there. Property: a clean lap and mean lateral error ≤ 0.2 m. Measured with the current driver gains: 0.059 / 0.068 / 0.077 m (still clean at 100%: 0.088 m).
-5. **Model consistency** and 6. **Margin table** (`golden.test.mjs`, on the 24 fixtures). The prototype's figures, utilisation ≤ ~1.06 and a margin of 92–99%, hold only for the GT racer and Open-wheeler on the current code. The properties are sanity bounds every preset meets: dynamic-check fraction in [0.85, 1], utilisation ≤ 1.15, and a clean final lap. Measured (fraction % / peak utilisation):
+5. **Model consistency** and 6. **Margin table** (`golden.test.mjs`, on the 30 fixtures). The prototype's figures, utilisation ≤ ~1.06 and a margin of 92–99%, hold only for the GT racer and Open-wheeler on the current code. The properties are sanity bounds every preset meets: dynamic-check fraction in [0.85, 1], utilisation ≤ 1.15, and a clean final lap. Measured (fraction % / peak utilisation):
 
-   | Car | Harrow Ring | Kestrel Point | Millbrook Park | Saltmarsh |
-   |---|---|---|---|---|
-   | Road car | 91.3 / 1.052 | 91.6 / 1.059 | 97.2 / 1.055 | 92.8 / 1.083 |
-   | Hot hatch AWD | 98.1 / 1.117 | 97.5 / 1.073 | 97.8 / 1.073 | 98.4 / 1.083 |
-   | EV saloon | 97.2 / 1.042 | 96.2 / 1.053 | 95.0 / 1.110 | 97.5 / 1.114 |
-   | GT racer | 97.8 / 1.043 | 96.6 / 1.051 | 97.2 / 1.054 | 97.2 / 1.043 |
-   | Open-wheeler | 96.6 / 1.055 | 96.9 / 1.045 | 97.2 / 1.039 | 95.9 / 1.050 |
-   | Kart | 99.1 / 1.039 | 100 / 1.039 | 100 / 1.096 | 99.7 / 1.046 |
+   | Car | Harrow Ring | Kestrel Point | Millbrook Park | Saltmarsh | Harrow Ring, 25 m hills |
+   |---|---|---|---|---|---|
+   | Road car | 91.3 / 1.052 | 91.6 / 1.059 | 97.2 / 1.055 | 92.8 / 1.083 | 91.6 / 1.079 |
+   | Hot hatch AWD | 98.1 / 1.117 | 97.5 / 1.073 | 97.8 / 1.073 | 98.4 / 1.083 | 98.1 / 1.088 |
+   | EV saloon | 97.2 / 1.042 | 96.2 / 1.053 | 95.0 / 1.110 | 97.5 / 1.114 | 96.6 / 1.039 |
+   | GT racer | 97.8 / 1.043 | 96.6 / 1.051 | 97.2 / 1.054 | 97.2 / 1.043 | 98.1 / 1.044 |
+   | Open-wheeler | 96.6 / 1.055 | 96.9 / 1.045 | 97.2 / 1.039 | 95.9 / 1.050 | 96.6 / 1.043 |
+   | Kart | 99.1 / 1.039 | 100 / 1.039 | 100 / 1.096 | 99.7 / 1.046 | 98.8 / 1.061 |
+
+7. **Elevation** (step 8; `elevation.test.mjs`, the hilly half of `gradient.test.mjs`, and hilly cases in `solver.test.mjs`, `runfile.test.mjs`). Flat circuits bit-identical (the 24 flat goldens didn't change by a byte when the hilly ones were added). The gradient check on hills, all six cars, hard and soft, also through the load-factor clamps (err/scale ≤ 2e-8; breaking any new adjoint term fails all 12). Closed forms: crest and compression corner speeds within 0.03%, terminal speed and rate of approach up a constant ramp within 3%. Direction: on a ramp stadium the climb is slower, the descent faster and the lap slower than flat. Dynamics: the dynamic check in the flat bounds on hills, ramp tracking within 0.033 m/s, crest-limited corners at their reduced limit; each shown to fail on the broken model it targets. Cross-version: a v1 run file recorded before elevation reloads to its lap bit for bit through the v1 → v2 migration.
+   - A converged lap is one draw from a chaotic optimiser endpoint (restarts scatter by ~±0.06 s), so the hilly goldens' laps differ from the flat ones by amounts (−0.05 to +0.07 s, Kart +0.69 s) that don't measure what hills cost; the fixed-line direction test does.
 
 Golden values depend on `genCtrl` and `buildTrack`. Any change to the generator or spline changes every preset circuit, so tag golden values with a track-generator version.
 
@@ -333,7 +352,7 @@ Golden values depend on `genCtrl` and `buildTrack`. Any change to the generator 
    - ✅ Tyre-use colouring called `dynNominal` from the display path. Now the solver puts utilisation in the snapshot (`line.u`) when asked (step 5).
 4. **No pose contract.** The car's position is interpolated inside the 2D drawing code (`carState`).
 5. ✅ **Staleness is ad hoc.** `dynStale` compared lap times. Now it's car/track/line revisions (step 5).
-6. **Flat world.** No elevation, grade or banking; y-down screen convention.
+6. **Flat world.** ✅ Elevation and grade, crests and compressions (step 8). Still no banking; still a y-down screen convention.
 
 ---
 
@@ -423,16 +442,15 @@ raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker wa
 
 ### 10.3 Track model for elevation and 3D
 
-Elevation changes both physics and rendering, so design the per-station track record once:
+Elevation changes both physics and rendering, so design the per-station track record once. Step 8 implemented the elevation half: per station `z`, `dz`, `cth` (cos of grade) and `kv` (vertical curvature), with the plan view (`cx`, `cy`, `nx`, `ny`, `kc`) unchanged, so stations and lines don't move when hills change. Still to come with banking and 3D:
 
 ```ts
 station: { s, x, y, z, tangent, lateral /* banked */, up, widthL, widthR, grade, bank, kH /* horizontal */, kV /* vertical */ }
 ```
 
-Physics consequences to plan for:
-- **Grade** adds `±g·sin(grade)` to both passes.
-- **Vertical curvature** scales normal load (`g·cos + v²·kV`): crests unload, compressions load. That needs a load-factor dimension in the GGV, or a scaling approximation.
-- **Bank** adds a gravity component to lateral grip.
+- **Grade** ✅: gravity's work `m·g·dz` in both passes (§4.7).
+- **Vertical curvature** ✅: normal load `g·cos + v²·kV` through a load-factor axis on the grip tables (§4.7).
+- **Bank**: adds a gravity component to lateral grip, and makes height vary across the track (so grade and load would depend on the line). Not done.
 
 Pick the world frame for 3D explicitly. Recommended: right-handed, z-up. Converting from the prototype's y-down numbers flips handedness, so curvature signs and the meaning of positive offset must be converted at import, not patched in views.
 
@@ -455,7 +473,7 @@ Each step keeps behaviour identical and is checked against §8.
 5. ✅ **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only. A run through the protocol reproduces the convergence fixture and its dynamic check bit for bit (`tests/solver.test.mjs`). In headless Chrome, convergence takes 9 s instead of 32 s, at the same 1:18.348.
 6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences are the stale HUD gear digit (§12) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
 7. ✅ **Add `playback.pose()`**; the 2D car marker and ghost use it. Both sources supported (§10.2). `dynLap`'s trace records the car's state (+0.2 ms on the one traced lap per check). Replay-off rendering is identical to step 6, and the lap pose equals the old `carState` bit for bit.
-8. **Elevation:** the track record (§10.3), physics terms, golden-value refresh with a new track-generator version.
+8. ✅ **Elevation** (grade, crests and compressions; no banking): heights in the track model, grip tables on a load-factor axis, gravity and load in the lap model and its adjoint, the same in the bicycle model, the solver building load tables for hilly circuits, run files v2 (the first explicit migration), and the app's Hills slider, height editing, elevation chart, height tint and telemetry. Flat circuits are bit-identical (goldens, parity, the pre-elevation run file); six hilly combos added to the goldens. §4.7.
 9. **3D view** as a second client of the protocol and pose contract.
 
 ---
@@ -463,7 +481,8 @@ Each step keeps behaviour identical and is checked against §8.
 ## 12. Known issues and cleanup
 
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.
-- **`buildCar` costs about 60 ms**, the GGV bisections included. Fine on slider release; heavy on continuous drag. Consider fewer bisection steps, or memoising by parameter hash.
+- **`buildCar` costs about 16 ms** in Node (the GGV bisections included), **~250 ms with load tables** on hilly circuits (17 load levels). Fine on slider release; heavy on continuous drag on hills. Options: only the load slices the circuit can reach, fewer bisection steps, or memoising by parameter hash.
+- **Elevation's simplifications** (§4.7): grade and vertical curvature from the centreline, not the line driven; lateral demand on the 3D speed; no banking. And hilly `lapEval` costs ~1.7× flat.
 - **The dynamic check's driver gains were tuned on the GT and road presets.** Very different cars may need retuning before the margin can be trusted.
 - **Lap model and dynamic model disagree more for some presets** (§8.5/8.6 table): Hot hatch AWD and EV saloon reach inverse-dynamics utilisation 1.11–1.12; the Road car holds only 91% of lap-model pace on two circuits; the Kart reaches 100% (the check can't find its limit). Not investigated: it could be the lap model, the bicycle model or the driver.
 
@@ -471,4 +490,4 @@ Each step keeps behaviour identical and is checked against §8.
 
 ## 13. Not modelled yet
 
-Elevation, grade and banking; tyre temperature and wear (needs a stint model and the slip energy from §6); battery and thermal derating; aero changes with ride height; 2-speed EV gearboxes; transient tyre relaxation length; differential behaviour.
+Banking (elevation and grade are in, step 8); tyre temperature and wear (needs a stint model and the slip energy from §6); battery and thermal derating; aero changes with ride height; 2-speed EV gearboxes; transient tyre relaxation length; differential behaviour.

@@ -23,6 +23,9 @@ export function assertRuntime(g) {
 }
 
 export const comboKey = (car, track) => `${car}|${track}`;
+// Hilly circuits in the goldens (elevation, migration step 8): every car on these, besides the flat car × circuit grid.
+export const HILLY = [{ track: 0, hills: 25 }];
+export const circuitName = (name, hills) => hills ? `${name} · hills ${hills} m` : name;
 
 export function clampedZeros(B, N) {
   const off = new Float64Array(N);

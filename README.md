@@ -31,6 +31,9 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 - Four preset circuits, or a random one.
 - Adjustable track width.
 - **Edit shape:** drag control points, tap empty space to add a point, double-tap a point to remove it; revert to the original.
+- **Hills:** a slider sets the height from the lowest to the highest point of the circuit (0–40 m), as a smooth profile per circuit. In edit mode, tap a point to set its own height (every point shows its height). The circuit's layout doesn't change, so a pinned lap stays comparable: race the flat lap against the same circuit with hills.
+- **Topology in 2D:** the track surface is tinted by height (with a legend), an elevation chart shows height over the lap with the replay car, and telemetry adds height, grade and vertical load.
+- **What hills do:** gravity on every climb and descent, and crests and compressions changing the load on the tyres (cars go light over a crest, and grip harder in a compression), in both the lap model and the dynamic check. No banking yet. If a car can't get up a climb, leaves the ground, or is loaded beyond the model's range, the map says so.
 
 **Watch the optimiser**
 - The search runs in the background in stages, from coarse to fine.
@@ -99,7 +102,8 @@ node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
 - **Golden values:** 6 cars × 4 circuits, bit for bit.
 - **Parity:** the modules against the prototype.
 - **Solver protocol, `describeCar` and playback.**
-- **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, and the committed physics hash.
+- **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, the committed physics hash, and a run file recorded before elevation that must still reload exactly.
+- **Elevation:** flat circuits unchanged bit for bit; the gradient on hills; closed forms (crest and compression corner speeds, terminal speed up a ramp); the dynamic check on hills.
 
 Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`.
 
