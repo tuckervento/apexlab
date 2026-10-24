@@ -57,3 +57,52 @@ for (const name of CAR_NAMES) {
     });
   }
 }
+
+// Elevation (migration step 8): the same check on Harrow Ring with hills at the slider's maximum (40 m), cars built
+// with load tables. On top of the flat coverage it asserts that the hilly branches are exercised: corner speeds read
+// at a load factor (one at a crest, n < 1), and forward- and brake-limited steps that include gravity's work.
+const HILLS = 40;
+function hillyPreset(name) {
+  const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, 12), u = core.genElev(tr.seed, ctrl);
+  const T = core.buildTrack(ctrl.map((p, i) => [p[0], p[1], HILLS * u[i]]), 12), car = core.buildCar(core.CARS[name], { loads: true });
+  return { T, car, B: core.makeBounds(T, car) };
+}
+for (const name of CAR_NAMES) {
+  for (const tau of [0, 0.5]) {
+    test(`gradient, hills ${HILLS} m: ${name}, tau=${tau}`, t => {
+      const { T, B, car } = hillyPreset(name), N = T.N;
+      assert.equal(T.flat, false);
+      const off = smoothField(core.mulberry32(1001), N, 0.5 * B.hw);
+      for (let i = 0; i < N; i++) off[i] = Math.min(B.hi[i], Math.max(B.lo[i], off[i]));
+      const d = smoothField(core.mulberry32(2002), N, 1);
+      const dmax = d.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+      for (let i = 0; i < N; i++) d[i] /= dmax;
+
+      const S = core.makeScratch(N), grad = new Float64Array(N);
+      const lap = core.lapEval(T, car, off, S, grad, tau);
+      let Da = 0, scale = 0;
+      for (let i = 0; i < N; i++) { Da += grad[i] * d[i]; scale += Math.abs(grad[i] * d[i]); }
+      const S2 = core.makeScratch(N), xp = new Float64Array(N), xm = new Float64Array(N);
+      for (let i = 0; i < N; i++) { xp[i] = off[i] + H * d[i]; xm[i] = off[i] - H * d[i]; }
+      const Dfd = (core.lapEval(T, car, xp, S2, null, tau) - core.lapEval(T, car, xm, S2, null, tau)) / (2 * H);
+      const err = Math.abs(Da - Dfd), rel = err / scale;
+      t.diagnostic(`lap=${lap.toFixed(4)} s  D_a=${Da.toPrecision(10)}  D_fd=${Dfd.toPrecision(10)}  err/scale=${rel.toExponential(2)}  cancellation=${(scale / Math.abs(Da)).toFixed(0)}x`);
+      assert.ok(Number.isFinite(lap) && Number.isFinite(Da) && Number.isFinite(Dfd) && scale > 0, `degenerate: lap=${lap} D_a=${Da}, D_fd=${Dfd}, scale=${scale}`);
+      assert.ok(rel < SCALE_TOL, `error/scale ${rel.toExponential(3)} ≥ ${SCALE_TOL} (D_a=${Da}, D_fd=${Dfd}, Σ|g·d|=${scale})`);
+
+      if (tau !== 0) return;
+      let cornerN = 0, crest = 0, fwdG = 0, bwdG = 0, nmin = Infinity, nmax = -Infinity;
+      for (let i = 0; i < N; i++) {
+        const n = T.cth[i] + S.v[i] * S.v[i] * T.kv[i] / core.G, j = (i + 1) % N, h = (i - 1 + N) % N;
+        nmin = Math.min(nmin, n); nmax = Math.max(nmax, n);
+        const cornerLimited = i === S.i0 || (S.ff[i] === 0 && S.fb[i] === 0);
+        if (cornerLimited && !(T.cth[i] === 1 && T.kv[i] === 0)) { cornerN++; if (n < 1) crest++; }
+        if (S.ff[j] === 1 && S.fm[j] === 1 && T.dz[i] !== 0) fwdG++;  // step i -> j set the speed at j, on a slope
+        if (S.fb[h] === 1 && S.fm[h] === 0 && T.dz[h] !== 0) bwdG++;  // braking step h <- i set the speed at h
+      }
+      t.diagnostic(`coverage: corner-limited at a load factor=${cornerN} (crest ${crest}), forward-limited on a slope=${fwdG}, brake-limited on a slope=${bwdG}; n along the lap ${nmin.toFixed(2)}..${nmax.toFixed(2)}`);
+      assert.ok(cornerN > 0 && crest > 0, `load-factor corner speeds not exercised (${cornerN}, crest ${crest})`);
+      assert.ok(fwdG > 0 && bwdG > 0, `gravity in the passes not exercised (forward ${fwdG}, braking ${bwdG})`);
+    });
+  }
+}
