@@ -21,6 +21,14 @@ export class Optimizer{
     this.iters=0;this.evals=0;this.done=false;this.polish=null;this.target=Float64Array.from(off);this.startStage(0,true);
   }
   rescore(car,B){this.car=car;this.B=B;this.target=Float64Array.from(this.off);this.done=false;this.polish=null;this.startStage(2,false);}
+  // A copy to try a command on (the Solver's transactions). setup and rescore replace the state they change (c, mem, g, …),
+  // so sharing it is safe; what they write in place, the working line and the scratch, the copy gets its own of. Its
+  // steps from here are the original's, bit for bit.
+  fork(){
+    const o=Object.assign(Object.create(Optimizer.prototype),this);
+    if(this.off){const N=this.T.N;o.off=Float64Array.from(this.off);o.S=makeScratch(N);o.go=new Float64Array(N);}
+    return o;
+  }
   get best(){return this.lap;}
   get converged(){return this.done;}
   get stageInfo(){return this.polish?{n:STAGES.length+1,of:STAGES.length+1,knot:0}:{n:this.stage+1,of:STAGES.length+1,knot:STAGES[this.stage].knot};}

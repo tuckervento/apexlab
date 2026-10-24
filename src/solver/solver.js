@@ -1,8 +1,8 @@
 // Solver behind the worker protocol (ARCHITECTURE.md §10.1). No DOM and no worker APIs: src/solver/worker.js adapts
 // it to postMessage, and tests drive it directly. It owns the car, track, bounds, working line, optimiser and dynamic
 // check. Everything it emits is a fresh copy, listed as transferable, so no receiver shares its memory.
-// A command or slice that throws emits {type:'error', rev} (the command's rev, null for a slice) and pauses the solver,
-// which stays usable.
+// A command that throws changes nothing (handle) and emits {type:'error', rev, paused: false}; a slice that throws
+// pauses the solver and emits {type:'error', rev: null, paused: true}. Either way the solver stays usable.
 import { buildCar, describeCar, buildTrack, makeBounds, makeScratch, lapEval, Optimizer } from '../core/index.js';
 import { dynSetup, dynNominal, grades, DynCheck } from '../dynamics/index.js';
 
@@ -18,7 +18,17 @@ export class Solver{
     this.carRev=0;this.trackRev=0;this.lineRev=0;this.running=false;this.util=false;this.dyn=null;this.dynRevs=null;
     this.pending=false;this.lastPub=-Infinity;this.lastProg=-Infinity;this.lap=NaN;
   }
-  handle(c){return this.guard(()=>{
+  // Each command is a transaction: it runs on a fork of the optimiser with its events held back, so a throw part-way
+  // (review L4) restores every field, sends only the error (paused: false) and leaves the search running as it was.
+  handle(c){
+    const saved={...this},held=[];
+    this.opt=saved.opt.fork();if(saved.off)this.off=this.opt.off; // they share the working line
+    this.emit=e=>held.push(e);
+    try{this.command(c);}
+    catch(e){Object.assign(this,saved);this.emit({type:'error',rev:c.rev??null,paused:false,message:String(e&&e.message||e),stack:String(e&&e.stack||'')});return;}
+    this.emit=saved.emit;for(const e of held)this.emit(e);
+  }
+  command(c){
     switch(c.type){
       case 'setCar':this.setCar(c);break;
       case 'setTrack':this.setTrack(c);break;
@@ -33,7 +43,7 @@ export class Solver{
         this.dynRevs={carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev};break;
       default:throw new Error(`Unknown command type "${c.type}"`);
     }
-  },c.rev??null);}
+  }
   // One slice of work: dynamic-check laps if one is in progress, else optimiser steps. Returns whether work remains.
   tick(budget){return this.guard(()=>{
     const t0=this.now();
@@ -53,9 +63,9 @@ export class Solver{
     else if(now-this.lastProg>=PUBLISH_MS)this.progress();
     return true;
   });}
-  guard(fn,rev=null){ // rev: the command that failed, so the client knows which of its commands won't be answered; null for a slice
+  guard(fn){ // a slice that throws pauses the search and ends a dynamic check: rev null (no command failed), paused: true
     try{return fn();}
-    catch(e){this.running=false;this.dyn=null;this.emit({type:'error',rev,message:String(e&&e.message||e),stack:String(e&&e.stack||'')});return false;}
+    catch(e){this.running=false;this.dyn=null;this.emit({type:'error',rev:null,paused:true,message:String(e&&e.message||e),stack:String(e&&e.stack||'')});return false;}
   }
   need(){if(!this.car||!this.T)throw new Error('Solver needs setCar and setTrack before this command');}
 

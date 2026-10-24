@@ -179,7 +179,7 @@ test('solver: every snapshot carries phys, and axle loads sum to weight plus dow
   assert.ok(worst < 1e-9, `axle loads differ from weight + downforce by up to ${worst}`);
 });
 
-test('solver: a failing command emits error, pauses, and leaves the solver usable', () => {
+test('solver: a failing command emits error, changes nothing, and leaves the solver usable', () => {
   // before setup
   const ev = [], s = new core.Solver(e => ev.push(e));
   s.handle({ type: 'run' });
@@ -195,7 +195,7 @@ test('solver: a failing command emits error, pauses, and leaves the solver usabl
   b.s.handle({ type: 'setCar', rev: 3, params: bad });
   const err = b.last('error');
   assert.match(err.message, /carSpec: slipPk/); assert.ok(err.stack.length > 0, 'error has no stack');
-  assert.equal(b.s.running, false, 'an error should pause the search');
+  assert.equal(b.s.running, true, 'a refused command leaves the search running');
   assert.equal(b.s.carRev, 1, 'a rejected car must not replace the current one');
   b.s.handle({ type: 'run' });
   const e0 = b.last('progress').evals;
@@ -217,6 +217,7 @@ test('solver: an error carries the rev of the failing command, null for a slice 
   b.s.tick(30);
   assert.match(b.last('error').message, /slice blew up/);
   assert.equal(b.last('error').rev, null, 'an error in a slice');
+  assert.equal(b.last('error').paused, true, 'a slice error pauses'); assert.equal(b.s.running, false);
 });
 
 // The worker owns `running`. The app resumes the search after a car or circuit change with `resume` on that very command,
@@ -240,6 +241,7 @@ test('solver: setCar and setTrack with resume start the search; without it they 
   assert.equal(b.last('progress').running, true);
 
   const bad = { ...car }; delete bad.slipPk;
+  b.s.handle({ type: 'pause' }); // paused, so the check below is about resume, not about an error stopping the search
   b.s.handle({ type: 'setCar', rev: 6, params: bad, resume: true });
   assert.equal(b.last('error').rev, 6);
   assert.equal(b.s.running, false, 'a rejected car does not resume');
@@ -303,4 +305,32 @@ test('solver: setTrack refuses a circuit with no length and changes nothing', ()
   assert.deepEqual(got.map(e => e.type), ['error']);
   assert.match(got[0].message, /shorter than the track is wide/);
   assert.deepEqual(state(), before);
+});
+
+// A command that throws after it has started changing state (review L4) must leave the solver exactly as it was, search
+// included: one error event (paused: false, since nothing stopped), no other event, the same car, track, line,
+// optimiser and revisions, still running, and still able to search. Each throw is forced past the assignment point.
+test('solver: a command that fails part-way changes nothing and keeps the search going', async t => {
+  const failing = {
+    setCar: s => { s.opt.rescore = () => { throw new Error('rescore blew up'); }; return { type: 'setCar', rev: 3, params: { ...core.CARS[CAR], mass: 1400 } }; },
+    setTrack: s => { s.opt.setup = () => { throw new Error('setup blew up'); }; return { type: 'setTrack', rev: 3, ctrl: core.genCtrl(TRACK.seed + 1, WIDTH), width: WIDTH, keepLine: false }; },
+    load: s => { s.opt.setup = () => { throw new Error('setup blew up'); }; return { type: 'load', rev: 3, params: { ...core.CARS[CAR] }, ctrl: core.genCtrl(TRACK.seed + 1, WIDTH), width: WIDTH, off: new Float64Array(400), run: false }; },
+    dynCheck: s => { const pub = s.publish.bind(s); s.publish = b => { pub(b); throw new Error('after publish'); }; return { type: 'dynCheck' }; },
+  };
+  for (const [kind, arm] of Object.entries(failing)) await t.test(kind, () => {
+    const b = boot(), s = b.s;
+    s.handle({ type: 'run' }); for (let k = 0; k < 3; k++) s.tick(30);
+    const keys = ['car', 'params', 'T', 'B', 'off', 'pub', 'ref', 'opt', 'carRev', 'trackRev', 'lineRev', 'running', 'dyn'];
+    const before = Object.fromEntries(keys.map(k => [k, s[k]])), offBefore = Float64Array.from(s.off), optOff = s.opt.off;
+    const cmd = arm(s), n0 = b.ev.length;
+    s.handle(cmd);
+    const got = b.ev.slice(n0);
+    assert.deepEqual(got.map(e => e.type), ['error'], 'events');
+    assert.equal(got[0].paused, false, 'a refused command stops nothing');
+    for (const k of keys) assert.equal(s[k], before[k], k);
+    assert.deepEqual(s.off, offBefore, 'working line contents'); assert.equal(s.opt.off, optOff, 'optimiser still works on the solver\'s line');
+    delete s.opt.rescore; delete s.opt.setup; delete s.publish; // the prototype methods again
+    const e0 = b.last('progress').evals; for (let k = 0; k < 5; k++) s.tick(30);
+    assert.ok(b.last('progress').evals > e0, 'the search carries on');
+  });
 });
