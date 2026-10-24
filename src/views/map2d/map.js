@@ -1,7 +1,5 @@
 // The 2D map: track, racing line, ghost, dynamic-check overlay, corner labels, cars and edit handles, drawn from
-// explicit inputs (no app state). Plus the corner finder for labels and the car pose along a line (carState,
-// raceClock), which move to playback/ in migration step 7.
-import { G } from '../../core/constants.js';
+// explicit inputs (no app state). Plus the corner finder for labels. Car poses come from src/playback/pose.js.
 
 // Corners for labels: runs of |k| above 1/230 m⁻¹ with one sign, kept if longer than 14 m or tighter than 90 m.
 export function findCorners(T){
@@ -25,19 +23,8 @@ export function findCorners(T){
   return keep;
 }
 
-// Both cars leave the line together; the quicker one waits at the line for the other, then they go again.
-export function raceClock(disp,ghost,animT){const cyc=ghost?Math.max(disp.t,ghost.t)+1:disp.t;return animT%cyc;}
-// Pose at race time rt along a line snapshot d (lap-model speeds); null when replay is off.
-export function carState(d,T,rt,replay){
-  const N=T.N;if(!(replay>0&&d&&d.t>0))return null;
-  const t=Math.min(rt,d.t-1e-6);let lo=0,hi=N;while(hi-lo>1){const m=(lo+hi)>>1;if(d.tc[m]<=t)lo=m;else hi=m;}
-  const j=(lo+1)%N,f=(t-d.tc[lo])/((d.tc[lo+1]-d.tc[lo])||1);
-  return {i:lo,x:d.px[lo]+(d.px[j]-d.px[lo])*f,y:d.py[lo]+(d.py[j]-d.py[lo])*f,ang:Math.atan2(d.py[j]-d.py[lo],d.px[j]-d.px[lo]),
-    v:d.v[lo]+(d.v[j]-d.v[lo])*f,glat:d.v[lo]*d.v[lo]*Math.abs(d.k[lo])/G,glong:(d.v[j]*d.v[j]-d.v[lo]*d.v[lo])/(2*d.ds[lo]+1e-9)/G};
-}
-
 // sc: {T, width, disp, colorMode, ghost, ghostCar, car, carDims:{wb, track}, corners, dyn (null when none or stale),
-// editing, ctrl}. ghostCar/car are carState poses or null.
+// editing, ctrl}. ghostCar/car are playback poses or null.
 export function drawMap(ctx,cam,pal,sc){
   const {colors,ramp}=pal,{cw,ch,dpr}=cam,{T,width,ghost,corners,editing,ctrl}=sc;
   const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy);
@@ -66,7 +53,7 @@ export function drawMap(ctx,cam,pal,sc){
   }
   function drawCar(cs,wb,tw,isGhost){
     const L=Math.max(16,(wb+1.6)*cam.z),Wd=Math.max(8,(tw+0.3)*cam.z);
-    ctx.save();ctx.translate(SX(cs.x),SY(cs.y));ctx.rotate(cs.ang);
+    ctx.save();ctx.translate(SX(cs.x),SY(cs.y));ctx.rotate(cs.heading);
     ctx.beginPath();ctx.moveTo(L/2,0);ctx.lineTo(L/4,-Wd/2);ctx.lineTo(-L/2,-Wd/2);ctx.lineTo(-L/2,Wd/2);ctx.lineTo(L/4,Wd/2);ctx.closePath();
     if(isGhost){ctx.globalAlpha=0.28;ctx.fillStyle=colors.ghost;ctx.fill();ctx.globalAlpha=1;ctx.setLineDash([3,2]);ctx.strokeStyle=colors.ghost;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);}
     else{ctx.fillStyle=colors.ink;ctx.strokeStyle=colors.paper;ctx.lineWidth=1.5;ctx.fill();ctx.stroke();ctx.fillStyle=colors.accent;ctx.fillRect(-L/2,-Wd/2,L*0.18,Wd);}

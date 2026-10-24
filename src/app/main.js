@@ -6,7 +6,9 @@ import { bindButtons, buildCarUI, buildTrackUI, dynLap, fit, rebuildTrack, rende
   setFollow, setRunning, showError, trackArrived, updGhostUI } from './controls.js';
 import { fmtTime } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
-import { drawMap, carState, raceClock } from '../views/map2d/map.js';
+import { drawMap } from '../views/map2d/map.js';
+import { pose, raceClock } from '../playback/pose.js';
+import { G } from '../core/index.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart } from '../views/map2d/charts.js';
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap});
@@ -62,13 +64,14 @@ new MutationObserver(refreshColors).observe(document.documentElement,{attributes
 
 // ---------- drawing (views in src/views/map2d/)
 function draw(){
-  const {disp,ghost,T}=S,rt=raceClock(disp,ghost,S.animT),cs=carState(disp,T,rt,S.replay),gs=ghost?carState(ghost,T,rt,S.replay):null;if(S.follow&&cs){cam.x=cs.x;cam.y=cs.y;}
+  const {disp,ghost,T}=S,on=S.replay>0,rt=raceClock(ghost?[disp.t,ghost.t]:[disp.t],S.animT);
+  const cs=on&&disp.t>0?pose(disp,rt,S.info):null,gs=on&&ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs){cam.x=cs.x;cam.y=cs.y;}
   drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl});
   // HUD
   if(cs){
-    const {v}=cs,lo=cs.i,info=S.info;$('#carSpeed').textContent=Math.round(v*3.6);
-    $('#gLat').textContent=cs.glat.toFixed(2);$('#gLong').textContent=(cs.glong<0?'−':'+')+Math.abs(cs.glong).toFixed(2);
-    $('#gearWrap').hidden=S.P.pt==='EV';$('#carGear').textContent=info.curves.gear[Math.min(info.n-1,Math.round(v/info.vstep))]||'—';
+    const v=cs.speed,lo=cs.station,glong=cs.ax/G;$('#carSpeed').textContent=Math.round(v*3.6);
+    $('#gLat').textContent=(Math.abs(cs.ay)/G).toFixed(2);$('#gLong').textContent=(glong<0?'−':'+')+Math.abs(glong).toFixed(2);
+    $('#gearWrap').hidden=S.P.pt==='EV';$('#carGear').textContent=cs.gear||'—';
     if(ghost){const gp=disp.tc[lo]-ghost.tc[lo];$('#liveGap').textContent=(gp<0?'−':'+')+Math.abs(gp).toFixed(2)+' s';}
     S.carPos=lo;S.carV=v;
   }else{$('#carSpeed').textContent='—';$('#gLat').textContent='—';$('#gLong').textContent='—';S.carPos=-1;}
