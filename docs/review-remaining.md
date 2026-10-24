@@ -209,9 +209,12 @@ revision rules are what the architecture leans on.
   the initial commit, so they never did anything). `drawConv`'s null-gap handling (`charts.js`) was checked and **kept**:
   nothing pushes a null into `S.hist` (the only writers push `[evals, t]` or reset to `[]`), but the pen-up marker is part
   of that pure view's input contract, so it is unreachable from today's callers only.
-- **L10.** The GT/Harrow convergence runs three times (`convergence.test.mjs`; `solver.test.mjs` "converges" and "publishes
-  only accepted"), about 8 s each, and `runfile.test.mjs`'s bit-for-bit load test compares against the same golden. Let the
-  solver tests share `converged()` (`solver.test.mjs:21`); the suite is 26 s now.
+- [x] **L10.** The GT/Harrow convergence ran three times (`convergence.test.mjs`; `solver.test.mjs` "converges" and
+  "publishes only accepted"), about 8 s each, and `runfile.test.mjs`'s bit-for-bit load test compares against the same
+  golden. `solver.test.mjs` now runs it once: `converged()` installs the accepted-lines check as an observer on the shared
+  run and the test reads its tally (same check, same 20 ms ticks; with a solver that publishes `opt.off` it still fails,
+  119 of 137 snapshots flagged). `solver.test.mjs` went from 22.4 s to 12.7 s. `convergence.test.mjs` keeps its own run
+  (it tests the optimiser without the solver), and the runfile test is untouched.
 - [x] **L11.** `telemetry.js` stored DOM refs on the shared row constants (`r.tr=…`, `r.c=…` in `build`, `:60`). Now the
   built table holds them in a per-table `cells` array (`built = {rows, cells}`). Checked by driving the old and new module
   through the same ten `renderTelemetry` calls against a recording fake DOM: identical writes.

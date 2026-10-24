@@ -51,7 +51,7 @@ No Critical or High issues, before or after save/load. The physics core and its 
 | L7 | `STAGES` unfrozen | **Open** |
 | L8 | adjoint nit | **Open**, theoretical |
 | L9 | dead code | **Done** (`drawConv` null handling kept: unreachable from callers, part of the view's contract) |
-| L10 | repeated convergence in tests | **Open** |
+| L10 | repeated convergence in tests | **Done** (solver tests share one run; suite ~27.5 s to ~20 s) |
 | Docs drift | 10 items | **Open** (see list); save/load added its own docs, plus one inaccurate sentence (below) |
 
 ### What save/load got right (VERIFIED by reading and by the passing tests)
@@ -238,7 +238,7 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 - Per Chesterton's fence, trace git history before deleting each.
 - **Done 2026-10-24:** both dead expressions removed (present since the initial commit `456a0fc`, never non-trivial). `drawConv`'s null handling re-checked: no writer of `hist` pushes null, but it is kept as part of the view's input contract.
 
-#### [ ] L10. Test cost
+#### [x] L10. Test cost
 
 - The same GT/Harrow convergence runs three times: `convergence.test`, solver "converges", and solver "publishes only accepted" (about 8 s each). The new `load: the recorded line comes back bit for bit` test also compares against the same golden, so check whether it adds a fourth run.
 - **Fix:** the repeated runs could share `converged()`.

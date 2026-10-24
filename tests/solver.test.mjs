@@ -8,17 +8,41 @@ import { loadGolden, assertRuntime, comboKey, dynResultSummary } from './golden-
 
 const core = await loadCore(), CAR = 'GT racer', TRACK = core.TRACKS[0], WIDTH = 12;
 
-// A solver set up the way the app boots: car, then track, all events recorded.
-function boot() {
-  const ev = [], s = new core.Solver(e => ev.push(e));
+// A solver set up the way the app boots: car, then track, all events recorded. hook(event, solver), if given, sees each
+// event as it is emitted, while the solver is in the state that produced it.
+function boot(hook) {
+  const ev = [], s = new core.Solver(e => { ev.push(e); if (hook) hook(e, s); });
   s.handle({ type: 'setCar', rev: 1, params: { ...core.CARS[CAR] } });
   s.handle({ type: 'setTrack', rev: 2, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, keepLine: false });
   return { s, ev, of: type => ev.filter(e => e.type === type), last: type => ev.filter(e => e.type === type).at(-1) };
 }
 const noErrors = ev => assert.deepEqual(ev.filter(e => e.type === 'error'), [], 'solver emitted errors');
-// Booted and run to convergence once per file (~7 s); shared by the tests that need a converged line.
+// The line on screen must be one the optimiser accepted: during the polish stage, Optimizer.step() leaves `off`
+// holding the last candidate tried, even when it rejects it and restores the spline coefficients `c`. This observer
+// checks every snapshot published before convergence against the accepted spline, as it is emitted; the test
+// 'publishes only lines the optimiser accepted' reads the tally from the shared converged run.
+function acceptedObserver() {
+  const acc = { checked: 0, polish: 0, bad: [] };
+  const hook = (e, s) => {
+    if (e.type !== 'snapshot' || s.opt.converged) return;
+    const o = s.opt, N = s.T.N;
+    acc.checked++; if (o.polish) acc.polish++;
+    for (let i = 0; i < N; i++) if (s.pub[i] !== o.spl(i, o.c)) { acc.bad.push({ lineRev: e.lineRev, polish: !!o.polish, station: i }); break; }
+  };
+  return { acc, hook };
+}
+// Booted and run to convergence once per file (~9 s); shared by the tests that need a converged line. Run in 20 ms
+// ticks, as the accepted-lines check always was, so it sees the same density of snapshots; the result depends only on
+// the optimiser's step sequence, not on the tick length.
 let conv = null;
-function converged() { if (!conv) { conv = boot(); conv.s.handle({ type: 'run' }); while (conv.s.tick(1000)); } return conv; }
+function converged() {
+  if (!conv) {
+    const { acc, hook } = acceptedObserver();
+    conv = boot(hook); conv.accepted = acc;
+    conv.s.handle({ type: 'run' }); while (conv.s.tick(20));
+  }
+  return conv;
+}
 
 test(`solver: converges through the protocol, ${CAR}, ${TRACK.name}`, { timeout: 10 * 60 * 1000 }, async t => {
   const b = converged();
@@ -229,21 +253,9 @@ test('solver: setCar and setTrack with resume start the search; without it they 
   noErrors(ev);
 });
 
-// The line on screen must be one the optimiser accepted: during the polish stage, Optimizer.step() leaves `off`
-// holding the last candidate tried, even when it rejects it and restores the spline coefficients `c`.
+// The line on screen must be one the optimiser accepted (see acceptedObserver). Tallied during the shared converged run.
 test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 * 1000 }, t => {
-  let s = null, checked = 0, polish = 0;
-  const bad = [];
-  s = new core.Solver(e => {
-    if (e.type !== 'snapshot' || s.opt.converged) return;
-    const o = s.opt, N = s.T.N;
-    checked++; if (o.polish) polish++;
-    for (let i = 0; i < N; i++) if (s.pub[i] !== o.spl(i, o.c)) { bad.push({ lineRev: e.lineRev, polish: !!o.polish, station: i }); break; }
-  });
-  s.handle({ type: 'setCar', rev: 1, params: { ...core.CARS[CAR] } });
-  s.handle({ type: 'setTrack', rev: 2, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, keepLine: false });
-  s.handle({ type: 'run' });
-  while (s.tick(20));
+  const { checked, polish, bad } = converged().accepted;
   t.diagnostic(`snapshots checked=${checked} (polish ${polish})  not accepted=${bad.length} (outside polish ${bad.filter(b => !b.polish).length})`);
   assert.ok(polish > 0, 'no snapshot was published during the polish stage');
   assert.deepEqual(bad.slice(0, 3), [], `${bad.length} of ${checked} snapshots showed a line the optimiser had not accepted`);
