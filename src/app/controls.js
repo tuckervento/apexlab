@@ -46,16 +46,17 @@ const SPEC=[
 // ---------- actions
 export function rebuildTrack(keepLine){
   S.dynRes=null;S.dynStale=false;if(S.dynRunning)S.dynRunning=false;renderDyn();
-  sendState('setTrack',{ctrl:S.ctrl.map(p=>p.slice()),width:S.width,keepLine});S.hist=[];
+  sendState('setTrack',{ctrl:S.ctrl.map(p=>p.slice()),width:S.width,keepLine,resume:!S.editing});S.hist=[];
 }
 export function carChanged(){
   if(S.dynRunning){S.dynRunning=false;renderDyn();}
-  sendState('setCar',{params:{...S.P}});S.hist=[];if(!S.running&&!S.editing)setRunning(true);
+  sendState('setCar',{params:{...S.P},resume:!S.editing});S.hist=[];
 }
 // The search never runs while editing the track (the worker is paused then); fresh = "Search again" from the current line.
-export function setRunning(r,fresh){S.running=r;if(!S.editing)send(r?{type:'run',fresh:!!fresh}:{type:'pause'});runLabel();}
+// The worker owns `running`: this only asks, and S.running follows from its next progress event.
+export function setRunning(r,fresh){if(!S.editing)send(r?{type:'run',fresh:!!fresh}:{type:'pause'});runLabel();}
 export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S.prog.converged?'Search again':'Run');}
-export function showError(msg){S.frameErr=S.frameErr||new Error(msg);S.running=false;runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
+export function showError(msg){S.frameErr=S.frameErr||new Error(msg);runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too
 export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearGhost').hidden=!g;$('#capGhost').hidden=!g;$('#gapWrap').hidden=!g;$('#deltaRow').hidden=!g;$('#tele').classList.toggle('noghost',!g);}
@@ -115,11 +116,11 @@ function syncFields(){
 export function buildTrackUI(){
   const sel=$('#trackPreset');
   sel.innerHTML=TRACKS.map((t,i)=>`<option value="${i}">${t.name}</option>`).join('')+'<option value="r" hidden>Random</option><option value="e" hidden>Edited</option>';
-  sel.onchange=()=>{const i=+sel.value;if(isNaN(i))return;S.trackIdx=i;S.ctrl=genCtrl(TRACKS[i].seed,S.width);S.origCtrl=S.ctrl.map(p=>p.slice());S.ghost=null;updGhostUI();S.fitPending=true;rebuildTrack(false);setRunning(true);};
-  $('#randTrack').onclick=()=>{const seed=(Math.random()*1e6)|0;S.ctrl=genCtrl(seed,S.width);S.origCtrl=S.ctrl.map(p=>p.slice());sel.value='r';S.ghost=null;updGhostUI();S.fitPending=true;rebuildTrack(false);setRunning(true);};
-  const w=$('#f-width');w.oninput=()=>{S.width=+w.value;$('#o-width').textContent=S.width+' m';S.ghost=null;updGhostUI();rebuildTrack(true);setRunning(true);};
+  sel.onchange=()=>{const i=+sel.value;if(isNaN(i))return;S.trackIdx=i;S.ctrl=genCtrl(TRACKS[i].seed,S.width);S.origCtrl=S.ctrl.map(p=>p.slice());S.ghost=null;updGhostUI();S.fitPending=true;rebuildTrack(false);};
+  $('#randTrack').onclick=()=>{const seed=(Math.random()*1e6)|0;S.ctrl=genCtrl(seed,S.width);S.origCtrl=S.ctrl.map(p=>p.slice());sel.value='r';S.ghost=null;updGhostUI();S.fitPending=true;rebuildTrack(false);};
+  const w=$('#f-width');w.oninput=()=>{S.width=+w.value;$('#o-width').textContent=S.width+' m';S.ghost=null;updGhostUI();rebuildTrack(true);};
   $('#editBtn').onclick=()=>{S.editing=!S.editing;const ed=S.editing;$('#editBtn').classList.toggle('on',ed);$('#editBtn').textContent=ed?'Done editing':'Edit shape';$('#editbar').hidden=!ed;$('#view').classList.toggle('editing',ed);if(ed)send({type:'pause'});else setRunning(true);};
-  $('#revertTrack').onclick=()=>{S.ctrl=S.origCtrl.map(p=>p.slice());S.ghost=null;updGhostUI();rebuildTrack(true);setRunning(true);};
+  $('#revertTrack').onclick=()=>{S.ctrl=S.origCtrl.map(p=>p.slice());S.ghost=null;updGhostUI();rebuildTrack(true);};
 }
 // Run/pause, restart, ghost, colouring, tags, telemetry Δ basis, replay and dynamic-check buttons.
 export function bindButtons(){
@@ -132,7 +133,7 @@ export function bindButtons(){
   $('#tagSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.tagMode=b.dataset.v;setSeg($('#tagSeg'),S.tagMode);};
   $('#deltaSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.deltaMode=b.dataset.v;setSeg($('#deltaSeg'),S.deltaMode);};
   $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);}; // 0 = Pause: the clock stops, the car and its readouts stay
-  $('#dynBtn').onclick=()=>{S.running=false;runLabel();send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
+  $('#dynBtn').onclick=()=>{send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
 }
 
 // ---------- saved runs (src/app/runfile.js): export the displayed car, circuit and line; load one back
@@ -206,7 +207,7 @@ export function loaded(m){
     S.P={...run.car};
     $('#carPreset').value=Object.keys(CARS).find(n=>CAR_KEYS.every(k=>CARS[n][k]===S.P[k]))||'custom';syncFields();
   }
-  S.running=L.mode==='ghost';S.hist=[];S.dynRes=null;S.dynStale=false;S.dynRunning=false;renderDyn();runLabel();fit();
+  S.hist=[];S.dynRes=null;S.dynStale=false;S.dynRunning=false;renderDyn();runLabel();fit();
   if(run.line.N!==m.N)notes.push(`The line was resampled from ${run.line.N} to ${m.N} stations.`);
   if(m.clamped.n)notes.push(`${m.clamped.n} stations were moved inside this build's track limits (by up to ${m.clamped.max.toFixed(2)} m).`);
   try{pinGhost(ghostFrom(run));notes.push('Recorded lap pinned as the ghost.');}catch(e){S.ghost=null;updGhostUI();notes.push(e.message);}

@@ -12,7 +12,7 @@ globalThis.document = { querySelector: () => ({}), querySelectorAll: () => [] };
 const { S } = await import('../src/app/state.js');
 const client = await import('../src/app/client.js');
 client.connect({
-  renderDerived() {}, renderDyn() {}, runLabel() {}, trackArrived() {},
+  renderDerived() {}, renderDyn() {}, runLabel: () => calls.push(['runLabel']), trackArrived() {},
   showError: msg => calls.push(['showError', msg]), dynLap: n => calls.push(['dynLap', n]),
   loaded: m => calls.push(['loaded', m.rev]), loadFailed: () => calls.push(['loadFailed']),
 });
@@ -106,4 +106,46 @@ test('client: a crashed worker fails a load in flight and frees both kinds, sinc
   client.sendState('setCar', { params: { tag: 'after' } });
   assert.deepEqual(of('setCar').map(c => c.params.tag), ['after'], 'nothing waits on the dead load; the edit made meanwhile is dropped with it');
   deliver({ type: 'carInfo', carRev: of('setCar')[0].rev, info: {} });
+});
+
+const prog = (running, converged = false) => ({ type: 'progress', stage: 1, of: 6, knot: 48, polish: false, evals: 0, lap: 80, running, converged });
+
+test('client: progress mirrors the worker\'s running flag, and redraws the label only when it changes', () => {
+  mark();
+  S.running = false; S.prog = null;
+  deliver(prog(true));
+  assert.equal(S.running, true);
+  assert.deepEqual([...calls], [['runLabel']]);
+  deliver(prog(true));
+  assert.deepEqual([...calls], [['runLabel']], 'nothing changed');
+  deliver(prog(false, true));
+  assert.equal(S.running, false, 'the worker stopped (converged)');
+  assert.deepEqual([...calls], [['runLabel'], ['runLabel']]);
+});
+
+test('client: a solver error and a crashed worker both leave it not running', () => {
+  mark();
+  S.running = true;
+  deliver({ type: 'error', rev: null, message: 'slice blew up', stack: '' }); // the solver pauses itself on an error, without a progress
+  assert.equal(S.running, false, 'error');
+  S.running = true;
+  worker.onerror({ preventDefault() {}, message: 'worker died' });
+  assert.equal(S.running, false, 'crash');
+});
+
+test('client: a queued resume is dropped if the circuit is being edited by the time it is sent', () => {
+  mark();
+  const land = () => deliver({ type: 'carInfo', carRev: of('setCar').at(-1).rev, info: {} });
+  client.sendState('setCar', { params: { tag: 'a' }, resume: true });
+  client.sendState('setCar', { params: { tag: 'b' }, resume: true }); // queued behind a
+  S.editing = true; // entering circuit-edit mode sends a pause; b must not undo it
+  land();
+  assert.deepEqual(of('setCar').map(c => [c.params.tag, c.resume]), [['a', true], ['b', false]]);
+  land();
+  S.editing = false;
+  client.sendState('setCar', { params: { tag: 'c' }, resume: true });
+  client.sendState('setCar', { params: { tag: 'd' }, resume: true });
+  land();
+  assert.deepEqual(of('setCar').slice(-2).map(c => [c.params.tag, c.resume]), [['c', true], ['d', true]], 'not editing: kept');
+  land();
 });

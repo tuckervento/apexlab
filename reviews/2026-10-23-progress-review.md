@@ -23,7 +23,7 @@
 
 Per `CLAUDE.md`, `src/app/physics-version.js` holds the SHA-256 of `core/`, `dynamics/` and `solver/solver.js`. After **any** edit to those files, mechanical refactors included, run `node tests/make-physics-version.mjs --write` and commit the result, or `runfile.test.mjs` fails.
 
-- Findings that touch the hashed files, so each fix needs the hash regenerated: M2, M3 (if done in `solver.js`), M6, L2, L3, L4, L7, L8 (if touched).
+- Findings that touch the hashed files, so each fix needs the hash regenerated: M2, M3 (done 2026-10-24: it did, `resume`), M6, L2, L3, L4, L7, L8 (if touched).
 - Findings that do **not** touch the hashed files: M1, M4, M5, L5, L9, L10, L11, G1–G4, docs drift. These are `app/`, `views/`, `tests/` or markdown.
 - **Correction (2026-10-24):** this list first included L1 and L12. They needed the error event tagged with a `rev`, which is emitted in `Solver.guard` (`solver.js`), so they did change the hash.
 - The hash identifies source, not results. None of these fixes should change physics, so `golden.json` must still pass untouched. A golden diff means something went wrong. A hash-only diff is expected.
@@ -40,7 +40,7 @@ No Critical or High issues, before or after save/load. The physics core and its 
 |---|---|---|
 | M1 | dyn label sticks at "running" | **Fixed** 2026-10-24 (uncommitted), test in `tests/client.test.mjs` |
 | M2 | car change mid-polish seeds from a rejected candidate | **Open**, unchanged; **proposed fix revised** (see M2) |
-| M3 | frame error doesn't pause the worker; two owners of `running` | **Open**; save/load added a third writer of `S.running` (`loaded()`) |
+| M3 | frame error doesn't pause the worker; two owners of `running` | **Fixed** 2026-10-24 (uncommitted): worker owns `running`, `S.running` mirrors `progress`, `resume` flag on `setCar`/`setTrack`; browser check pending |
 | M4 | app layer untested | **Partly done**: `client.js` now has `tests/client.test.mjs` (7 tests); `controls.js`, `telemetry.js`, `main.js` still untested |
 | L1 | tick error breaks the one-in-flight invariant | **Fixed** 2026-10-24 (uncommitted) with L12 |
 | L2 | degenerate track publishes NaN | **Partly fixed**: `load` refuses `T.L>0` false; `setTrack` still doesn't |
@@ -118,13 +118,19 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
   - the existing test checks `pub === spl(c)`, which holds trivially after a refit, so it cannot catch this
 - **Hash:** touches `core/optimiser.js` and `solver.js`, so regenerate `physics-version.js`.
 
-#### [ ] M3. Frame-loop error does not pause the worker; `running` has multiple owners (VERIFIED by reading)
+#### [x] M3. Frame-loop error does not pause the worker; `running` has multiple owners (VERIFIED by reading)
 
 - **Where:** `src/app/main.js:88` (`frame()` catch sets `S.running=false`, sends no `pause`); `client.js` `progress` case only handles `converged&&S.running`.
 - **Cause:** the running flag is mirrored: `S.running` on the main thread and `Solver.running` in the worker. The worker keeps searching after a frame error, contradicting ARCHITECTURE §3.3 and CLAUDE.md ("errors pause the search").
 - **Added by save/load:** `controls.js` `loaded()` also writes `S.running` directly (`S.running=L.mode==='ghost'`) while the worker sets its own from `c.run`. It's a third writer, and the two only agree because the code keeps them in step by hand.
 - **Related race (SUSPECTED; inferred, not observed):** `setCar` never resumes the worker. If convergence and a single discrete car change cross in flight, the search stays paused. Slider drags recover on the next input.
 - **Fix:** make the worker the single owner of `running`, and have the client mirror `m.running` from `progress`. Make the frame-error path send `pause`.
+- **Fixed 2026-10-24 (uncommitted):**
+  - `Solver` `setCar`/`setTrack` take `resume`: once the new line exists the worker sets `running` itself. The app's auto-resume rides on those commands (`resume:!S.editing`) instead of a separate `run`, which closes the race. A queued `resume` is dropped by `landed()` if the circuit is being edited by then. Test: "setCar and setTrack with resume start the search; without it they leave it as it was". `physics-version.js` regenerated (hash line only).
+  - `client.js` `progress` mirrors `m.running` and redraws the label when it or `converged` changes; an `error` event and `solver.onerror` set `S.running=false`. Tests: three in `tests/client.test.mjs`.
+  - Removed the writers: `setRunning`, `dynBtn`, `loaded()`, `showError`, the frame catch and the boot `setRunning(true)`. The frame catch now sends `pause`.
+  - **Not covered by a Node test (needs the browser):** the frame-catch `pause`, and the label/auto-resume behaviour in `controls.js`.
+  - **Behaviour changes to be aware of:** the Run/Pause label follows the worker's `progress`, so it lags a command by up to one 15 ms slice. While the circuit is being edited the worker is paused, so the button reads "Run" (it used to read "Pause"). After a frame error `S.running` stays true until the worker's `progress` arrives, so the same error can repeat for a frame or two, re-sending an idempotent `pause`.
 
 #### [ ] M4. The app layer and protocol client have no tests (VERIFIED; surface has grown)
 
@@ -296,7 +302,7 @@ Each phase should end with `node --test tests/` green and `golden.json` untouche
 1. **Now, app/tests/docs only (no hash change):**
    - ~~M1~~, ~~the M4 client test harness~~, ~~M5~~, ~~L1 with L12~~: done 2026-10-24, uncommitted (L1/L12 did change the hash, see the correction above)
    - still to do: L5, L9, L11 and the docs drift list
-2. **Protocol ownership:** M3 (worker as single owner of `running`; frame errors send `pause`; remove the third writer in `loaded()`).
+2. **Protocol ownership:** ~~M3~~ done 2026-10-24, uncommitted (see M3).
 3. **Before anyone relies on run files:**
    - M6 (`carSpec` ranges, plus `load` tests); this touches `core/`
    - L2 (`buildTrack` rejects `L≈0`, shared by `setTrack` and `load`); this touches `core/`

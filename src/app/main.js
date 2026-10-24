@@ -2,9 +2,9 @@
 // editing), the requestAnimationFrame loop, the lap readout and live telemetry; everything it draws comes from S
 // (src/app/state.js).
 import { S, $ } from './state.js';
-import { sendState, connect } from './client.js';
+import { send, sendState, connect } from './client.js';
 import { bindButtons, bindRun, buildCarUI, buildTrackUI, dynLap, fit, loaded, loadFailed, rebuildTrack, renderDerived, renderDyn,
-  runLabel, setFollow, setRunning, showError, trackArrived, updGhostUI } from './controls.js';
+  runLabel, setFollow, showError, trackArrived, updGhostUI } from './controls.js';
 import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
@@ -85,7 +85,7 @@ let lastTs=0,frameN=0;
 function frame(ts){
   try{frameBody(ts);}
   catch(e){
-    if(!S.frameErr){S.frameErr=e;console.error(e);S.running=false;$('#runBtn').textContent='Run';
+    if(!S.frameErr){S.frameErr=e;console.error(e);send({type:'pause'}); // the label follows from the worker's progress
       const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+(e&&e.message||e);}
   }
   requestAnimationFrame(frame);
@@ -114,6 +114,6 @@ function frameBody(ts){
 // ---------- boot
 refreshColors();bindButtons();bindRun();buildCarUI();buildTrackUI();
 new ResizeObserver(()=>{const first=!cam.cw;resize();if(first&&S.T)fit();}).observe($('#stage'));
-resize();sendState('setCar',{params:{...S.P}});S.fitPending=true;rebuildTrack(false);setRunning(true);
+resize();sendState('setCar',{params:{...S.P}});S.fitPending=true;rebuildTrack(false);
 document.fonts&&document.fonts.ready.then(refreshColors);
 requestAnimationFrame(frame);

@@ -363,8 +363,8 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 **Commands** (main thread → worker). `rev` is one counter on the main thread, increasing with every car or track command.
 
 ```ts
-{ type: 'setCar',   rev, params: CarParams }        // build car → carInfo; rescore; new reference lap → snapshot
-{ type: 'setTrack', rev, ctrl, width, keepLine }    // build track → track; fresh search from the old line resampled, or the centreline → snapshot
+{ type: 'setCar',   rev, params: CarParams, resume? } // build car → carInfo; rescore; new reference lap → snapshot
+{ type: 'setTrack', rev, ctrl, width, keepLine, resume? } // build track → track; fresh search from the old line resampled, or the centreline → snapshot
 { type: 'setLine' }                                 // fresh search from the centreline → snapshot
 { type: 'load',     rev, params, ctrl, width, off, run } // car + track + line in one step (§7 run file) → carInfo, track, snapshot, loaded; run: search from it, else paused
 { type: 'run', fresh? } | { type: 'pause' }         // fresh: restart the search from the current line ("Search again")
@@ -385,6 +385,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'error',     rev, message, stack }           // the solver pauses and stays usable; rev: the failing command's, null for a slice
 ```
 
+- **The worker owns `running`.** It changes only on `run`, `pause`, `dynCheck`, `load` (`run`), convergence, an error (which pauses it and sends no `progress`), and `resume` on `setCar`/`setTrack`: when set, the worker starts searching as soon as the new line exists. The app resumes after a car or circuit change this way, not with a separate `run`, because setCar/setTrack are coalesced on the main thread and a `run` sent beside one could overtake it. `S.running` only mirrors the `running` of the latest `progress` (and is cleared on an `error` or a worker failure); a command that changes it is answered by the next `progress`. A queued `resume` is dropped if the circuit is being edited by the time it is sent.
 - **Revisions** replace the staleness flags. `lineRev` increases each time the worker publishes a changed line. A view never steps back to an older car or track revision, and a dynamic result is current only while all three of its revisions match the displayed snapshot.
 - **Arrays** cross the boundary as fresh copies, transferred. The worker keeps its own working copy and a published copy, and never shares memory with views.
 - **Differences from the original sketch:**

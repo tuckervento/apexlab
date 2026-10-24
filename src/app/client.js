@@ -18,7 +18,7 @@ export function sendLoad(body){
 // True when nothing is queued or in flight and the displayed line was computed on the newest car and track, so S.P,
 // S.ctrl and S.disp describe one run (what an export saves).
 export const settled=()=>{const d=S.disp,f=flight;return !!d&&!loadRev&&!f.setCar.busy&&!f.setCar.next&&!f.setTrack.busy&&!f.setTrack.next&&d.carRev===carEv&&d.trackRev===trackEv;};
-function landed(f){f.busy=0;if(f.next){const c=f.next;f.next=null;f.busy=c.rev;send(c);}}
+function landed(f){f.busy=0;if(f.next){const c=f.next;f.next=null;f.busy=c.rev;if(S.editing)c.resume=false;send(c);}} // c was queued before the circuit edit began, whose pause its resume would undo
 // hooks: {renderDerived(), renderDyn(), runLabel(), showError(msg), trackArrived(), dynLap(n), loaded(m), loadFailed()}
 export function connect(hooks){ui=hooks;}
 
@@ -30,14 +30,16 @@ solver.onmessage=({data:m})=>{
       ui.loaded(m);}break;
     case 'snapshot':onSnapshot(m);break;
     case 'progress':
-      S.prog=m;
-      if(m.converged&&S.running){S.running=false;ui.runLabel();}
+      { // the worker owns `running`; S.running only mirrors it
+        const changed=!S.prog||S.running!==m.running||S.prog.converged!==m.converged;
+        S.prog=m;S.running=m.running;if(changed)ui.runLabel();
+      }
       if(m.running&&!S.editing&&S.disp){S.hist.push([m.evals,S.disp.t]);if(S.hist.length>1500)S.hist=S.hist.filter((_,i)=>i%2===0);}
       break;
     case 'dynProgress':if(S.dynRunning)ui.dynLap(m.lap);break; // one emitted before a car or track change ended the check arrives after it
     case 'dynResult':S.dynRunning=false;S.dynRes={...m.result,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};S.dynStale=!dynCurrent();ui.renderDyn();break;
     case 'error':
-      console.error('solver: '+m.message+'\n'+m.stack);ui.showError(m.message);
+      console.error('solver: '+m.message+'\n'+m.stack);S.running=false;ui.showError(m.message); // an error pauses the solver, and it sends no progress to say so
       if(S.dynRunning){S.dynRunning=false;ui.renderDyn();}
       for(const f of Object.values(flight))if(m.rev&&f.busy===m.rev)landed(f); // the failed command won't be answered; a slice's error (rev null) fails no command
       if(m.rev&&m.rev===loadRev){loadRev=0;ui.loadFailed();} // the load's own error (the loop above freed both kinds); the solver validates before it changes anything, so S still matches it. A slice's error leaves the load to be answered
@@ -45,7 +47,7 @@ solver.onmessage=({data:m})=>{
   }
 };
 solver.onerror=e=>{
-  e.preventDefault();console.error('solver worker:',e.message||e);ui.showError('solver failed: '+(e.message||'see console'));
+  e.preventDefault();console.error('solver worker:',e.message||e);S.running=false;ui.showError('solver failed: '+(e.message||'see console'));
   // Solver catches its own exceptions, so this is the worker failing outside a command: nothing in flight will be answered.
   for(const f of Object.values(flight)){f.busy=0;f.next=null;}
   if(loadRev){loadRev=0;ui.loadFailed();}
