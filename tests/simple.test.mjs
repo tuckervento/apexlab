@@ -49,6 +49,18 @@ test('simple: every knob setting gives a valid car inside the slider ranges', ()
   assert.equal(n, 6 * 2 * 2 * 5 * 4 * 3 ** 4);
 });
 
+test('simple: a missing, unknown or out-of-range knob throws, naming it', () => {
+  const ok = defaults('GT racer');
+  assert.throws(() => defaults('Tractor'), /unknown base car Tractor/);
+  assert.throws(() => deriveParams({ ...ok, base: 'Tractor' }), /base must be one of/);
+  assert.throws(() => deriveParams({ ...ok, wings: 1 }), /unknown knob wings/);
+  const { power, ...noPower } = ok;
+  assert.throws(() => deriveParams(noPower), /power must be a number/);
+  assert.throws(() => deriveParams({ ...ok, weight: knob('weight').max + 1 }), /weight must be a number in/);
+  assert.throws(() => deriveParams({ ...ok, balance: NaN }), /balance must be a number in/);
+  assert.throws(() => deriveParams({ ...ok, tyre: 'wet' }), /tyre must be one of/);
+});
+
 // Knob k swept over its range from centred knobs on a base car: [knob value, CarParams, describeCar] per step.
 function sweep(base, k, n = 10, over = {}) {
   const { min, max } = knob(k), out = [];
