@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore } from './load-core.mjs';
+import { stadium } from './golden-util.mjs';
 
 const core = await loadCore(), WIDTH = 12;
 const withZ = (ctrl, z) => ctrl.map((p, i) => [p[0], p[1], typeof z === 'number' ? z : z[i]]);
@@ -11,13 +12,15 @@ const ARRAYS = ['cx', 'cy', 'nx', 'ny', 'kc'];
 test('track: a flat circuit has exactly zero rise, unit cos-grade and zero vertical curvature', () => {
   for (const tr of core.TRACKS) {
     const ctrl = core.genCtrl(tr.seed, WIDTH), T2 = core.buildTrack(ctrl, WIDTH), T3 = core.buildTrack(withZ(ctrl, 0), WIDTH);
-    for (const T of [T2, T3]) {
-      assert.equal(T.flat, true, `${tr.name}: flat`);
+    const T5 = core.buildTrack(withZ(ctrl, 5.3), WIDTH); // level ground at one height is flat too (no spline rounding in dz)
+    for (const [T, z0] of [[T2, 0], [T3, 0], [T5, 5.3]]) {
+      assert.equal(T.flat, true, `${tr.name} at ${z0} m: flat`);
       for (let i = 0; i < T.N; i++) {
-        if (T.z[i] !== 0 || T.dz[i] !== 0 || T.cth[i] !== 1 || T.kv[i] !== 0)
-          assert.fail(`${tr.name} station ${i}: z ${T.z[i]} dz ${T.dz[i]} cth ${T.cth[i]} kv ${T.kv[i]}`);
+        if (T.z[i] !== z0 || T.dz[i] !== 0 || T.cth[i] !== 1 || T.kv[i] !== 0)
+          assert.fail(`${tr.name} at ${z0} m, station ${i}: z ${T.z[i]} dz ${T.dz[i]} cth ${T.cth[i]} kv ${T.kv[i]}`);
       }
     }
+    for (const k of ARRAYS) for (let i = 0; i < T2.N; i++) if (T2[k][i] !== T5[k][i]) assert.fail(`${tr.name}: ${k}[${i}] differs at a constant 5.3 m`);
     assert.deepEqual([T3.N, T3.L, T3.ds, T3.minR, T3.issue], [T2.N, T2.L, T2.ds, T2.minR, T2.issue], `${tr.name}: [x, y, 0] scalars`);
     for (const k of ARRAYS) for (let i = 0; i < T2.N; i++) if (T2[k][i] !== T3[k][i]) assert.fail(`${tr.name}: ${k}[${i}] differs with z = 0`);
   }
@@ -45,8 +48,10 @@ test('track: generated hills close the loop and stay within racing-circuit grade
   }
 });
 
-// The load-factor tables (car.load) are the flat car's tables at other loads; at n = 1 they must be the flat car's own.
-test('car: the n = 1 slice of the load tables is the flat car, bit for bit', () => {
+// The load-factor tables (car.load) are the flat car's tables at other loads, with the flat car's own as the n = 1 slice.
+// This pins the packing and layout only: buildCar reuses the flat tables for that slice, so that n = 1 is the flat
+// physics is proven by the goldens (the flat car is gripTables(p, 1)), not here.
+test('car: a loads build keeps the flat car and packs it as the n = 1 slice', () => {
   const { NT, NQ, NL, NSTEP } = core, l1 = Math.round(1 / NSTEP);
   assert.equal(l1 * NSTEP, 1, 'n = 1 is a grid node');
   for (const [name, P] of Object.entries(core.CARS)) {
@@ -107,8 +112,7 @@ test('lap: corner speed over a crest or through a compression matches v = √(μ
   assert.equal(core.vCornerN(car, k, car.load.kcrit, 1, 0, out), core.vCorner(car, k, null, out));
 });
 
-// Gravity in the forward pass: where drive power is the limit (no upshift, the step sets the speed), v_j² is
-// u² + 2·(drive − drag − rolling)·ds − 2g·dz with ds the 3D step. Recomputed here from the car's own tables.
+// A hilly preset circuit (Harrow Ring by default) at H m of hills, a car with load tables, the clamped centreline.
 function hilly(carName, H = 40, trackIdx = 0) {
   const tr = core.TRACKS[trackIdx], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl);
   const T = core.buildTrack(withZ(ctrl, u.map(x => H * x)), WIDTH), car = core.buildCar(core.CARS[carName], { loads: true });
@@ -116,27 +120,6 @@ function hilly(carName, H = 40, trackIdx = 0) {
   for (let i = 0; i < T.N; i++) off[i] = Math.min(B.hi[i], Math.max(B.lo[i], 0));
   return { T, car, B, off };
 }
-test('lap: on a power-limited step, gravity takes exactly 2g·dz off v²', t => {
-  const { T, car, off } = hilly('Road car'), N = T.N, S = core.makeScratch(N), { G, RHO, CRR } = core;
-  core.lapEval(T, car, off, S);
-  const kd = 0.5 * RHO * car.cda / car.m, rr = G * CRR, tn = new Float64Array(2), tl = new Float64Array(3), tg = new Float64Array(4);
-  let up = 0, down = 0, worst = 0;
-  for (let i = 0; i < N; i++) {
-    const j = (i + 1) % N, u = S.vf[i];
-    if (T.dz[i] === 0 || S.ff[j] !== 1 || S.sh[j]) continue;
-    const n = core.loadAt(T.cth[i], T.kv[i], u, tn); core.tab3(car.load.alat, u, n, tl);
-    const ak = Math.max(Math.abs(S.k[i]), Math.abs(S.k[j])); core.gg3(car.load.ggT, u, u * u * ak / tl[0], n, tg);
-    const pw = core.tabAt(car.drv, u); if (!(pw < tg[0])) continue; // grip-limited: not this check
-    const dx = S.px[j] - S.px[i], dy = S.py[j] - S.py[i], ds3 = Math.sqrt(dx * dx + dy * dy + T.dz[i] * T.dz[i]);
-    assert.ok(ds3 > Math.sqrt(dx * dx + dy * dy), `step ${i}: 3D step not longer than its plan view`);
-    const want = u * u + 2 * (pw - kd * u * u - rr) * ds3 - 2 * G * T.dz[i];
-    worst = Math.max(worst, Math.abs(S.vf[j] * S.vf[j] - want) / want);
-    if (T.dz[i] > 0) up++; else down++;
-  }
-  t.diagnostic(`power-limited steps on a slope: ${up} uphill, ${down} downhill; worst relative mismatch ${worst.toExponential(2)}`);
-  assert.ok(up > 0 && down > 0, 'need power-limited steps both uphill and downhill');
-  assert.ok(worst < 1e-12, `v² differs from u² + 2(F/m)ds − 2g·dz by ${worst}`);
-});
 
 // Past the edge: hills far beyond the slider. The lap, its speeds and its gradient must stay finite. Measured when
 // written: the lowest load factor reached at lap speed stays well above 0 (Road car 0.55 at 250 m on Kestrel Point),
@@ -157,10 +140,10 @@ test('lap: hills far past the slider still give a finite lap, speeds and gradien
 
 // The clamped load factor: below 0 the car has no static grip (only downforce), above the grid's top it reads the top.
 test('lap: the load factor clamps to the grid, with zero slope, and lookups there are the end slices', () => {
-  const { NT, NQ, NL, NSTEP, G } = core, top = (NL - 1) * NSTEP, out = new Float64Array(2), tl = new Float64Array(3), tg = new Float64Array(4);
-  assert.deepEqual([core.loadAt(1, -1 / 50, 30, out), out[1]], [0, 0], 'crest at speed: n clamps to 0, flat in v');
-  assert.deepEqual([core.loadAt(1, 1 / 20, 40, out), out[1]], [top, 0], 'hard compression: n clamps to the top');
-  assert.equal(core.loadAt(1, -1 / 500, 20, out), 1 - 400 / 500 / G); assert.equal(out[1], 2 * 20 * (-1 / 500) / G);
+  const { NT, NQ, NL, NSTEP, G } = core, top = (NL - 1) * NSTEP, out = new Float64Array(3), tl = new Float64Array(3), tg = new Float64Array(4);
+  assert.deepEqual([core.loadAt(1, -1 / 50, 30, out), out[1], out[2]], [0, 0, -1], 'crest at speed: n clamps to 0 (airborne), flat in v');
+  assert.deepEqual([core.loadAt(1, 1 / 20, 40, out), out[1], out[2]], [top, 0, 1], 'hard compression: n clamps to the top');
+  assert.equal(core.loadAt(1, -1 / 500, 20, out), 1 - 400 / 500 / G); assert.deepEqual([out[1], out[2]], [2 * 20 * (-1 / 500) / G, 0]);
   for (const name of ['Road car', 'GT racer']) {
     const car = core.buildCar(core.CARS[name], { loads: true }), L = car.load, v = 40.25, q = 0.4;
     for (const [n, l] of [[0, 0], [-0.3, 0], [top, NL - 1], [top + 1, NL - 1]]) {
@@ -173,4 +156,109 @@ test('lap: the load factor clamps to the grid, with zero slope, and lookups ther
     const vc = core.vCornerN(car, 1 / 200, L.kcrit, 1, -1 / 60, out), vZero = Math.sqrt(G * 60);
     assert.ok(Number.isFinite(vc) && vc > 0 && vc < vZero && out[1] < 0, `${name}: corner speed ${vc} over a 60 m crest (n = 0 at ${vZero.toFixed(1)} m/s), slope ${out[1]}`);
   }
+});
+
+
+// Airborne without downforce: over a sharp crest on a (nearly) straight line the load factor drops below 0 and a car
+// with no downforce has no grip at all. The lap model must coast it over (gravity and drag only), not divide by its
+// zero lateral limit: the lap and gradient stay finite, nothing is held at the speed floor, and the airborne steps are
+// reported. Off the exact centreline |k| is ~1e-8 there, the case that used to put NaN into the gradient.
+test('lap: a car with no downforce coasts over a crest it flies off, and the lap says so', t => {
+  const bump = s => { const x = s - 500; return Math.abs(x) < 75 ? 10 * (1 + Math.cos(2 * Math.PI * x / 150)) : 0; }; // 20 m over 150 m at s = 500
+  const T = core.buildTrack(stadium(1000, 120, bump), WIDTH), car = core.buildCar(core.CARS['Kart'], { loads: true }), B = core.makeBounds(T, car), N = T.N;
+  assert.equal(car.spec.cla, 0, 'the Kart has no downforce');
+  for (const [label, amp] of [['centreline', 0], ['off the centreline', 0.3]]) {
+    const off = new Float64Array(N); for (let i = 0; i < N; i++) off[i] = Math.min(B.hi[i], Math.max(B.lo[i], amp * Math.sin(2 * Math.PI * 3 * i / N)));
+    for (const tau of [0, 0.5]) {
+      const S = core.makeScratch(N), grad = new Float64Array(N), lap = core.lapEval(T, car, off, S, grad, tau);
+      t.diagnostic(`${label}, tau ${tau}: lap ${lap.toFixed(3)} s, airborne pass steps ${S.air}, at the speed floor ${S.stall}`);
+      assert.ok(Number.isFinite(lap) && S.v.every(Number.isFinite) && grad.every(Number.isFinite), `${label}, tau ${tau}: non-finite lap, speed or gradient`);
+      assert.ok(S.air > 0, `${label}, tau ${tau}: the crest should be reported airborne`);
+      assert.equal(S.stall, 0, `${label}, tau ${tau}: stations held at the 0.1 m/s floor`);
+    }
+  }
+});
+
+// A car that can't get up a hill: the lap model holds it at the 0.1 m/s floor there, which makes for a lap time that
+// means nothing. That must be reported (S.stall, carried on snapshots as warn.stall), and never happen on a normal lap.
+test('lap: a car too weak for a climb is reported as stalled; a normal hilly lap is not', t => {
+  const run = (params, H) => { const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl);
+    const T = core.buildTrack(withZ(ctrl, u.map(x => H * x)), WIDTH), car = core.buildCar(params, { loads: true }), B = core.makeBounds(T, car), off = new Float64Array(T.N);
+    for (let i = 0; i < T.N; i++) off[i] = Math.min(B.hi[i], Math.max(B.lo[i], 0));
+    const S = core.makeScratch(T.N), lap = core.lapEval(T, car, off, S); return { lap, S }; };
+  const weak = run({ ...core.CARS['Road car'], power: 40, mass: 2400 }, 80), ok = run(core.CARS['Road car'], 40);
+  t.diagnostic(`40 kW / 2400 kg on 80 m hills: lap ${weak.lap.toFixed(1)} s, ${weak.S.stall} stations at the floor; Road car on 40 m: lap ${ok.lap.toFixed(2)} s, ${ok.S.stall}`);
+  assert.ok(weak.S.stall > 0, 'stall not reported');
+  assert.equal(ok.S.stall, 0, 'a normal hilly lap reports a stall');
+  assert.deepEqual([ok.S.air, ok.S.ntop], [0, 0], 'a normal hilly lap reports clamping');
+});
+
+// Climbing a long constant ramp, a constant-power car settles at its terminal speed, where P·η/(m·v) = g·sinθ + drag +
+// rolling: solved here from the car's spec alone, not from the lap model's tables. It gets there exponentially, from
+// below if it arrives slower and from above if faster, with the gap shrinking by exp(−Δs·|f′(v_t)|/v_t) over Δs
+// (f(v) = the net acceleration, linearised at v_t). An EV (no gears) with 60 kW and full power from 20 km/h.
+test('lap: up a constant ramp a constant-power car approaches its closed-form terminal speed at the closed-form rate', t => {
+  const { G, RHO, CRR, ETA } = core, S = 2500, R = 120;
+  for (const grade of [0.04, 0.08]) {
+    const top = grade * S, zAt = s => s <= S ? grade * s : s <= S + Math.PI * R ? top : s <= 2 * S + Math.PI * R ? top - grade * (s - S - Math.PI * R) : 0;
+    const T = core.buildTrack(stadium(S, R, zAt), WIDTH), car = core.buildCar({ ...core.CARS['EV saloon'], power: 60, evBase: 20 }, { loads: true });
+    const N = T.N, Sc = core.makeScratch(N); core.lapEval(T, car, new Float64Array(N), Sc);
+    const p = car.spec, m = p.mass, Pm = p.Pmax * ETA, kd = 0.5 * RHO * p.cda / m, rr = G * CRR, ds = T.L / N;
+    const at = frac => Math.round(frac * S / ds), sin = T.dz[at(0.7)] / Math.hypot(ds, T.dz[at(0.7)]);
+    let lo = 1, hi = 100; for (let k = 0; k < 200; k++) { const v = (lo + hi) / 2; if (Pm / (m * v) - G * sin - kd * v * v - rr > 0) lo = v; else hi = v; }
+    const vt = lo, fp = -Pm / (m * vt * vt) - 2 * kd * vt, rate = Math.abs(fp) / vt;
+    const gap = [0.5, 0.7, 0.9].map(f => Sc.v[at(f)] - vt), want = Math.exp(-0.2 * S * rate), got = [gap[1] / gap[0], gap[2] / gap[1]];
+    t.diagnostic(`${grade * 100}% ramp: terminal ${vt.toFixed(3)} m/s; gap ${gap.map(g => g.toFixed(3)).join(', ')} m/s; ratio per 500 m ${got.map(r => r.toFixed(3)).join(', ')} (closed form ${want.toFixed(3)})`);
+    for (const f of [0.5, 0.7, 0.9]) assert.ok(Math.abs(T.dz[at(f)] / ds - grade) < 1e-3 && Sc.fm[at(f)] === 1, `${grade}: the ramp is not a clean constant grade, or the speed there isn't set by the climb`);
+    const side = Math.sign(gap[0]);
+    assert.ok(gap.every(g => Math.sign(g) === side) && Math.abs(gap[2]) < Math.abs(gap[1]) && Math.abs(gap[1]) < Math.abs(gap[0]), `${grade}: not a one-sided approach to ${vt}: ${gap}`);
+    for (const r of got) assert.ok(Math.abs(r / want - 1) < 0.1, `${grade}: approach ratio ${r} vs closed form ${want}`);
+    assert.ok(Math.abs(gap[2]) / vt < 0.03, `${grade}: still ${(100 * gap[2] / vt).toFixed(2)}% from terminal speed`);
+  }
+});
+
+// Hills cost time where physics says they should, end to end: against the same stadium flat, a 4% ramp up one straight
+// and down the other makes the climb slower and the descent faster, and the lap slower overall (time is convex in
+// speed, so the climb loses more than the descent gives back).
+test('lap: a climb is slower and a descent faster than the same straight flat, and the lap is slower', t => {
+  const S = 1500, R = 120, g = 0.04, top = g * S, ramp = s => s <= S ? g * s : s <= S + Math.PI * R ? top : s <= 2 * S + Math.PI * R ? top - g * (s - S - Math.PI * R) : 0;
+  for (const name of ['Road car', 'GT racer']) {
+    const run = zAt => { const T = core.buildTrack(stadium(S, R, zAt), WIDTH), car = core.buildCar(core.CARS[name], { loads: !T.flat }), N = T.N, Sc = core.makeScratch(N);
+      const lap = core.lapEval(T, car, new Float64Array(N), Sc), sec = (s0, s1) => { let tt = 0; for (let i = Math.ceil(s0 / T.ds); i < Math.floor(s1 / T.ds); i++) tt += 2 * Sc.ds[i] / (Sc.v[i] + Sc.v[(i + 1) % N]); return tt; };
+      return { flat: T.flat, lap, up: sec(0, S), down: sec(S + Math.PI * R, 2 * S + Math.PI * R) }; };
+    const f = run(() => 0), h = run(ramp);
+    t.diagnostic(`${name}: climb ${h.up.toFixed(3)} s vs ${f.up.toFixed(3)} flat, descent ${h.down.toFixed(3)} vs ${f.down.toFixed(3)}, lap ${h.lap.toFixed(3)} vs ${f.lap.toFixed(3)}`);
+    assert.deepEqual([f.flat, h.flat], [true, false]);
+    assert.ok(h.up > f.up, `${name}: the climb isn't slower`);
+    assert.ok(h.down < f.down, `${name}: the descent isn't faster`);
+    assert.ok(h.lap > f.lap, `${name}: the hilly lap isn't slower`);
+  }
+});
+
+// vCornerN binary-searches K(v) = kcrit(v, n(v)) over the speed nodes, which assumes K never rises with speed (as the
+// flat tables are made to). Pinned across every preset, all three limit tables, grades and crest/compression radii from
+// 20 m to 5 km; and the search agrees with a brute-force scan for the first crossing. If something new (banking,
+// ride-height aero) breaks monotonicity, this fails instead of the search quietly returning some later crossing.
+test('lap: the load-factor corner limit never rises with speed, and vCornerN finds its first crossing', () => {
+  const { NT, VSTEP } = core, tn = new Float64Array(3), tl = new Float64Array(3), out = new Float64Array(2);
+  const radii = [20, 30, 50, 80, 120, 200, 300, 500, 1000, 2000, 5000], kvs = [0, ...radii.map(r => 1 / r), ...radii.map(r => -1 / r)];
+  const K = (Kt, ii, c, kv) => { const v = ii * VSTEP, n = core.loadAt(c, kv, v, tn); core.tab3(Kt, v, n, tl); return tl[0]; };
+  let pairs = 0, searches = 0;
+  for (const [name, P] of Object.entries(core.CARS)) {
+    const car = core.buildCar(P, { loads: true }), L = car.load;
+    for (const tab of ['kcrit', 'kcF', 'kcR']) for (const c of [1, 0.995, 0.98]) for (const kv of kvs) {
+      let prev = K(L[tab], 1, c, kv);
+      for (let ii = 2; ii < NT; ii++) { const k = K(L[tab], ii, c, kv); if (k > prev) assert.fail(`${name} ${tab} cth ${c} kv ${kv}: rises at node ${ii} (${prev} -> ${k})`); prev = k; pairs++; }
+      if (tab !== 'kcrit') continue;
+      for (const k of [1 / 15, 1 / 40, 1 / 100, 1 / 300, 1 / 1500]) {
+        if (!(K(L.kcrit, 1, c, kv) > k) || K(L.kcrit, NT - 1, c, kv) > k) continue; // the search's own edge returns
+        let ii = 2; while (K(L.kcrit, ii, c, kv) > k) ii++; // first node at or below k
+        const Kl = K(L.kcrit, ii - 1, c, kv), Kh = K(L.kcrit, ii, c, kv), v = Math.min(car.vTop, (ii - 1 + (Kl - k) / (Kl - Kh)) * VSTEP);
+        assert.equal(core.vCornerN(car, k, L.kcrit, c, kv, out), v, `${name} cth ${c} kv ${kv} k ${k}`); searches++;
+      }
+    }
+  }
+  const want = Object.keys(core.CARS).length * 3 * 3 * kvs.length * (NT - 2); // every car, table, grade and curvature; node pairs from 1
+  assert.equal(pairs, want, `node pairs checked`);
+  assert.ok(searches > 1000, `only ${searches} searches compared`);
 });

@@ -7,6 +7,9 @@ import { buildCar, describeCar, buildTrack, makeBounds, makeScratch, lapEval, Op
 import { dynSetup, dynNominal, DynCheck } from '../dynamics/index.js';
 
 const PUBLISH_MS=50; // snapshots and progress at most ~20 Hz while searching
+// The lap model needs load tables on a hilly circuit, and this solver doesn't build them yet (elevation P5): refuse
+// the pairing before any state changes, rather than take the new track and then fail on every command after it.
+function supported(T,car){if(T&&car&&!T.flat&&!car.load)throw new Error('Hilly circuits are not supported by the solver yet (the car has no load tables)');}
 
 export class Solver{
   constructor(emit,now=()=>performance.now()){
@@ -58,6 +61,7 @@ export class Solver{
 
   setCar(c){
     const car=buildCar(c.params),info=describeCar(car); // throws on invalid params, leaving the solver unchanged
+    supported(this.T,car);
     this.car=car;this.carRev=c.rev;this.dyn=null;
     this.emitCar(info,c.rev);
     if(!this.T)return;
@@ -68,6 +72,7 @@ export class Solver{
   }
   setTrack(c){
     const T=buildTrack(c.ctrl,c.width);
+    supported(T,this.car);
     this.T=T;this.trackRev=c.rev;this.dyn=null;
     this.emitTrack(T,c.rev);
     if(!this.car)return;
@@ -82,6 +87,7 @@ export class Solver{
     const car=buildCar(c.params),info=describeCar(car),T=buildTrack(c.ctrl,c.width); // these throw before any state changes
     if(!c.off||!(c.off.length>=2)||!c.off.every(Number.isFinite))throw new Error('load: line must be an array of finite offsets');
     if(!(T.L>0))throw new Error('load: the circuit has no length (control points all in one place?)'); // buildTrack reports this neither by throwing nor in T.issue, and the lap would be NaN
+    supported(T,car);
     const B=makeBounds(T,car),N=T.N,off=c.off.length===N?Float64Array.from(c.off):this.resample(c.off,N);
     let n=0,max=0;
     for(let i=0;i<N;i++){const x=Math.min(B.hi[i],Math.max(B.lo[i],off[i])),d=Math.abs(x-off[i]);if(d>0){n++;max=Math.max(max,d);}off[i]=x;}
@@ -130,7 +136,9 @@ export class Solver{
     const off=Float64Array.from(this.pub); // the offsets themselves: a saved run needs the exact line, not just its points
     const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys,off},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,off.buffer,...Object.values(phys).map(a=>a.buffer)];
     if(this.util){line.u=Float64Array.from(n.uf,(x,i)=>Math.max(x,n.ur[i]));tr.push(line.u.buffer);}
-    const ev={type:'snapshot',carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev,lap:t,line,vmin,vmax};
+    // warn: what the lap time hides: stations held at the 0.1 m/s floor (the car can't get through), pass steps read
+    // airborne (n <= 0) or above the load grid (n > 2). All 0 on a flat circuit.
+    const ev={type:'snapshot',carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev,lap:t,line,vmin,vmax,warn:{stall:S.stall,air:S.air,ntop:S.ntop}};
     if(this.refDirty){ev.ref={t:this.ref.t,v:Float64Array.from(this.ref.v)};tr.push(ev.ref.v.buffer);this.refDirty=false;}
     this.lap=t;this.pending=false;this.lastPub=this.now();
     this.emit(ev,tr);this.progress();

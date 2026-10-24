@@ -247,3 +247,23 @@ test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 *
   assert.ok(polish > 0, 'no snapshot was published during the polish stage');
   assert.deepEqual(bad.slice(0, 3), [], `${bad.length} of ${checked} snapshots showed a line the optimiser had not accepted`);
 });
+
+// Until the solver builds load tables (elevation P5), a hilly circuit is refused before any state changes, so the
+// solver keeps working on what it had; snapshots carry the lap model's warnings (all 0 on a flat circuit).
+test('solver: a hilly circuit is refused without disturbing the current car, track and line', () => {
+  const b = boot(), s = b.s, before = { car: s.car, T: s.T, B: s.B, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev };
+  assert.deepEqual(b.last('snapshot').warn, { stall: 0, air: 0, ntop: 0 }, 'flat boot snapshot warnings');
+  const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), hills = ctrl.map((p, i) => [p[0], p[1], 30 * u[i]]);
+  for (const cmd of [{ type: 'setTrack', rev: 3, ctrl: hills, width: WIDTH, keepLine: true },
+    { type: 'load', rev: 4, params: { ...core.CARS[CAR] }, ctrl: hills, width: WIDTH, off: Array.from(s.pub), run: false }]) {
+    const n0 = b.ev.length; s.handle(cmd);
+    const got = b.ev.slice(n0);
+    assert.deepEqual(got.map(e => e.type), ['error'], `${cmd.type}: events`);
+    assert.match(got[0].message, /Hilly circuits are not supported/, `${cmd.type}: message`);
+    assert.equal(got[0].rev, cmd.rev, `${cmd.type}: error names its command`);
+    assert.deepEqual({ car: s.car, T: s.T, B: s.B, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev }, before, `${cmd.type}: state`);
+  }
+  const n0 = b.ev.length; s.handle({ type: 'setCar', rev: 5, params: { ...core.CARS['Kart'] } }); noErrors(b.ev.slice(n0)); // still usable
+  const T = core.buildTrack(hills, WIDTH), car = core.buildCar(core.CARS[CAR], { loads: true });
+  assert.throws(() => new core.DynCheck(T, car, new Float64Array(T.N)), /not modelled by the dynamic check yet/);
+});

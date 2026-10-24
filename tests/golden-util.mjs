@@ -80,3 +80,14 @@ export function skidpad(core, carName, fr) {
   for (let i = 0; i < N; i++) se += Math.abs(r.stE[i]);
   return { complete: r.complete, spun: r.spun, trouble: r.trouble.length, meanE: se / N, maxE: r.maxE, t: r.t };
 }
+
+// A stadium: two straights of length S joined by semicircles of radius R, control points every ~25 m, heights from
+// zAt(s) with s the distance along the loop (straight 1 runs s = 0..S). Lets a test put a crest or a ramp on a straight.
+export function stadium(S, R, zAt) {
+  const pts = [], n1 = Math.round(S / 25), na = Math.max(6, Math.round(Math.PI * R / 25));
+  for (let i = 0; i < n1; i++) pts.push([-S / 2 + S * i / n1, 0, zAt(S * i / n1)]);
+  for (let i = 0; i < na; i++) { const a = -Math.PI / 2 + Math.PI * i / na; pts.push([S / 2 + R * Math.cos(a), R + R * Math.sin(a), zAt(S + Math.PI * R * i / na)]); }
+  for (let i = 0; i < n1; i++) pts.push([S / 2 - S * i / n1, 2 * R, zAt(S + Math.PI * R + S * i / n1)]);
+  for (let i = 0; i < na; i++) { const a = Math.PI / 2 + Math.PI * i / na; pts.push([-S / 2 + R * Math.cos(a), R + R * Math.sin(a), zAt(2 * S + Math.PI * R + Math.PI * R * i / na)]); }
+  return pts;
+}

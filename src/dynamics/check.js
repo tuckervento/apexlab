@@ -8,6 +8,7 @@ import { dynSetup, dynNominal, dynLap } from './bicycle.js';
 // fraction is the line's dynamic weak spot.
 export class DynCheck{
   constructor(T,car,off){
+    if(!T.flat)throw new Error('DynCheck: hilly circuits are not modelled by the dynamic check yet (no grade or vertical load)');
     const N=T.N;this.T=T;this.car=car;this.dc=dynSetup(car);this.N=N;
     const S=makeScratch(N);this.qss=lapEval(T,car,off,S);this.vq=Float64Array.from(S.v);
     const px=S.px,py=S.py,th=new Float64Array(N),ds=new Float64Array(N);

@@ -39,6 +39,7 @@ export function buildTrack(ctrl,width){
   // Elevation per station, from the centreline (no banking: height doesn't vary across the track, so these hold for
   // every line). dz: rise to the next station; cth: cos of the grade (horizontal step over 3D step); kv: vertical
   // curvature d²z/ds² (> 0 compression, < 0 crest), smoothed like kc. Exactly 0, 1 and 0 when flat.
+  if(zc.every(z=>z===zc[0]))cz.fill(zc[0]); // one height everywhere is level ground: no spline rounding noise in dz
   const dz=new Float64Array(N),cth=new Float64Array(N),kr=new Float64Array(N),kv=new Float64Array(N);
   for(let i=0;i<N;i++){const j=(i+1)%N;dz[i]=cz[j]-cz[i];cth[i]=ds/Math.sqrt(ds*ds+dz[i]*dz[i]);}
   for(let i=0;i<N;i++)kr[i]=(dz[i]-dz[(i-1+N)%N])/(ds*ds);

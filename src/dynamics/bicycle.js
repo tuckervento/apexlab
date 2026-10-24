@@ -69,6 +69,7 @@ export function dynNominal(car,dc,line,v){
 
 // One lap at target speeds v (per station). Returns time, trouble stations and a trace.
 export function dynLap(T,car,dc,line,v,keepTrace){
+  if(!T.flat)throw new Error('dynLap: hilly circuits are not modelled by the bicycle model yet (no grade or vertical load)');
   const N=line.N,px=line.px,py=line.py,k=line.k,dt=DYN.dt,{m,a,b,L,B,Izz,p}=dc;
   const nom=dynNominal(car,dc,line,v),th=line.th,dsL=line.ds;
   const hwTrack=T.width/2-(p.track+0.25)/2;

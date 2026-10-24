@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore, setupPreset } from './load-core.mjs';
+import { stadium } from './golden-util.mjs';
 
 const H = 1e-6, SCALE_TOL = 1e-6; // a 0.1% gradient error at a single station of ~800 still fails
 const core = await loadCore(), CAR_NAMES = Object.keys(core.CARS);
@@ -62,9 +63,9 @@ for (const name of CAR_NAMES) {
 // with load tables. On top of the flat coverage it asserts that the hilly branches are exercised: corner speeds read
 // at a load factor (one at a crest, n < 1), and forward- and brake-limited steps that include gravity's work.
 const HILLS = 40;
-function hillyPreset(name) {
-  const tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, 12), u = core.genElev(tr.seed, ctrl);
-  const T = core.buildTrack(ctrl.map((p, i) => [p[0], p[1], HILLS * u[i]]), 12), car = core.buildCar(core.CARS[name], { loads: true });
+function hillyPreset(name, hills = HILLS, trackIdx = 0) {
+  const tr = core.TRACKS[trackIdx], ctrl = core.genCtrl(tr.seed, 12), u = core.genElev(tr.seed, ctrl);
+  const T = core.buildTrack(ctrl.map((p, i) => [p[0], p[1], hills * u[i]]), 12), car = core.buildCar(core.CARS[name], { loads: true });
   return { T, car, B: core.makeBounds(T, car) };
 }
 for (const name of CAR_NAMES) {
@@ -100,9 +101,50 @@ for (const name of CAR_NAMES) {
         if (S.ff[j] === 1 && S.fm[j] === 1 && T.dz[i] !== 0) fwdG++;  // step i -> j set the speed at j, on a slope
         if (S.fb[h] === 1 && S.fm[h] === 0 && T.dz[h] !== 0) bwdG++;  // braking step h <- i set the speed at h
       }
-      t.diagnostic(`coverage: corner-limited at a load factor=${cornerN} (crest ${crest}), forward-limited on a slope=${fwdG}, brake-limited on a slope=${bwdG}; n along the lap ${nmin.toFixed(2)}..${nmax.toFixed(2)}`);
+      let yaw = 0, shift = 0;
+      for (let i = 0; i < N; i++) {
+        const cornerLimited = i === S.i0 || (S.ff[i] === 0 && S.fb[i] === 0);
+        if (S.wy[i] === 0 && S.dvy[i] !== 0 && cornerLimited) yaw++;
+        if (S.sh[i] === 1 && S.fm[i] === 1) shift++;
+      }
+      t.diagnostic(`coverage: corner-limited at a load factor=${cornerN} (crest ${crest}), forward-limited on a slope=${fwdG}, brake-limited on a slope=${bwdG}, yaw-limited=${yaw}, upshifts=${shift}; n along the lap ${nmin.toFixed(2)}..${nmax.toFixed(2)}`);
       assert.ok(cornerN > 0 && crest > 0, `load-factor corner speeds not exercised (${cornerN}, crest ${crest})`);
       assert.ok(fwdG > 0 && bwdG > 0, `gravity in the passes not exercised (forward ${fwdG}, braking ${bwdG})`);
+      assert.ok(yaw > 0, `yaw limit never binds at a corner-limited station for ${name} on hills`);
+      if (car.shiftT > 0) assert.ok(shift > 0, `no forward-limited upshift for ${name} on hills`);
+    });
+  }
+}
+
+// Where the load factor leaves the table grid along the lap. The Open-wheeler at 250 m on Kestrel Point (far past the
+// slider) reaches n > 2 (clamped to the top). Airborne without downforce (n <= 0, no grip at all) needs a sharp crest
+// on a near-straight: on curved crests the corner-speed solve keeps the tyres loaded (the Kart never leaves the
+// ground on Kestrel Point even at 250 m), so the Kart case is a 20 m crest over 150 m on a stadium straight. The
+// gradient must stay exact through the clamps; each case asserts that its clamp really happens.
+function crestStadium(name) {
+  const bump = s => { const x = s - 500; return Math.abs(x) < 75 ? 10 * (1 + Math.cos(2 * Math.PI * x / 150)) : 0; };
+  const T = core.buildTrack(stadium(1000, 120, bump), 12), car = core.buildCar(core.CARS[name], { loads: true });
+  return { T, car, B: core.makeBounds(T, car) };
+}
+for (const [name, clamp, where, setup] of [['Open-wheeler', 'ntop', 'hills 250 m on Kestrel Point', () => hillyPreset('Open-wheeler', 250, 1)],
+  ['Kart', 'air', 'a sharp crest on a stadium straight', () => crestStadium('Kart')]]) {
+  for (const tau of [0, 0.5]) {
+    test(`gradient, ${where} (load factor clamps): ${name}, tau=${tau}`, t => {
+      const { T, B, car } = setup(), N = T.N;
+      const off = smoothField(core.mulberry32(1001), N, 0.5 * B.hw);
+      for (let i = 0; i < N; i++) off[i] = Math.min(B.hi[i], Math.max(B.lo[i], off[i]));
+      const d = smoothField(core.mulberry32(2002), N, 1), dmax = d.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+      for (let i = 0; i < N; i++) d[i] /= dmax;
+      const S = core.makeScratch(N), grad = new Float64Array(N), lap = core.lapEval(T, car, off, S, grad, tau);
+      let Da = 0, scale = 0;
+      for (let i = 0; i < N; i++) { Da += grad[i] * d[i]; scale += Math.abs(grad[i] * d[i]); }
+      const S2 = core.makeScratch(N), xp = new Float64Array(N), xm = new Float64Array(N);
+      for (let i = 0; i < N; i++) { xp[i] = off[i] + H * d[i]; xm[i] = off[i] - H * d[i]; }
+      const Dfd = (core.lapEval(T, car, xp, S2, null, tau) - core.lapEval(T, car, xm, S2, null, tau)) / (2 * H), rel = Math.abs(Da - Dfd) / scale;
+      t.diagnostic(`lap=${lap.toFixed(3)} s  err/scale=${rel.toExponential(2)}  airborne steps=${S.air}  above the grid=${S.ntop}  stalled=${S.stall}`);
+      assert.ok(Number.isFinite(lap) && grad.every(Number.isFinite), 'non-finite lap or gradient');
+      assert.ok(S[clamp] > 0, `${clamp} clamp never hit; the case doesn't test what it says`);
+      assert.ok(rel < SCALE_TOL, `error/scale ${rel.toExponential(3)} ≥ ${SCALE_TOL}`);
     });
   }
 }

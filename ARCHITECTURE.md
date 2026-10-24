@@ -235,13 +235,16 @@ Plain objects are frozen; arrays are fresh copies.
 ### `Track`
 
 ```ts
-{ N, L, ds, cx[], cy[], nx[], ny[], kc[], width, issue: string | null, minR, ctrl }
+{ N, L, ds, cx[], cy[], nx[], ny[], kc[], width, issue: string | null, minR, ctrl /* [x, y] or [x, y, z] */,
+  z[], dz[] /* rise to the next station */, cth[] /* cos of the grade */, kv[] /* vertical curvature, > 0 compression */,
+  flat /* true: z constant, so dz 0, cth 1, kv 0 exactly */ }   // elevation from the centreline (no banking); step 8
 ```
 
 ### `Scratch` after `lapEval`
 
 ```ts
-{ px[], py[], ds[], k[], vc[], vf[], vb[], v[], …adjoint buffers }
+{ px[], py[], ds[] /* 3D step */, dh[] /* horizontal step, for curvature */, k[], vc[], vf[], vb[], v[], …adjoint buffers,
+  stall /* stations held at the 0.1 m/s floor */, air /* pass steps read airborne, n <= 0 */, ntop /* … above the load grid */ }
 ```
 
 ### Display snapshot (`disp`, built by `refreshDisplay`)
@@ -376,9 +379,9 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 
 ```ts
 { type: 'carInfo',   carRev, info: CarInfo }       // describeCar (§7)
-{ type: 'track',     trackRev, N, L, ds, cx, cy, nx, ny, kc, width, issue }
+{ type: 'track',     trackRev, N, L, ds, cx, cy, nx, ny, kc, width, issue, z, dz, cth, kv, flat }   // elevation: §7 Track
 { type: 'snapshot',  carRev, trackRev, lineRev, lap, vmin, vmax,
-                     line: { px, py, v, k, ds, tc, u, phys, off }, ref?: { t, v } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7; off = the line's offsets
+                     line: { px, py, v, k, ds, tc, u, phys, off }, ref?: { t, v }, warn: { stall, air, ntop } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7; off = the line's offsets; warn: §7 Scratch
 { type: 'loaded',    rev, N, clamped: { n, max } }   // after the load's snapshot; clamped: stations moved to fit this build's track limits, and by how much
 { type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
 { type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }
