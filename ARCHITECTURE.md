@@ -8,11 +8,12 @@ This document describes the current code (physics in ES modules under `src/`, th
 
 ## 1. Status
 
-- **Layers** (migration steps 1–6 done):
+- **Layers** (migration steps 1–7 done):
   - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
-  - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`; `carState`/`raceClock` until step 7), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
+  - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
+  - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
   - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`).
   - `index.html` — markup and CSS, plus `<script type="module" src="./src/app/main.js">`.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
@@ -254,7 +255,8 @@ Plain objects are frozen; arrays are fresh copies.
 ```ts
 {
   qss, frac,
-  dyn: { t, trace: { x[], y[], v[], e[], t[], st[] } } | null,
+  dyn: { t, trace: { x[], y[], v[] /* vx */, e[], t[], st[],          // every 6th 4 ms step
+                     psi[], vy[], r[], delta[], alf[], alr[], ax[], ay[], gear[], s[] } } | null,   // for pose()
   fail: { fr, at, spun } | null,
   umax, uat, uaxle, uf[], ur[], iters
 }
@@ -318,7 +320,7 @@ src/
     optimiser    staged spline L-BFGS + polish
   dynamics/      bicycle model, inverse dynamics, check
   solver/        Web Worker that owns Optimizer and DynCheck; message protocol
-  playback/      pose(t) from a lap result or a dynamic trace; race clock for ghosts
+  playback/      pose(t) from a lap snapshot or a dynamic trace; race clock for ghosts (step 7)
   views/
     map2d/       current canvas map + charts, drawn from explicit inputs (step 6)
     scene3d/     future
@@ -364,17 +366,22 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 
 ### 10.2 Pose contract (shared by every view)
 
+As implemented in step 7 (`src/playback/pose.js`; `tests/playback.test.mjs`):
+
 ```ts
-pose(source: LapSnapshot | DynTrace, t: seconds) → {
-  station, s, x, y, z, heading, speed, ax, ay, gear, rpm,
-  // later, from the dynamic model or an attitude estimate:
-  pitch?, roll?, steer?, slipF?, slipR?
+pose(source: LapSnapshot | DynTrace, t: seconds, info?: CarInfo) → {
+  station, s, x, y, z /* 0: flat world */, heading /* rad, screen frame */, speed /* m/s */,
+  ax /* longitudinal */, ay /* lateral, signed like curvature */,       // m/s²
+  gear?, rpm?,                                                          // with info; rpm = fraction of redline
+  // DynTrace only:
+  steer, slipF, slipR, beta /* sideslip */, yawRate
 }
+raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker waits 1 s at the line
 ```
 
-- The lap model gives heading from the line tangent.
-- The dynamic trace gives true yaw and sideslip, so it should record heading and steering, not just `x, y, v`.
-- The race clock (both cars leave together; the quicker waits at the line) lives in `playback`, not in a view.
+- **Lap snapshot** (the line, ghosts): interpolated within a station segment; heading from the segment, `ax`/`ay` from the lap model's speeds and curvature, `s` along the line. Bit for bit what the map and HUD computed before step 7.
+- **DynTrace** (`DynCheck.result.dyn.trace`, §7): true heading `psi`, steering and slip recorded by `dynLap`; `s` is distance travelled; the gear is the one the driver model was in. `rpm` comes from the best-gear table at that speed (no per-gear ratios in `CarInfo`). The trace starts where the dynamic lap starts (the straightest station), not at the start line. On the skidpad the recorded state is kinematically consistent with the car's own path: |ay| = v²κ within 0.6%, r + dβ/dt = vκ within 0.3%.
+- Not yet: `pitch`, `roll` (no attitude model). Nothing in the UI plays back a dynamic trace yet.
 
 ### 10.3 Track model for elevation and 3D
 
@@ -409,7 +416,7 @@ Each step keeps behaviour identical and is checked against §8.
 4. ✅ **Add `describeCar()`** and move chart and readout data behind it. `index.html` reads no `car.<field>`; readouts and the force chart are pixel-identical for every preset. Tyre-use colouring stays on `dynNominal` until step 5.
 5. ✅ **Move the optimiser and dynamic check into a worker** behind the protocol. The main thread renders snapshots only. A run through the protocol reproduces the convergence fixture and its dynamic check bit for bit (`tests/solver.test.mjs`). In headless Chrome, convergence takes 9 s instead of 32 s, at the same 1:18.348.
 6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences are the stale HUD gear digit (§12) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
-7. **Add `playback.pose()`**; the 2D car marker and ghost use it.
+7. ✅ **Add `playback.pose()`**; the 2D car marker and ghost use it. Both sources supported (§10.2). `dynLap`'s trace records the car's state (+0.2 ms on the one traced lap per check). Replay-off rendering is identical to step 6, and the lap pose equals the old `carState` bit for bit.
 8. **Elevation:** the track record (§10.3), physics terms, golden-value refresh with a new track-generator version.
 9. **3D view** as a second client of the protocol and pose contract.
 

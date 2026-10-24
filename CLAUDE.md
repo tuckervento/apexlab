@@ -17,13 +17,14 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
 
 ## Architecture (big picture)
 
-Five layers; core, dynamics and solver have no DOM access and must stay that way (the solver runs in a Web Worker).
+Six layers; core, dynamics, solver and playback have no DOM access and must stay that way (the solver runs in a Web Worker).
 
 1. **Core** (`src/core/`) — track (`genCtrl` → `buildTrack` spline → `makeBounds`), car (`buildCar` precomputes speed-indexed limit tables incl. the GGV), quasi-steady-state lap model `lapEval`, and `Optimizer` (staged spline L-BFGS).
 2. **Dynamics** (`src/dynamics/`) — `dynNominal` (inverse dynamics), `dynLap` (4 ms time-stepped lap with feedforward+feedback driver), `DynCheck` (bisects the fastest clean fraction of lap-model pace).
 3. **Solver** (`src/solver/`) — `Solver` owns car, track, line, `Optimizer` and `DynCheck` behind the `ARCHITECTURE.md` §10.1 protocol (commands in, events out, every array a copy, results tagged with car/track/line revisions); `worker.js` runs it in a Web Worker in 15 ms slices. No worker APIs in `solver.js`, so `tests/solver.test.mjs` drives it directly.
 4. **Views** (`src/views/map2d/`) — camera, palette, `drawMap`, charts. Pure functions of explicit inputs (canvas, camera, palette, data); they never import app state, so a second view (3D, step 9) can sit beside them.
-5. **App** (`src/app/`) — `state.js` (`S`, the one app state object), `client.js` (worker protocol client: applies events to `S`, calls UI hooks given to `connect()`), `controls.js` (panel, buttons, actions), `main.js` (map input, frame loop, HUD, boot), `presets.js`. Uses only `genCtrl` from core.
+5. **Playback** (`src/playback/pose.js`) — `pose(source, t, info?)` for a lap snapshot or a dynamic-check trace (true heading, steer, slip), and `raceClock`. The map's car and ghost markers and the HUD use it.
+6. **App** (`src/app/`) — `state.js` (`S`, the one app state object), `client.js` (worker protocol client: applies events to `S`, calls UI hooks given to `connect()`), `controls.js` (panel, buttons, actions), `main.js` (map input, frame loop, HUD, boot), `presets.js`. Uses only `genCtrl` from core.
 
 Key couplings across the layers:
 - The main thread has no car, bounds, line or optimiser: everything physical arrives as worker events. Views get car data only from `carInfo` (`describeCar`), and the line only from `snapshot` (tyre use `u` too, after a `view` command).
