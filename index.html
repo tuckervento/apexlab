@@ -109,6 +109,7 @@ select{font-family:var(--body);font-size:13px;padding:7px 8px;border-radius:4px;
 details{font-size:12.5px;color:var(--muted)}
 details summary{cursor:pointer;color:var(--ink);font-weight:500}
 details p{margin:6px 0 0}
+[inert]{opacity:.55} /* a saved run is loading: the car, circuit and saved-runs sections ignore input until the solver has answered */
 
 @media (max-width:820px){
   .app{display:block;height:auto}
@@ -229,7 +230,7 @@ details p{margin:6px 0 0}
       <div id="carFields" style="display:flex;flex-direction:column;gap:10px"></div>
     </section>
 
-    <section>
+    <section id="trackSection">
       <h2>Circuit <span id="trackInfo"></span></h2>
       <div class="row">
         <select id="trackPreset" aria-label="Circuit"></select>

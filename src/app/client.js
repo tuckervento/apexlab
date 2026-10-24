@@ -24,26 +24,32 @@ export function connect(hooks){ui=hooks;}
 
 solver.onmessage=({data:m})=>{
   switch(m.type){
-    case 'carInfo':carEv=m.carRev;landed(flight.setCar);S.info=m.info;ui.renderDerived();break;
-    case 'track':trackEv=m.trackRev;landed(flight.setTrack);pendingT=m;break; // swapped in with the first snapshot on it
-    case 'loaded':if(loadRev===m.rev){loadRev=0;ui.loaded(m);}break;
+    case 'carInfo':carEv=m.carRev;if(flight.setCar.busy!==loadRev)landed(flight.setCar);S.info=m.info;ui.renderDerived();break; // while a load is in flight, its answer ('loaded') frees the hold, not these
+    case 'track':trackEv=m.trackRev;if(flight.setTrack.busy!==loadRev)landed(flight.setTrack);pendingT=m;break; // swapped in with the first snapshot on it
+    case 'loaded':if(loadRev===m.rev){loadRev=0;for(const f of Object.values(flight)){f.busy=0;f.next=null;} // edits queued meanwhile were made against the state the load replaced
+      ui.loaded(m);}break;
     case 'snapshot':onSnapshot(m);break;
     case 'progress':
       S.prog=m;
       if(m.converged&&S.running){S.running=false;ui.runLabel();}
       if(m.running&&!S.editing&&S.disp){S.hist.push([m.evals,S.disp.t]);if(S.hist.length>1500)S.hist=S.hist.filter((_,i)=>i%2===0);}
       break;
-    case 'dynProgress':ui.dynLap(m.lap);break;
+    case 'dynProgress':if(S.dynRunning)ui.dynLap(m.lap);break; // one emitted before a car or track change ended the check arrives after it
     case 'dynResult':S.dynRunning=false;S.dynRes={...m.result,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};S.dynStale=!dynCurrent();ui.renderDyn();break;
     case 'error':
       console.error('solver: '+m.message+'\n'+m.stack);ui.showError(m.message);
       if(S.dynRunning){S.dynRunning=false;ui.renderDyn();}
-      for(const f of Object.values(flight))landed(f); // the failed command won't be answered
-      if(loadRev){loadRev=0;ui.loadFailed();} // the solver validates before it changes anything, so S still matches it
+      for(const f of Object.values(flight))if(m.rev&&f.busy===m.rev)landed(f); // the failed command won't be answered; a slice's error (rev null) fails no command
+      if(m.rev&&m.rev===loadRev){loadRev=0;ui.loadFailed();} // the load's own error (the loop above freed both kinds); the solver validates before it changes anything, so S still matches it. A slice's error leaves the load to be answered
       break;
   }
 };
-solver.onerror=e=>{e.preventDefault();console.error('solver worker:',e.message||e);ui.showError('solver failed: '+(e.message||'see console'));};
+solver.onerror=e=>{
+  e.preventDefault();console.error('solver worker:',e.message||e);ui.showError('solver failed: '+(e.message||'see console'));
+  // Solver catches its own exceptions, so this is the worker failing outside a command: nothing in flight will be answered.
+  for(const f of Object.values(flight)){f.busy=0;f.next=null;}
+  if(loadRev){loadRev=0;ui.loadFailed();}
+};
 function onSnapshot(m){
   const d=S.disp;
   if(d&&(m.carRev<d.carRev||m.trackRev<d.trackRev))return; // never step back to an older car or track

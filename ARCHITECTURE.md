@@ -382,7 +382,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'loaded',    rev, N, clamped: { n, max } }   // after the load's snapshot; clamped: stations moved to fit this build's track limits, and by how much
 { type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
 { type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }
-{ type: 'error',     message, stack }                // the solver pauses and stays usable
+{ type: 'error',     rev, message, stack }           // the solver pauses and stays usable; rev: the failing command's, null for a slice
 ```
 
 - **Revisions** replace the staleness flags. `lineRev` increases each time the worker publishes a changed line. A view never steps back to an older car or track revision, and a dynamic result is current only while all three of its revisions match the displayed snapshot.
@@ -393,7 +393,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
   - `corners` are computed on the main thread (label placement).
   - `dynCheck` takes no `lineRev`: a line revision sent from the main thread was usually stale by the time it arrived (lines publish at 20 Hz), so the worker checks the current line and republishes it.
   - `setLine` with an explicit `off`, and `view`, `run.fresh` and `ref`, were added or deferred as the UI needed.
-  - `load` is one command, not `setCar` + `setTrack` + `setLine`: those are coalesced per kind, so the line could land on a track it wasn't recorded on. It builds car and track before changing any state (a throw leaves the solver as it was; it also refuses a circuit of zero length, which `buildTrack` accepts silently and which would give a NaN lap), gives both the load's `rev`, and `Optimizer.setup` is followed by restoring the exact line, because `setup` overwrites the line with its spline fit.
+  - `load` is one command, not `setCar` + `setTrack` + `setLine`: those are coalesced per kind, so the line could land on a track it wasn't recorded on. It builds car and track before changing any state (a throw leaves the solver as it was; it also refuses a circuit of zero length, which `buildTrack` accepts silently and which would give a NaN lap), gives both the load's `rev`, and `Optimizer.setup` is followed by restoring the exact line, because `setup` overwrites the line with its spline fit. The client holds both kinds until `loaded` (or the load's own `error`, matched by `rev`), not until the load's `carInfo` and `track`, and drops edits queued meanwhile; the panel's car, circuit and saved-runs sections are inert for that time.
 
 ### 10.2 Pose contract (shared by every view)
 

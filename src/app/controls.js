@@ -186,12 +186,16 @@ async function loadPicked(file,mode){
     }
     const keep=mode==='ghost';
     pendingLoad={mode,run,name:file.name,rev:sendLoad({params:keep?{...S.P}:run.car,ctrl:run.track.ctrl,width:run.track.width,off:run.line.off,run:keep})};
+    lockPanel(true);
     runMsg(`Loading ${file.name}…`);
   }catch(e){runMsg(e.message);}
 }
 // The solver has replaced car, track and line (and the snapshot on them has arrived): bring the panel in line.
+// While a load is in flight an edit would be made against the state the load replaces, so the sections that change the car,
+// circuit or run are inert until the solver answers (loaded) or refuses (loadFailed).
+function lockPanel(on){for(const id of ['carSection','trackSection','runSection'])$('#'+id).toggleAttribute('inert',on);}
 export function loaded(m){
-  const L=pendingLoad;if(!L||L.rev!==m.rev)return;pendingLoad=null;
+  const L=pendingLoad;if(!L||L.rev!==m.rev)return;pendingLoad=null;lockPanel(false);
   const {run}=L,notes=runSummary(run,L.name);
   S.ctrl=run.track.ctrl.map(p=>p.slice());S.origCtrl=S.ctrl.map(p=>p.slice());S.width=run.track.width;
   $('#f-width').value=S.width;$('#o-width').textContent=S.width+' m';
@@ -208,7 +212,7 @@ export function loaded(m){
   try{pinGhost(ghostFrom(run));notes.push('Recorded lap pinned as the ghost.');}catch(e){S.ghost=null;updGhostUI();notes.push(e.message);}
   runMsg(...notes);
 }
-export function loadFailed(){pendingLoad=null;runMsg('Not loaded: the solver refused the file (see the status line). Nothing was changed.');}
+export function loadFailed(){pendingLoad=null;lockPanel(false);runMsg('Not loaded: the solver refused the file (see the status line). Nothing was changed.');}
 export function bindRun(){
   const input=$('#runFile');
   $('#exportRun').onclick=exportRun;
