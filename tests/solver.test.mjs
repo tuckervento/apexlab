@@ -120,8 +120,9 @@ test('solver: emitted arrays are copies, never solver state', () => {
   const b = boot(), N = b.s.T.N, snap = b.last('snapshot'), trk = b.last('track'), info = b.last('carInfo').info;
   const px0 = Float64Array.from(snap.line.px), v0 = Float64Array.from(snap.line.v), ref0 = Float64Array.from(snap.ref.v);
   // a careless receiver writes into everything it was sent
-  for (const a of [snap.line.px, snap.line.py, snap.line.v, snap.line.k, snap.line.ds, snap.ref.v, ...Object.values(snap.line.phys), trk.cx, trk.cy, trk.nx, trk.ny, trk.kc, info.curves.drive]) a.fill(-1);
-  assert.ok(b.s.pub.every(Number.isFinite) && b.s.T.cx[0] !== -1 && b.s.car.drv[5] !== -1, 'solver state was written through an emitted array');
+  for (const a of [snap.line.px, snap.line.py, snap.line.v, snap.line.k, snap.line.ds, snap.ref.v, ...Object.values(snap.line.phys), trk.cx, trk.cy, trk.nx, trk.ny, trk.kc, trk.z, trk.dz, trk.cth, trk.kv, info.curves.drive]) a.fill(-1);
+  assert.ok(b.s.pub.every(Number.isFinite) && b.s.T.cx[0] !== -1 && b.s.T.cth[0] === 1 && b.s.T.z[0] === 0 && b.s.car.drv[5] !== -1, 'solver state was written through an emitted array');
+  assert.equal(trk.flat, true, 'track event says the boot circuit is flat');
   b.s.handle({ type: 'view', util: false }); // republish the same line
   const again = b.last('snapshot');
   assert.equal(again.line.px.length, N);

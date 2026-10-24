@@ -97,8 +97,9 @@ export class Solver{
     this.emit({type:'carInfo',carRev:rev,info},[cv.drive.buffer,cv.traction.buffer,cv.resist.buffer,cv.gear.buffer,cv.rpm.buffer,...cv.gears.map(g=>g.buffer)]);
   }
   emitTrack(T,rev){
-    const f=a=>Float64Array.from(a),ev={type:'track',trackRev:rev,N:T.N,L:T.L,ds:T.ds,cx:f(T.cx),cy:f(T.cy),nx:f(T.nx),ny:f(T.ny),kc:f(T.kc),width:T.width,issue:T.issue};
-    this.emit(ev,[ev.cx.buffer,ev.cy.buffer,ev.nx.buffer,ev.ny.buffer,ev.kc.buffer]);
+    const f=a=>Float64Array.from(a),ev={type:'track',trackRev:rev,N:T.N,L:T.L,ds:T.ds,cx:f(T.cx),cy:f(T.cy),nx:f(T.nx),ny:f(T.ny),kc:f(T.kc),width:T.width,issue:T.issue,
+      z:f(T.z),dz:f(T.dz),cth:f(T.cth),kv:f(T.kv),flat:T.flat}; // elevation per station (ARCHITECTURE.md §7)
+    this.emit(ev,[ev.cx.buffer,ev.cy.buffer,ev.nx.buffer,ev.ny.buffer,ev.kc.buffer,ev.z.buffer,ev.dz.buffer,ev.cth.buffer,ev.kv.buffer]);
   }
   // A line resampled to N stations by linear interpolation around the loop.
   resample(from,N){
