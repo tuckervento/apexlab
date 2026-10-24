@@ -24,10 +24,11 @@ export function findCorners(T){
 }
 
 // sc: {T, width, disp, colorMode, ghost, ghostCar, car, carDims:{wb, track}, corners, dyn (null when none or stale),
-// editing, ctrl, tags}. ghostCar/car are playback poses or null. tags: null, or {car, ghost}, each null or
+// editing, ctrl, sel (selected control point, -1 none), tags}. On a hilly circuit (T.flat false) the track surface is
+// tinted by height (pal.elev, low to high) and edit handles show their heights. ghostCar/car are playback poses or null. tags: null, or {car, ghost}, each null or
 // {main, delta?} text drawn in a small box beside that car (the car's on its right, the ghost's on its left).
 export function drawMap(ctx,cam,pal,sc){
-  const {colors,ramp}=pal,{cw,ch,dpr}=cam,{T,width,ghost,corners,editing,ctrl}=sc;
+  const {colors,ramp,elev}=pal,{cw,ch,dpr}=cam,{T,width,ghost,corners,editing,ctrl}=sc;
   const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy);
   function strokeLoop(xs,ys,o,nx,ny){ctx.beginPath();for(let i=0;i<=T.N;i++){const j=i%T.N,x=SX(xs[j]+(nx?nx[j]*o:0)),y=SY(ys[j]+(ny?ny[j]*o:0));i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();}
   function drawGrid(){
@@ -82,7 +83,13 @@ export function drawMap(ctx,cam,pal,sc){
   drawGrid();
   const hw=width/2,N=T.N;
   ctx.lineJoin='round';ctx.lineCap='round';
-  strokeLoop(T.cx,T.cy,0);ctx.strokeStyle=colors.track;ctx.lineWidth=Math.max(2,width*cam.z);ctx.stroke();
+  if(T.flat){strokeLoop(T.cx,T.cy,0);ctx.strokeStyle=colors.track;ctx.lineWidth=Math.max(2,width*cam.z);ctx.stroke();}
+  else{ // by height: one path per ramp step, of the segments whose mean height falls in it
+    let lo=Infinity,hi=-Infinity;for(let i=0;i<N;i++){lo=Math.min(lo,T.z[i]);hi=Math.max(hi,T.z[i]);}
+    const nb=elev.length,span=Math.max(1e-6,hi-lo),seg=Array.from({length:nb},()=>[]);
+    for(let i=0;i<N;i++){const j=(i+1)%N;seg[Math.round(((T.z[i]+T.z[j])/2-lo)/span*(nb-1))].push(i);}
+    ctx.lineWidth=Math.max(2,width*cam.z);
+    seg.forEach((arr,b)=>{if(!arr.length)return;ctx.beginPath();for(const i of arr){const j=(i+1)%N;ctx.moveTo(SX(T.cx[i]),SY(T.cy[i]));ctx.lineTo(SX(T.cx[j]),SY(T.cy[j]));}ctx.strokeStyle=elev[b];ctx.stroke();});}
   // kerbs on the inside of corners
   const kw=Math.max(1.5,1.2*cam.z);ctx.lineWidth=kw;ctx.lineCap='butt';
   for(const pass of [0,1]){ctx.beginPath();
@@ -129,6 +136,7 @@ export function drawMap(ctx,cam,pal,sc){
   if(tags&&tags.car&&sc.car)drawTag(sc.car,tags.car,sc.carDims.wb,sc.carDims.track,1,colors.ink);
   // edit handles
   if(editing){ctx.beginPath();ctrl.forEach((p,i)=>i?ctx.lineTo(SX(p[0]),SY(p[1])):ctx.moveTo(SX(p[0]),SY(p[1])));ctx.closePath();ctx.setLineDash([3,4]);ctx.strokeStyle=colors.accent;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
-    ctrl.forEach(p=>{ctx.beginPath();ctx.arc(SX(p[0]),SY(p[1]),7,0,Math.PI*2);ctx.fillStyle=colors.paper;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=colors.accent;ctx.stroke();});}
+    ctrl.forEach((p,i)=>{ctx.beginPath();ctx.arc(SX(p[0]),SY(p[1]),7,0,Math.PI*2);ctx.fillStyle=i===sc.sel?colors.accent:colors.paper;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=colors.accent;ctx.stroke();});
+    if(!T.flat||ctrl.some(p=>p[2])){ctx.font=`10px ${colors.mono}`;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle=colors.ink;ctrl.forEach(p=>ctx.fillText(`${Math.round(p[2]||0)} m`,SX(p[0])+10,SY(p[1])-9));ctx.textBaseline='alphabetic';}}
   drawScaleBar();
 }

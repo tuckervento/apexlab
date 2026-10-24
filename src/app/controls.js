@@ -3,7 +3,7 @@
 // its hooks.
 import { genCtrl } from '../core/index.js';
 import { CARS, TRACKS } from './presets.js';
-import { S, $ } from './state.js';
+import { S, $, circuit, hillsFollow } from './state.js';
 import { send, sendState, sendLoad, settled } from './client.js';
 import { PHYSICS } from './physics-version.js';
 import { makeRunFile, readRunFile, toGhost, liveHash, CAR_KEYS } from './runfile.js';
@@ -46,7 +46,7 @@ const SPEC=[
 // ---------- actions
 export function rebuildTrack(keepLine){
   S.dynRes=null;S.dynStale=false;if(S.dynRunning)S.dynRunning=false;renderDyn();
-  sendState('setTrack',{ctrl:S.ctrl.map(p=>p.slice()),width:S.width,keepLine,resume:!S.editing});S.hist=[];
+  sendState('setTrack',{ctrl:S.ctrl.map(p=>p.slice(0,3)),width:S.width,keepLine,resume:!S.editing});S.hist=[];
 }
 export function carChanged(){
   if(S.dynRunning){S.dynRunning=false;renderDyn();}
@@ -59,6 +59,12 @@ export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S
 export function showError(msg){S.frameErr=S.frameErr||new Error(msg);runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too
+// The Hills slider drives the heights while every control point has its generator height; after a height is set by
+// hand (or loaded from a run) it is disabled until Revert shape.
+export function updHillsUI(){const f=hillsFollow(S.ctrl);$('#f-hills').disabled=!f;$('#hillsNote').hidden=f;$('#f-hills').value=S.hills;$('#o-hills').textContent=S.hills+' m';}
+// Select a control point while editing (-1: none) and show its height in the edit bar.
+export function selectHandle(i){S.sel=i;const p=S.ctrl[i],box=$('#editHeight');box.hidden=!p;if(!p)return;
+  $('#selN').textContent=String(i+1);$('#f-ph').value=p[2];$('#o-ph').textContent=p[2].toFixed(1)+' m';}
 export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearGhost').hidden=!g;$('#capGhost').hidden=!g;$('#gapWrap').hidden=!g;$('#deltaRow').hidden=!g;$('#tele').classList.toggle('noghost',!g);}
 
 // ---------- readouts (also redrawn by the solver client's hooks)
@@ -72,8 +78,10 @@ export function renderDerived(){
 }
 export function trackArrived(){
   const T=S.T;S.corners=findCorners(T);if(S.fitPending&&S.cam.cw){fit();S.fitPending=false;}
-  const w=$('#warn'); w.hidden=!T.issue; w.textContent=T.issue?T.issue+' — results may look odd':'';
-  $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+S.corners.length+' turns';
+  $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+S.corners.length+' turns'; // (#warn: main.js, with the lap's own warnings)
+  $('#elevWrap').hidden=T.flat;$('#legElev').hidden=T.flat;
+  if(!T.flat){let lo=Infinity,hi=-Infinity,gr=0;for(let i=0;i<T.N;i++){lo=Math.min(lo,T.z[i]);hi=Math.max(hi,T.z[i]);gr=Math.max(gr,Math.abs(T.dz[i]/T.ds));}
+    $('#legZmin').textContent=Math.round(lo);$('#legZmax').textContent=Math.round(hi);$('#elevCap').textContent=`${Math.round(hi-lo)} m range · steepest ${(gr*100).toFixed(1)}%`;}
 }
 function cornerAt(i){const T=S.T,corners=S.corners,N=T.N;for(let n=0;n<corners.length;n++){const c=corners[n],len=(c.e-c.s+N)%N,d=(i-c.s+N)%N;if(d<=len+12||d>=N-12)return 'T'+(n+1);}return (i*T.L/N/1000).toFixed(2)+' km';}
 export function renderDyn(){
@@ -116,17 +124,23 @@ function syncFields(){
 export function buildTrackUI(){
   const sel=$('#trackPreset');
   sel.innerHTML=TRACKS.map((t,i)=>`<option value="${i}">${t.name}</option>`).join('')+'<option value="r" hidden>Random</option><option value="e" hidden>Edited</option>';
-  sel.onchange=()=>{const i=+sel.value;if(isNaN(i))return;S.trackIdx=i;S.ctrl=genCtrl(TRACKS[i].seed,S.width);S.origCtrl=S.ctrl.map(p=>p.slice());S.ghost=null;updGhostUI();S.fitPending=true;rebuildTrack(false);};
-  $('#randTrack').onclick=()=>{const seed=(Math.random()*1e6)|0;S.ctrl=genCtrl(seed,S.width);S.origCtrl=S.ctrl.map(p=>p.slice());sel.value='r';S.ghost=null;updGhostUI();S.fitPending=true;rebuildTrack(false);};
+  sel.onchange=()=>{const i=+sel.value;if(isNaN(i))return;S.trackIdx=i;S.ctrl=circuit(TRACKS[i].seed,S.width,S.hills);S.origCtrl=S.ctrl.map(p=>p.slice());S.ghost=null;updGhostUI();updHillsUI();S.fitPending=true;rebuildTrack(false);};
+  $('#randTrack').onclick=()=>{const seed=(Math.random()*1e6)|0;S.ctrl=circuit(seed,S.width,S.hills);S.origCtrl=S.ctrl.map(p=>p.slice());sel.value='r';S.ghost=null;updGhostUI();updHillsUI();S.fitPending=true;rebuildTrack(false);};
+  // Hills keep the plan view and the stations, so a pinned ghost stays comparable (a flat lap against the same circuit with hills).
+  const hl=$('#f-hills');hl.oninput=()=>{S.hills=+hl.value;$('#o-hills').textContent=S.hills+' m';if(!hillsFollow(S.ctrl))return;
+    for(const p of S.ctrl)p[2]=S.hills*p[3];for(const p of S.origCtrl)if(p[3]!=null)p[2]=S.hills*p[3];rebuildTrack(true);};
+  // a height set by hand: this point only, and from now on the slider no longer drives the heights
+  const ph=$('#f-ph');ph.oninput=()=>{const p=S.ctrl[S.sel];if(!p)return;p[2]=+ph.value;for(const q of S.ctrl)q[3]=null;$('#o-ph').textContent=p[2].toFixed(1)+' m';$('#trackPreset').value='e';updHillsUI();rebuildTrack(true);};
+  updHillsUI();
   const w=$('#f-width');w.oninput=()=>{S.width=+w.value;$('#o-width').textContent=S.width+' m';S.ghost=null;updGhostUI();rebuildTrack(true);};
-  $('#editBtn').onclick=()=>{S.editing=!S.editing;const ed=S.editing;$('#editBtn').classList.toggle('on',ed);$('#editBtn').textContent=ed?'Done editing':'Edit shape';$('#editbar').hidden=!ed;$('#view').classList.toggle('editing',ed);if(ed)send({type:'pause'});else setRunning(true);};
-  $('#revertTrack').onclick=()=>{S.ctrl=S.origCtrl.map(p=>p.slice());S.ghost=null;updGhostUI();rebuildTrack(true);};
+  $('#editBtn').onclick=()=>{S.editing=!S.editing;const ed=S.editing;$('#editBtn').classList.toggle('on',ed);$('#editBtn').textContent=ed?'Done editing':'Edit shape';$('#editbar').hidden=!ed;$('#view').classList.toggle('editing',ed);selectHandle(-1);if(ed)send({type:'pause'});else setRunning(true);};
+  $('#revertTrack').onclick=()=>{S.ctrl=S.origCtrl.map(p=>p.slice());S.ghost=null;updGhostUI();selectHandle(-1);updHillsUI();rebuildTrack(true);};
 }
 // Run/pause, restart, ghost, colouring, tags, telemetry Δ basis, replay and dynamic-check buttons.
 export function bindButtons(){
   $('#runBtn').onclick=()=>{if(!S.running&&S.prog&&S.prog.converged){S.hist=[];setRunning(true,true);}else setRunning(!S.running);};
   $('#resetC').onclick=()=>{send({type:'setLine'});S.hist=[];setRunning(true);};
-  $('#pinBtn').onclick=()=>{const d=S.disp;S.ghost={px:Float64Array.from(d.px),py:Float64Array.from(d.py),v:Float64Array.from(d.v),ds:Float64Array.from(d.ds),k:Float64Array.from(d.k),tc:Float64Array.from(d.tc),t:d.t,wb:S.P.wb,track:S.P.track,
+  $('#pinBtn').onclick=()=>{const d=S.disp;S.ghost={px:Float64Array.from(d.px),py:Float64Array.from(d.py),v:Float64Array.from(d.v),ds:Float64Array.from(d.ds),k:Float64Array.from(d.k),tc:Float64Array.from(d.tc),pz:Float64Array.from(d.pz),t:d.t,wb:S.P.wb,track:S.P.track,
     phys:Object.fromEntries(Object.entries(d.phys).map(([k,a])=>[k,Float64Array.from(a)]))};S.animT=0;updGhostUI();};
   $('#clearGhost').onclick=()=>{S.ghost=null;updGhostUI();};
   $('#colorSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;const m=S.colorMode=b.dataset.v;setSeg($('#colorSeg'),m);$('#legSpeed').hidden=m!=='speed';$('#legPedal').hidden=m!=='pedal';$('#legUtil').hidden=m!=='util';send({type:'view',util:m==='util'});};
@@ -198,10 +212,12 @@ function lockPanel(on){for(const id of ['carSection','trackSection','runSection'
 export function loaded(m){
   const L=pendingLoad;if(!L||L.rev!==m.rev)return;pendingLoad=null;lockPanel(false);
   const {run}=L,notes=runSummary(run,L.name);
-  S.ctrl=run.track.ctrl.map(p=>p.slice());S.origCtrl=S.ctrl.map(p=>p.slice());S.width=run.track.width;
-  $('#f-width').value=S.width;$('#o-width').textContent=S.width+' m';
-  const ti=run.track.seed==null?-1:TRACKS.findIndex(t=>t.seed===run.track.seed&&ctrlEqual(genCtrl(t.seed,S.width),S.ctrl));
-  if(ti>=0)S.trackIdx=ti;
+  S.width=run.track.width;$('#f-width').value=S.width;$('#o-width').textContent=S.width+' m';
+  // a flat run on a preset is that preset (with its generator heights, so the Hills slider works); otherwise the
+  // file's own heights, with the slider off
+  const ti=run.track.seed==null?-1:TRACKS.findIndex(t=>t.seed===run.track.seed&&ctrlEqual(genCtrl(t.seed,S.width),run.track.ctrl));
+  if(ti>=0){S.trackIdx=ti;S.hills=0;S.ctrl=circuit(TRACKS[ti].seed,S.width,0);}else S.ctrl=run.track.ctrl.map(p=>[p[0],p[1],p[2],null]);
+  S.origCtrl=S.ctrl.map(p=>p.slice());updHillsUI();
   $('#trackPreset').value=ti>=0?String(ti):run.track.name==='Random'?'r':'e';
   if(L.mode==='run'){
     S.P={...run.car};

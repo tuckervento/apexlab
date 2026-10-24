@@ -4,13 +4,13 @@
 import { S, $ } from './state.js';
 import { send, sendState, connect } from './client.js';
 import { bindButtons, bindRun, buildCarUI, buildTrackUI, dynLap, fit, loaded, loadFailed, rebuildTrack, renderDerived, renderDyn,
-  runLabel, setFollow, showError, trackArrived, updGhostUI } from './controls.js';
+  runLabel, selectHandle, setFollow, showError, trackArrived, updGhostUI, updHillsUI } from './controls.js';
 import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
 import { pose, stationPose, raceClock } from '../playback/pose.js';
 import { renderTelemetry, tagText } from './telemetry.js';
-import { drawSpeedChart, drawConv, drawGapChart, drawForceChart } from '../views/map2d/charts.js';
+import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed});
 
@@ -32,7 +32,7 @@ cv.addEventListener('pointerdown',e=>{
   ptrs.set(e.pointerId,{x:sx,y:sy});
   if(ptrs.size===2){const [a,b]=[...ptrs.values()];drag={type:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return;}
   const h=S.editing?handleAt(sx,sy):-1;
-  drag={type:h>=0?'handle':'pan',idx:h,sx,sy,lx:sx,ly:sy,moved:false};
+  drag={type:h>=0?'handle':'pan',idx:h,sx,sy,lx:sx,ly:sy,moved:false};if(h>=0)selectHandle(h);
 });
 cv.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId)||!drag)return;const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
@@ -40,7 +40,7 @@ cv.addEventListener('pointermove',e=>{
   if(drag.type==='pinch'&&ptrs.size===2){const [a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
     if(S.follow)zoomFollow(d/drag.d);else{cam.x-=(mx-drag.mx)/cam.z;cam.y-=(my-drag.my)/cam.z;zoomAt(d/drag.d,mx,my);}drag.d=d;drag.mx=mx;drag.my=my;return;}
   if(Math.hypot(sx-drag.sx,sy-drag.sy)>4) drag.moved=true;
-  if(drag.type==='handle'&&drag.moved){S.ctrl[drag.idx]=[WX(sx),WY(sy)];$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);}
+  if(drag.type==='handle'&&drag.moved){S.ctrl[drag.idx]=[WX(sx),WY(sy),...S.ctrl[drag.idx].slice(2)];$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);} // the point keeps its height
   else if(drag.type==='pan'&&drag.moved){if(S.follow)setFollow(false);cam.x-=(sx-drag.lx)/cam.z;cam.y-=(sy-drag.ly)/cam.z;}
   drag.lx=sx;drag.ly=sy;
 });
@@ -49,12 +49,14 @@ function endPtr(e){
   if(drag&&drag.type!=='pinch'&&!drag.moved&&S.editing){
     const now=performance.now(),ctrl=S.ctrl;
     if(drag.type==='handle'){
-      if(lastTap.idx===drag.idx&&now-lastTap.t<400&&ctrl.length>4){ctrl.splice(drag.idx,1);$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);lastTap={t:0,idx:-1};}
+      if(lastTap.idx===drag.idx&&now-lastTap.t<400&&ctrl.length>4){ctrl.splice(drag.idx,1);selectHandle(-1);$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);lastTap={t:0,idx:-1};}
       else lastTap={t:now,idx:drag.idx};
     }else{
       const wx=WX(drag.sx),wy=WY(drag.sy);let bi=0,bd=1e18;
       for(let i=0;i<ctrl.length;i++){const a=ctrl[i],b=ctrl[(i+1)%ctrl.length],mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,d=(mx-wx)**2+(my-wy)**2;if(d<bd){bd=d;bi=i;}}
-      ctrl.splice(bi+1,0,[wx,wy]);$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);
+      // the new point sits halfway, in height too (and in generator height, so the Hills slider still drives it)
+      const a=ctrl[bi],b=ctrl[(bi+1)%ctrl.length],u=a[3]!=null&&b[3]!=null?(a[3]+b[3])/2:null;
+      ctrl.splice(bi+1,0,[wx,wy,(a[2]+b[2])/2,u]);if(S.sel>bi)S.sel++;$('#trackPreset').value='e';S.ghost=null;updGhostUI();updHillsUI();rebuildTrack(true);
     }
   }
   drag=null;
@@ -73,10 +75,19 @@ function draw(){
   // each car against the other at the same place (both lines index the track's stations; a track change clears the ghost)
   const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
   const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};
-  drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,tags});
-  renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV',mode:ghost?S.deltaMode:'time',carLap:disp,ghostLap:ghost});
+  drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,tags});
+  renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV',hills:!T.flat,mode:ghost?S.deltaMode:'time',carLap:disp,ghostLap:ghost});
   if(ghost)$('#liveGap').textContent=cs?fmtDelta(disp.tc[cs.station]-ghost.tc[cs.station],2)+' s':'—';
   if(cs){S.carPos=cs.station;S.carV=cs.speed;}else S.carPos=-1;
+}
+
+// ---------- warnings over the map: the circuit's own (overlaps, tight corners) and what the lap time hides (snapshot warn)
+function showWarn(T,w){
+  const parts=[];if(T.issue)parts.push(T.issue+' — results may look odd');
+  if(w&&w.stall)parts.push(`The car can't get through ${w.stall} station${w.stall>1?'s':''} (a climb too steep for it): the lap time isn't a real one`);
+  if(w&&w.air)parts.push('The car leaves the ground over a crest');
+  if(w&&w.ntop)parts.push('A compression loads the car beyond the model\'s range (2 g)');
+  const el=$('#warn'),txt=parts.join(' · ');if(el.textContent!==txt)el.textContent=txt;el.hidden=!txt;
 }
 
 // ---------- loop
@@ -104,10 +115,11 @@ function frameBody(ts){
   if(ghost){$('#ghostTime').textContent=fmtTime(ghost.t);$('#ghostDelta').textContent='· you '+fmtDelta(disp.t-ghost.t,3)+' s';}
   $('#evals').textContent=p.evals.toLocaleString()+' laps simulated';
   $('#legMin').textContent=Math.round(disp.vmin*3.6);$('#legMax').textContent=Math.round(disp.vmax*3.6);
+  showWarn(T,disp.warn);
   $('#convCap').textContent=hist.length?'':'';
   draw();
   const dpr=cam.dpr,pal=S.pal;
-  if(frameN%2===0){drawSpeedChart($('#speedChart'),dpr,pal,{T,disp,refV:S.refV,ghost,carPos:S.carPos});drawConv($('#convChart'),dpr,pal,S.hist);if(ghost)drawGapChart($('#gapChart'),dpr,pal,{T,disp,ghost,carPos:S.carPos});}
+  if(frameN%2===0){drawSpeedChart($('#speedChart'),dpr,pal,{T,disp,refV:S.refV,ghost,carPos:S.carPos});if(!T.flat)drawElevChart($('#elevChart'),dpr,pal,{T,carPos:S.carPos});drawConv($('#convChart'),dpr,pal,S.hist);if(ghost)drawGapChart($('#gapChart'),dpr,pal,{T,disp,ghost,carPos:S.carPos});}
   if(frameN%4===0)$('#capGears').hidden=!drawForceChart($('#forceChart'),dpr,pal,{info:S.info,carPos:S.carPos,carV:S.carV});
 }
 

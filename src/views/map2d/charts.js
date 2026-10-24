@@ -20,6 +20,19 @@ export function drawSpeedChart(c,dpr,{colors},{T,disp,refV,ghost,carPos}){
   if(carPos>=0){g.strokeStyle=colors.accent;g.lineWidth=1.5;g.beginPath();g.moveTo(X(carPos),padT);g.lineTo(X(carPos),padT+ih);g.stroke();}
 }
 
+// Height over lap distance on a hilly circuit (T.z, the centreline's: the line's heights are the same, no banking).
+export function drawElevChart(c,dpr,{colors},{T,carPos}){
+  const g=c.getContext('2d'),[w,h]=sizeChart(c,dpr);g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+  const N=T.N,z=T.z,padL=30,padB=16,padT=6,iw=w-padL-4,ih=h-padB-padT;let lo=Infinity,hi=-Infinity;for(let i=0;i<N;i++){lo=Math.min(lo,z[i]);hi=Math.max(hi,z[i]);}
+  const span=Math.max(1,hi-lo),X=i=>padL+i/(N-1)*iw,Y=v=>padT+ih-(v-lo)/span*ih;
+  g.font=`10px ${colors.mono}`;g.fillStyle=colors.muted;g.strokeStyle=colors.rule;g.lineWidth=1;g.textAlign='right';
+  for(const v of [lo,hi]){const y=Math.round(Y(v))+0.5;g.beginPath();g.moveTo(padL,y);g.lineTo(w-4,y);g.stroke();g.fillText(Math.round(v),padL-5,y+3);}
+  g.textAlign='center';const km=T.L/1000;for(let k=0;k<=km;k+=km>4?1:0.5)g.fillText(k+(k===0?' km':''),padL+k/km*iw,h-3);
+  g.beginPath();g.moveTo(X(0),padT+ih);for(let i=0;i<N;i++)g.lineTo(X(i),Y(z[i]));g.lineTo(X(N-1),padT+ih);g.closePath();g.fillStyle=colors.grid2;g.fill();
+  g.beginPath();for(let i=0;i<N;i++)i?g.lineTo(X(i),Y(z[i])):g.moveTo(X(i),Y(z[i]));g.strokeStyle=colors.ink;g.lineWidth=1.4;g.stroke();
+  if(carPos>=0){g.strokeStyle=colors.accent;g.lineWidth=1.5;g.beginPath();g.moveTo(X(carPos),padT);g.lineTo(X(carPos),padT+ih);g.stroke();}
+}
+
 // Best lap against optimiser evaluations; hist is [[evals, lap], …].
 export function drawConv(c,dpr,{colors},hist){
   const g=c.getContext('2d'),[w,h]=sizeChart(c,dpr);g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);

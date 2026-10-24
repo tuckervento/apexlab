@@ -1,14 +1,19 @@
 // App-layer state: everything the page holds, in one plain object. The car, optimiser and dynamic check live in the
 // solver worker (ARCHITECTURE.md §10.1); S holds the UI parameters and the latest data the worker sent:
 // T (track), disp (line snapshot), info (describeCar), prog (optimiser progress), dynRes (dynamic check).
-import { genCtrl } from '../core/index.js';
+import { genCtrl, genElev } from '../core/index.js';
 import { CARS, TRACKS } from './presets.js';
 import { Camera } from '../views/map2d/camera.js';
 
-const ctrl=genCtrl(TRACKS[0].seed,12);
+// A generated circuit's control points [x, y, z, u]: z its height (m) and u the generator's unit height (genElev), so
+// z = hills·u while the Hills slider drives the heights. u is null once heights are set by hand or come from a saved
+// run (the slider is then disabled until Revert shape). Only [x, y, z] goes to the solver and into run files.
+export function circuit(seed,width,hills){const c=genCtrl(seed,width),u=genElev(seed,c);return c.map((p,i)=>[p[0],p[1],hills*u[i],u[i]]);}
+export const hillsFollow=ctrl=>ctrl.every(p=>p[3]!=null);
+const ctrl=circuit(TRACKS[0].seed,12,0);
 export const S={
   P:{...CARS['GT racer']}, info:null,
-  trackIdx:0, width:12, ctrl, origCtrl:ctrl.map(p=>p.slice()), fitPending:false,
+  trackIdx:0, width:12, hills:0 /* m from lowest to highest point */, ctrl, origCtrl:ctrl.map(p=>p.slice()), sel:-1 /* control point selected while editing */, fitPending:false,
   T:null, refT:0, refV:null, disp:null, prog:null, ghost:null, corners:[],
   running:false /* mirrors the worker's, from its progress events */, colorMode:'speed', tagMode:'speed' /* map tags: off, speed, g, grip */, deltaMode:'time' /* telemetry with a ghost: time, place (live) or max (lap maxima) */, replay:4, animT:0, editing:false, follow:false, followZ:7 /* closest follow zoom, px/m */, frameErr:null,
   hist:[], pal:null /* {colors, ramp} from the page's CSS */, cam:new Camera(), carPos:-1, carV:0,

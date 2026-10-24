@@ -7,7 +7,7 @@
 /* Layout: a survey drawing of the circuit fills the stage; the engineer's setup sheet runs down the right (stacks below on phones) */
 :root{
   --bg:#e3eae8; --paper:#edf2f0; --panel:#f5f8f7; --ink:#15242a; --muted:#56696e; --rule:#c4cfcd;
-  --grid:#dbe3e0; --grid2:#c8d3d0; --track:#c2ccca; --edge:#4a5b60; --kerb:#c4313b; --kerb2:#f5f8f7;
+  --grid:#dbe3e0; --grid2:#c8d3d0; --track:#c2ccca; --elev0:#a9bcc4; --elev1:#dcc493; --edge:#4a5b60; --kerb:#c4313b; --kerb2:#f5f8f7;
   --accent:#c24c16; --accent-ink:#ffffff; --ghost:#2b48ad;
   --s0:#c3284a; --s1:#cf8306; --s2:#11806f;
   --display:"Saira Semi Condensed","Arial Narrow",sans-serif;
@@ -16,12 +16,12 @@
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#0c1519; --paper:#0f1b20; --panel:#132127; --ink:#e1eae7; --muted:#8ca0a3; --rule:#253840;
-  --grid:#15242a; --grid2:#1d3037; --track:#283a41; --edge:#7a8f94; --kerb:#e0505a; --kerb2:#d6e0dd;
+  --grid:#15242a; --grid2:#1d3037; --track:#283a41; --elev0:#1d3a47; --elev1:#5c4b2a; --edge:#7a8f94; --kerb:#e0505a; --kerb2:#d6e0dd;
   --accent:#ff7c43; --accent-ink:#1b0c04; --ghost:#91a9ff;
   --s0:#ff5c78; --s1:#ffb43a; --s2:#2ecfb6; color-scheme:dark } }
 :root[data-theme="dark"]{
   --bg:#0c1519; --paper:#0f1b20; --panel:#132127; --ink:#e1eae7; --muted:#8ca0a3; --rule:#253840;
-  --grid:#15242a; --grid2:#1d3037; --track:#283a41; --edge:#7a8f94; --kerb:#e0505a; --kerb2:#d6e0dd;
+  --grid:#15242a; --grid2:#1d3037; --track:#283a41; --elev0:#1d3a47; --elev1:#5c4b2a; --edge:#7a8f94; --kerb:#e0505a; --kerb2:#d6e0dd;
   --accent:#ff7c43; --accent-ink:#1b0c04; --ghost:#91a9ff;
   --s0:#ff5c78; --s1:#ffb43a; --s2:#2ecfb6; color-scheme:dark }
 
@@ -133,9 +133,11 @@ details p{margin:6px 0 0}
     <div class="legend" id="legend">
       <div id="legSpeed"><div class="bar"></div><div class="ends"><span id="legMin">—</span><span>km/h</span><span id="legMax">—</span></div></div>
       <div id="legUtil" hidden><div class="bar" style="background:linear-gradient(90deg,var(--s2),var(--s1),var(--s0))"></div><div class="ends"><span>50%</span><span>grip used</span><span>100%+</span></div></div>
+      <div id="legElev" hidden><div class="bar" style="background:linear-gradient(90deg,var(--elev0),var(--elev1))"></div><div class="ends"><span id="legZmin">—</span><span>track height m</span><span id="legZmax">—</span></div></div>
       <div class="keys" id="legPedal" hidden><span><i style="background:var(--s0)"></i>Brake</span><span><i style="background:var(--s1)"></i>At limit</span><span><i style="background:var(--s2)"></i>Throttle</span></div>
     </div>
-    <div class="editbar" id="editbar" hidden>Drag points to reshape · tap empty space to add a point · double-tap a point to remove it</div>
+    <div class="editbar" id="editbar" hidden>Drag points to reshape · tap empty space to add a point · double-tap a point to remove it · tap a point to set its height
+      <span id="editHeight" hidden><br>Point <b id="selN"></b> height <input type="range" id="f-ph" min="-60" max="60" step="0.5" aria-label="Height of the selected point"> <output id="o-ph"></output></span></div>
   </main>
 
   <aside class="panel">
@@ -197,6 +199,10 @@ details p{margin:6px 0 0}
         <canvas class="chart" id="speedChart" height="150"></canvas>
         <div class="chart-cap"><span><i style="background:var(--ink)"></i>Racing line</span><span><i style="background:var(--muted)"></i>Centreline</span><span id="capGhost" hidden><i style="background:var(--ghost)"></i>Ghost</span><span>km/h over lap distance</span></div>
       </div>
+      <div class="chart-wrap" id="elevWrap" hidden>
+        <canvas class="chart" id="elevChart" height="90"></canvas>
+        <div class="chart-cap"><span>Height (m) over lap distance</span><span id="elevCap"></span></div>
+      </div>
       <div class="chart-wrap" id="gapWrap" hidden>
         <canvas class="chart" id="gapChart" height="100"></canvas>
         <div class="chart-cap"><span>Gap to ghost (s) over lap distance</span><span>above zero = behind the ghost</span></div>
@@ -239,6 +245,12 @@ details p{margin:6px 0 0}
       <div class="field">
         <label for="f-width">Track width</label><output id="o-width">12 m</output>
         <input type="range" id="f-width" min="8" max="18" step="0.5" value="12">
+      </div>
+      <div class="field">
+        <label for="f-hills">Hills</label><output id="o-hills">0 m</output>
+        <input type="range" id="f-hills" min="0" max="40" step="1" value="0">
+        <small>Height from the lowest point of the circuit to the highest</small>
+        <small id="hillsNote" hidden>Heights set by hand or loaded from a run: <i>Revert shape</i>, or pick a circuit, to use the slider again</small>
       </div>
       <div class="row">
         <button class="btn" id="editBtn">Edit shape</button>

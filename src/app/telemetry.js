@@ -43,6 +43,14 @@ const MAX_ROWS=[{g:'Motion'},
   {g:'Aero and rolling'},
   {l:'Downforce',u:'kN',f:x=>kN(x.phys.down.max),d:1},
   {l:'Drag + rolling',u:'kN',f:x=>kN(x.phys.drag.max),d:1}];
+// On a hilly circuit: height and grade along the line (the pose), and the load factor (phys.nz: crests < 1 < compressions).
+const ROWS_H=[...ROWS,{g:'Hills'},
+  {l:'Height',u:'m',f:p=>p.z,d:1},
+  {l:'Grade',u:'%',f:p=>p.grade*100,d:1,signed:true},
+  {l:'Vertical load',u:'g',f:p=>p.phys&&p.phys.nz,d:2}];
+const MAX_ROWS_H=[...MAX_ROWS,{g:'Hills'},
+  {l:'Vertical load most',u:'g',f:x=>x.phys.nz&&x.phys.nz.max,d:2},
+  {l:'Vertical load least',u:'g',f:x=>x.phys.nz&&x.phys.nz.min,d:2}];
 
 // The table holds one row set at a time, rebuilt only when the set changes.
 let built=null;
@@ -57,10 +65,10 @@ const extremes=new WeakMap(),lapMax=d=>{let x=extremes.get(d);if(!x){x=lapExtrem
 const set=(el,s)=>{if(el.textContent!==s)el.textContent=s;};
 const fmt=(x,r)=>x==null||!isFinite(x)?'—':r.signed?fmtDelta(x,r.d):x.toFixed(r.d);
 // car: the car's pose (null when there is none); ref: the ghost's pose to compare against (null without one);
-// ghost: a ghost is pinned; ev: electric (no gears); mode: 'time' or 'place' (live, ref chosen by the caller) or
+// ghost: a ghost is pinned; ev: electric (no gears); hills: the circuit has hills (adds their rows); mode: 'time' or 'place' (live, ref chosen by the caller) or
 // 'max' (lap maxima of carLap and ghostLap, the two lap snapshots).
-export function renderTelemetry(car,ref,{ghost,ev,mode,carLap,ghostLap}){
-  const max=mode==='max',rows=max?MAX_ROWS:ROWS;if(built!==rows)build(rows);
+export function renderTelemetry(car,ref,{ghost,ev,hills,mode,carLap,ghostLap}){
+  const max=mode==='max',rows=max?(hills?MAX_ROWS_H:MAX_ROWS):(hills?ROWS_H:ROWS);if(built!==rows)build(rows);
   const A=max?lapMax(carLap):car,B=max?lapMax(ghostLap):ref;
   for(const r of rows){
     if(r.g)continue;
