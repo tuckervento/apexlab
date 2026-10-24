@@ -1,14 +1,15 @@
 // Apex Lab app entry: wires the solver client, controls and 2D views together. Owns map input (pan, zoom, pinch, track
-// editing), the requestAnimationFrame loop and the HUD; everything it draws comes from S (src/app/state.js).
+// editing), the requestAnimationFrame loop, the lap readout and live telemetry; everything it draws comes from S
+// (src/app/state.js).
 import { S, $ } from './state.js';
 import { sendState, connect } from './client.js';
 import { bindButtons, buildCarUI, buildTrackUI, dynLap, fit, rebuildTrack, renderDerived, renderDyn, runLabel,
   setFollow, setRunning, showError, trackArrived, updGhostUI } from './controls.js';
-import { fmtTime } from '../views/format.js';
+import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
-import { pose, raceClock } from '../playback/pose.js';
-import { G } from '../core/index.js';
+import { pose, stationPose, raceClock } from '../playback/pose.js';
+import { buildTelemetry, renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart } from '../views/map2d/charts.js';
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap});
@@ -48,7 +49,7 @@ function endPtr(e){
   if(drag&&drag.type!=='pinch'&&!drag.moved&&S.editing){
     const now=performance.now(),ctrl=S.ctrl;
     if(drag.type==='handle'){
-      if(lastTap.idx===drag.idx&&now-lastTap.t<400&&ctrl.length>4){ctrl.splice(drag.idx,1);$('#trackPreset').value='e';rebuildTrack(true);lastTap={t:0,idx:-1};}
+      if(lastTap.idx===drag.idx&&now-lastTap.t<400&&ctrl.length>4){ctrl.splice(drag.idx,1);$('#trackPreset').value='e';S.ghost=null;updGhostUI();rebuildTrack(true);lastTap={t:0,idx:-1};}
       else lastTap={t:now,idx:drag.idx};
     }else{
       const wx=WX(drag.sx),wy=WY(drag.sy);let bi=0,bd=1e18;
@@ -69,15 +70,13 @@ new MutationObserver(refreshColors).observe(document.documentElement,{attributes
 function draw(){
   const {disp,ghost,T}=S,on=S.replay>0,rt=raceClock(ghost?[disp.t,ghost.t]:[disp.t],S.animT);
   const cs=on&&disp.t>0?pose(disp,rt,S.info):null,gs=on&&ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs)cam.frame(gs?[cs,gs]:[cs],S.followZ,FOLLOW_MARGIN);
-  drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl});
-  // HUD
-  if(cs){
-    const v=cs.speed,lo=cs.station,glong=cs.ax/G;$('#carSpeed').textContent=Math.round(v*3.6);
-    $('#gLat').textContent=(Math.abs(cs.ay)/G).toFixed(2);$('#gLong').textContent=(glong<0?'−':'+')+Math.abs(glong).toFixed(2);
-    $('#gearWrap').hidden=S.P.pt==='EV';$('#carGear').textContent=cs.gear||'—';
-    if(ghost){const gp=disp.tc[lo]-ghost.tc[lo];$('#liveGap').textContent=(gp<0?'−':'+')+Math.abs(gp).toFixed(2)+' s';}
-    S.carPos=lo;S.carV=v;
-  }else{$('#carSpeed').textContent='—';$('#gLat').textContent='—';$('#gLong').textContent='—';S.carPos=-1;}
+  // each car against the other at the same place (both lines index the track's stations; a track change clears the ghost)
+  const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
+  const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};
+  drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,tags});
+  renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV'});
+  if(ghost)$('#liveGap').textContent=cs?fmtDelta(disp.tc[cs.station]-ghost.tc[cs.station],2)+' s':'—';
+  if(cs){S.carPos=cs.station;S.carV=cs.speed;}else S.carPos=-1;
 }
 
 // ---------- loop
@@ -101,8 +100,8 @@ function frameBody(ts){
   const lbl=S.editing?'Editing track':!S.running?(p.converged?'Converged':'Paused'):p.polish?`Stage ${p.stage}/${p.of} · local polish`:`Stage ${p.stage}/${p.of} · ${p.knot} m spline`;
   if(!S.frameErr){if(st.dataset.s!==s)st.dataset.s=s;if(st.textContent!==lbl)st.textContent=lbl;}
   $('#lapTime').textContent=fmtTime(disp.t);
-  const dl=disp.t-S.refT;$('#deltaRef').textContent=(dl<0?'−':'+')+Math.abs(dl).toFixed(3)+' s';
-  if(ghost){$('#ghostTime').textContent=fmtTime(ghost.t);const g=disp.t-ghost.t;$('#ghostDelta').textContent='· you '+(g<0?'−':'+')+Math.abs(g).toFixed(3)+' s';}
+  $('#deltaRef').textContent=fmtDelta(disp.t-S.refT,3)+' s';
+  if(ghost){$('#ghostTime').textContent=fmtTime(ghost.t);$('#ghostDelta').textContent='· you '+fmtDelta(disp.t-ghost.t,3)+' s';}
   $('#evals').textContent=p.evals.toLocaleString()+' laps simulated';
   $('#legMin').textContent=Math.round(disp.vmin*3.6);$('#legMax').textContent=Math.round(disp.vmax*3.6);
   $('#convCap').textContent=hist.length?'':'';
@@ -113,7 +112,7 @@ function frameBody(ts){
 }
 
 // ---------- boot
-refreshColors();bindButtons();buildCarUI();buildTrackUI();
+refreshColors();bindButtons();buildCarUI();buildTrackUI();buildTelemetry();
 new ResizeObserver(()=>{const first=!cam.cw;resize();if(first&&S.T)fit();}).observe($('#stage'));
 resize();sendState('setCar',{params:{...S.P}});S.fitPending=true;rebuildTrack(false);setRunning(true);
 document.fonts&&document.fonts.ready.then(refreshColors);

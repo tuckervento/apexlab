@@ -117,13 +117,37 @@ test('solver: emitted arrays are copies, never solver state', () => {
   const b = boot(), N = b.s.T.N, snap = b.last('snapshot'), trk = b.last('track'), info = b.last('carInfo').info;
   const px0 = Float64Array.from(snap.line.px), v0 = Float64Array.from(snap.line.v), ref0 = Float64Array.from(snap.ref.v);
   // a careless receiver writes into everything it was sent
-  for (const a of [snap.line.px, snap.line.py, snap.line.v, snap.line.k, snap.line.ds, snap.ref.v, trk.cx, trk.cy, trk.nx, trk.ny, trk.kc, info.curves.drive]) a.fill(-1);
+  for (const a of [snap.line.px, snap.line.py, snap.line.v, snap.line.k, snap.line.ds, snap.ref.v, ...Object.values(snap.line.phys), trk.cx, trk.cy, trk.nx, trk.ny, trk.kc, info.curves.drive]) a.fill(-1);
   assert.ok(b.s.pub.every(Number.isFinite) && b.s.T.cx[0] !== -1 && b.s.car.drv[5] !== -1, 'solver state was written through an emitted array');
   b.s.handle({ type: 'view', util: false }); // republish the same line
   const again = b.last('snapshot');
   assert.equal(again.line.px.length, N);
   for (let i = 0; i < N; i++) if (again.line.px[i] !== px0[i] || again.line.v[i] !== v0[i]) assert.fail(`republished snapshot differs at station ${i}`);
   for (let i = 0; i < N; i++) if (b.s.ref.v[i] !== ref0[i]) assert.fail(`reference lap changed at station ${i}`);
+});
+
+// Telemetry forces (inverse dynamics along the line) ride on every snapshot. The axle loads must add up to weight
+// plus downforce: longitudinal transfer moves load between the axles but cancels in the sum.
+test('solver: every snapshot carries phys, and axle loads sum to weight plus downforce', t => {
+  const b = converged(), N = b.s.T.N, m = b.s.car.m, snaps = b.of('snapshot');
+  const KEYS = ['fxf', 'fxr', 'fyf', 'fyr', 'wf', 'wr', 'uf', 'ur', 'down', 'drag'];
+  let worst = 0;
+  for (const [n, sn] of snaps.entries()) {
+    const ph = sn.line.phys;
+    assert.deepEqual(Object.keys(ph).sort(), [...KEYS].sort(), `snapshot ${n} phys keys`);
+    for (const k of KEYS) {
+      assert.equal(ph[k].length, N, `snapshot ${n} phys.${k} length`);
+      if (!ph[k].every(Number.isFinite)) assert.fail(`snapshot ${n} phys.${k} has a non-finite value`);
+    }
+    for (let i = 0; i < N; i++) {
+      const want = m * core.G + ph.down[i];
+      worst = Math.max(worst, Math.abs(ph.wf[i] + ph.wr[i] - want) / want);
+      if (ph.down[i] < 0 || ph.drag[i] <= 0) assert.fail(`snapshot ${n} station ${i}: downforce ${ph.down[i]}, drag ${ph.drag[i]}`);
+    }
+  }
+  t.diagnostic(`snapshots=${snaps.length}  stations=${N}  worst load-sum error=${worst.toExponential(2)}`);
+  assert.ok(snaps.length > 1, `only ${snaps.length} snapshots`);
+  assert.ok(worst < 1e-9, `axle loads differ from weight + downforce by up to ${worst}`);
 });
 
 test('solver: a failing command emits error, pauses, and leaves the solver usable', () => {

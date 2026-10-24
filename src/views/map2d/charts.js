@@ -2,14 +2,16 @@
 // the palette ({colors, ramp} from colors.js). carPos is the car's station (−1 when there is no car), carV its speed.
 import { fmtTime } from '../format.js';
 
-// Match a chart canvas's backing store to its width at dpr; the height comes from its height attribute.
-export function sizeChart(c,dpr){const w=c.clientWidth,h=+c.getAttribute('height');if(c.width!==Math.round(w*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px';}return [w,h];}
+// Match a chart canvas's backing store to its size at dpr. The CSS height comes from its height attribute, kept in
+// data-h on first sight: setting c.height rewrites that attribute to the backing height (h·dpr), and reading it back
+// drew every chart twice its height on 2× screens, cut off at the bottom.
+export function sizeChart(c,dpr){const w=c.clientWidth,h=+(c.dataset.h||(c.dataset.h=c.getAttribute('height')));if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);c.style.height=h+'px';}return [w,h];}
 
 // Speed over lap distance: racing line, centreline reference (refV) and ghost.
 export function drawSpeedChart(c,dpr,{colors},{T,disp,refV,ghost,carPos}){
   const g=c.getContext('2d'),[w,h]=sizeChart(c,dpr);g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
   const N=T.N,padL=30,padB=16,padT=6,iw=w-padL-4,ih=h-padB-padT;
-  let vmax=Math.max(disp.vmax,...refV)*3.6;vmax=Math.ceil(vmax/50)*50;const X=i=>padL+i/(N-1)*iw,Y=v=>padT+ih-(v*3.6)/vmax*ih;
+  let vmax=Math.max(disp.vmax,...refV);if(ghost)vmax=Math.max(vmax,...ghost.v);vmax=Math.ceil(vmax*3.6/50)*50;const X=i=>padL+i/(N-1)*iw,Y=v=>padT+ih-(v*3.6)/vmax*ih;
   g.font=`10px ${colors.mono}`;g.fillStyle=colors.muted;g.textAlign='right';g.strokeStyle=colors.rule;g.lineWidth=1;
   for(let v=0;v<=vmax;v+=vmax>250?100:50){const y=Math.round(padT+ih-v/vmax*ih)+0.5;g.beginPath();g.moveTo(padL,y);g.lineTo(w-4,y);g.stroke();g.fillText(v,padL-5,y+3);}
   g.textAlign='center';const km=T.L/1000;for(let k=0;k<=km;k+=km>4?1:0.5){g.fillText(k+(k===0?' km':''),padL+k/km*iw,h-3);}
@@ -48,7 +50,9 @@ export function drawForceChart(c,dpr,{colors},{info,carPos,carV}){
   const g=c.getContext('2d'),[w,h]=sizeChart(c,dpr);g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
   const {drive,traction,resist,gears}=info.curves,vs=info.vstep;
   const vmaxK=Math.min((info.n-1)*vs*3.6,Math.ceil(info.derived.vTop*3.6*1.12/50)*50),nmax=Math.min(info.n-1,Math.round(vmaxK/3.6/vs));
-  let fmax=0;for(let i=1;i<=nmax;i++)fmax=Math.max(fmax,drive[i],Math.min(traction[i],drive[i]*1.6));fmax=Math.ceil(fmax/1000/2)*2||2;
+  // scaled to the whole traction limit: with downforce it climbs with speed, and capping the axis (as at 1.6× drive)
+  // sent it off the top for the GT racer and Open-wheeler
+  let fmax=0;for(let i=1;i<=nmax;i++)fmax=Math.max(fmax,drive[i],traction[i]);fmax=Math.ceil(fmax/1000/2)*2||2;
   const padL=26,padB=16,padT=6,iw=w-padL-4,ih=h-padT-padB,X=i=>padL+i/nmax*iw,Y=F=>padT+ih-F/1000/fmax*ih;
   g.font=`10px ${colors.mono}`;g.fillStyle=colors.muted;g.textAlign='right';g.strokeStyle=colors.rule;g.lineWidth=1;
   const ys=fmax>12?4:2;for(let f=0;f<=fmax;f+=ys){const y=Math.round(Y(f*1000))+0.5;g.beginPath();g.moveTo(padL,y);g.lineTo(w-4,y);g.stroke();g.fillText(f,padL-5,y+3);}

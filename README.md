@@ -41,9 +41,11 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 **Read the result**
 - The map colours the line by speed, pedal state (brake, at the limit, throttle) or tyre use (per-axle grip utilisation).
 - Corner labels show each corner's minimum speed.
-- Replay at 1×, 4× or 12×, with an optional follow camera. A HUD shows speed, gear, and lateral and longitudinal g.
+- Replay at 1×, 4× or 12×, with an optional follow camera.
+- **Telemetry:** the best lap, plus live readouts during replay: speed, gear, lateral and longitudinal g, and the forces on the car: each axle's load, lateral and longitudinal tyre force and grip use, downforce and drag. Forces come from inverse dynamics on the lap model's speed profile.
+- **Map tags** beside the car and the ghost show speed, g or grip use.
 - Telemetry plots speed over lap distance against the centreline.
-- **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart.
+- **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart. The readouts gain ghost and Δ columns, compared at the same race time or the same place on track. Each map tag adds a Δ against the other car at that same spot.
 
 **Dynamic check**
 - A time-stepped bicycle model drives the optimised line. It has yaw inertia, Pacejka-style tyres, load-transfer lag and a steering-rate limit.
@@ -55,7 +57,7 @@ The app's *How the model works* panel summarises the physics. [ARCHITECTURE.md](
 ## How it fits together
 
 ```
-index.html ─ src/app/                 state, worker client, controls, frame loop, HUD
+index.html ─ src/app/                 state, worker client, controls, frame loop, telemetry
                │  commands ↓   ↑ events (copies, tagged with car/track/line revisions)
                │
              src/solver/worker.js ─ Solver   (in a Web Worker; owns car, track, line, optimiser, dynamic check)
@@ -103,9 +105,9 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 
 1. ~Decouple sim and UI~
 2. ~"car" camera expands to fit ghost~
-2. Add Z axis / elevation changes
-3. save/load car config + simmed line
-4. support comparison of cars/simmed lines between apex lab versions
-5. more physics observability
-5. improved tyre physics (maybe not full temperatures, but some sort of deg is needed)
-6. weather?
+3. ~more physics observability~
+4. Add Z axis / elevation changes
+5. save/load car config + simmed line
+6. support comparison of cars/simmed lines between apex lab versions
+7. improved tyre physics (maybe not full temperatures, but some sort of deg is needed)
+8. weather?

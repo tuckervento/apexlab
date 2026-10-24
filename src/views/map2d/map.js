@@ -24,7 +24,8 @@ export function findCorners(T){
 }
 
 // sc: {T, width, disp, colorMode, ghost, ghostCar, car, carDims:{wb, track}, corners, dyn (null when none or stale),
-// editing, ctrl}. ghostCar/car are playback poses or null.
+// editing, ctrl, tags}. ghostCar/car are playback poses or null. tags: null, or {car, ghost}, each null or
+// {main, delta?} text drawn in a small box beside that car (the car's on its right, the ghost's on its left).
 export function drawMap(ctx,cam,pal,sc){
   const {colors,ramp}=pal,{cw,ch,dpr}=cam,{T,width,ghost,corners,editing,ctrl}=sc;
   const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy);
@@ -58,6 +59,23 @@ export function drawMap(ctx,cam,pal,sc){
     if(isGhost){ctx.globalAlpha=0.28;ctx.fillStyle=colors.ghost;ctx.fill();ctx.globalAlpha=1;ctx.setLineDash([3,2]);ctx.strokeStyle=colors.ghost;ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);}
     else{ctx.fillStyle=colors.ink;ctx.strokeStyle=colors.paper;ctx.lineWidth=1.5;ctx.fill();ctx.stroke();ctx.fillStyle=colors.accent;ctx.fillRect(-L/2,-Wd/2,L*0.18,Wd);}
     ctx.restore();
+  }
+  // Tag box beside a car marker: pushed out along the screen normal of its heading (side +1: right of travel), clear
+  // of the marker, so the car's and the ghost's tags sit on opposite sides and don't stack. A box that would leave the
+  // canvas goes to the marker's other side if it fits there, and is then kept inside.
+  function drawTag(cs,tag,wb,tw,side,col){
+    const L=Math.max(16,(wb+1.6)*cam.z),Wd=Math.max(8,(tw+0.3)*cam.z),D=Math.max(L,Wd)/2+8;
+    const fMain=`500 11px ${colors.mono}`,fDelta=`9.5px ${colors.mono}`;
+    ctx.font=fMain;let w=ctx.measureText(tag.main).width;if(tag.delta){ctx.font=fDelta;w=Math.max(w,ctx.measureText(tag.delta).width);}
+    const bw=Math.round(w+12),bh=tag.delta?30:19;
+    const place=sd=>{const nx=-Math.sin(cs.heading)*sd,ny=Math.cos(cs.heading)*sd,px=SX(cs.x)+nx*D,py=SY(cs.y)+ny*D;return [Math.round(px+nx*bw/2-bw/2),Math.round(py+ny*bh/2-bh/2)];};
+    const inside=([x,y])=>x>=4&&y>=4&&x+bw<=cw-4&&y+bh<=ch-4;
+    let [x0,y0]=place(side);if(!inside([x0,y0])){const q=place(-side);if(inside(q))[x0,y0]=q;}
+    x0=Math.max(4,Math.min(cw-4-bw,x0));y0=Math.max(4,Math.min(ch-4-bh,y0));
+    ctx.globalAlpha=0.88;ctx.fillStyle=colors.paper;ctx.fillRect(x0,y0,bw,bh);ctx.globalAlpha=1;
+    ctx.strokeStyle=col;ctx.lineWidth=1;ctx.strokeRect(x0+0.5,y0+0.5,bw-1,bh-1);
+    ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.font=fMain;ctx.fillStyle=col;ctx.fillText(tag.main,x0+6,y0+13.5);
+    if(tag.delta){ctx.font=fDelta;ctx.fillStyle=colors.muted;ctx.fillText(tag.delta,x0+6,y0+25);}
   }
 
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle=colors.paper;ctx.fillRect(0,0,cw,ch);
@@ -106,6 +124,9 @@ export function drawMap(ctx,cam,pal,sc){
   // cars
   if(sc.ghostCar)drawCar(sc.ghostCar,ghost.wb,ghost.track,true);
   if(sc.car)drawCar(sc.car,sc.carDims.wb,sc.carDims.track,false);
+  const tags=sc.tags;
+  if(tags&&tags.ghost&&sc.ghostCar)drawTag(sc.ghostCar,tags.ghost,ghost.wb,ghost.track,-1,colors.ghost);
+  if(tags&&tags.car&&sc.car)drawTag(sc.car,tags.car,sc.carDims.wb,sc.carDims.track,1,colors.ink);
   // edit handles
   if(editing){ctx.beginPath();ctrl.forEach((p,i)=>i?ctx.lineTo(SX(p[0]),SY(p[1])):ctx.moveTo(SX(p[0]),SY(p[1])));ctx.closePath();ctx.setLineDash([3,4]);ctx.strokeStyle=colors.accent;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
     ctrl.forEach(p=>{ctx.beginPath();ctx.arc(SX(p[0]),SY(p[1]),7,0,Math.PI*2);ctx.fillStyle=colors.paper;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=colors.accent;ctx.stroke();});}

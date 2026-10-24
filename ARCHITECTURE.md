@@ -59,13 +59,13 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 | Function | Purpose |
 |---|---|
 | `dynSetup(CarModel) → dc` | Bicycle-model constants: CG distances, yaw inertia, Pacejka shape, brake and drive split. |
-| `dynNominal(CarModel, dc, line, v[]) → Nominal` | Inverse dynamics along the line at given speeds. Returns per-station steering, sideslip, yaw rate, longitudinal force, slip angles, and **per-axle grip utilisation** `uf`, `ur`. |
+| `dynNominal(CarModel, dc, line, v[]) → Nominal` | Inverse dynamics along the line at given speeds. Returns per-station steering, sideslip, yaw rate, longitudinal force, slip angles, **per-axle grip utilisation** `uf`, `ur`, and the forces on the car for telemetry: axle tyre forces `Fxf`, `Fxr`, `Fyf`, `Fyr`, axle loads `Wf`, `Wr` (from `axleLoads`, which `axleCaps` also uses), `down` and `drag` (aero + rolling). |
 | `dynLap(Track, CarModel, dc, line, v[], keepTrace) → LapRun` | One time-stepped lap (4 ms steps) with a feedforward-plus-feedback driver. Returns time, trouble stations, spin/off flags, maxima, and optionally a trace. |
 | `class DynCheck` | `new DynCheck(Track, CarModel, off)`, `step()` (one simulated lap per call), `done`, `result`. Bisects the highest uniform fraction of lap-model pace the car completes cleanly. |
 
 ### 3.3 App (everything else)
 
-The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core it uses only `genCtrl` (and the views use `G`).
+The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core it uses only `genCtrl` and `G` (and the views use `G`).
 
 - `setCar`/`setTrack` are coalesced: one in flight per kind, and only the latest pending one is sent next, so a slider or handle drag can't queue up ~60 ms rebuilds.
 - A snapshot never steps back to an older car or track, and a new track is swapped in together with its first snapshot (stations change with the track).
@@ -247,7 +247,14 @@ Plain objects are frozen; arrays are fresh copies.
 ### Display snapshot (`disp`, built by `refreshDisplay`)
 
 ```ts
-{ px[], py[], v[], ds[], k[], tc[] /* cumulative time, length N+1 */, t, vmin, vmax, u[] | null }
+{ px[], py[], v[], ds[], k[], tc[] /* cumulative time, length N+1 */, t, vmin, vmax, u[] | null,
+  phys: { fxf[], fxr[], fyf[], fyr[] /* axle tyre forces */, wf[], wr[] /* axle loads */, uf[], ur[] /* grip use */,
+          down[], drag[] /* drag: aero + rolling */ } }   // N; from dynNominal on the line at v (inverse dynamics)
+```
+
+A pinned ghost is a copy of `disp` (with `phys`), plus the car's `wb` and `track`.
+
+```
 ```
 
 ### `DynCheck.result`
@@ -349,7 +356,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'carInfo',   carRev, info: CarInfo }       // describeCar (§7)
 { type: 'track',     trackRev, N, L, ds, cx, cy, nx, ny, kc, width, issue }
 { type: 'snapshot',  carRev, trackRev, lineRev, lap, vmin, vmax,
-                     line: { px, py, v, k, ds, tc, u }, ref?: { t, v } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes
+                     line: { px, py, v, k, ds, tc, u, phys }, ref?: { t, v } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7
 { type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
 { type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }
 { type: 'error',     message, stack }                // the solver pauses and stays usable
@@ -373,13 +380,15 @@ pose(source: LapSnapshot | DynTrace, t: seconds, info?: CarInfo) → {
   station, s, x, y, z /* 0: flat world */, heading /* rad, screen frame */, speed /* m/s */,
   ax /* longitudinal */, ay /* lateral, signed like curvature */,       // m/s²
   gear?, rpm?,                                                          // with info; rpm = fraction of redline
+  // Lap snapshot only: frac (0–1 through the station segment); phys (snapshot telemetry, §7, interpolated) if present
   // DynTrace only:
   steer, slipF, slipR, beta /* sideslip */, yawRate
 }
+stationPose(snapshot, station, frac, info?) → pose   // the second half of a lap pose; samples one lap where another car is
 raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker waits 1 s at the line
 ```
 
-- **Lap snapshot** (the line, ghosts): interpolated within a station segment; heading from the segment, `ax`/`ay` from the lap model's speeds and curvature, `s` along the line. Bit for bit what the map and HUD computed before step 7.
+- **Lap snapshot** (the line, ghosts): interpolated within a station segment; heading from the segment, `ax`/`ay` from the lap model's speeds and curvature, `s` along the line. Bit for bit what the map and HUD computed before step 7. Lines index the same track stations, so `stationPose(ghost, car.station, car.frac)` is the ghost at the car's place: the telemetry's *Same place* Δ and the map tags compare the two cars this way.
 - **DynTrace** (`DynCheck.result.dyn.trace`, §7): true heading `psi`, steering and slip recorded by `dynLap`; `s` is distance travelled; the gear is the one the driver model was in. `rpm` comes from the best-gear table at that speed (no per-gear ratios in `CarInfo`). The trace starts where the dynamic lap starts (the straightest station), not at the start line. On the skidpad the recorded state is kinematically consistent with the car's own path: |ay| = v²κ within 0.6%, r + dβ/dt = vκ within 0.3%.
 - Not yet: `pitch`, `roll` (no attitude model). Nothing in the UI plays back a dynamic trace yet.
 
@@ -427,7 +436,6 @@ Each step keeps behaviour identical and is checked against §8.
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.
 - **`buildCar` costs about 60 ms**, the GGV bisections included. Fine on slider release; heavy on continuous drag. Consider fewer bisection steps, or memoising by parameter hash.
 - **The dynamic check's driver gains were tuned on the GT and road presets.** Very different cars may need retuning before the margin can be trusted.
-- **With replay off, the HUD keeps the last gear shown** while speed and g go to "—" (the HUD's no-car branch doesn't reset `#carGear`). From the prototype; harmless.
 - **Lap model and dynamic model disagree more for some presets** (§8.5/8.6 table): Hot hatch AWD and EV saloon reach inverse-dynamics utilisation 1.11–1.12; the Road car holds only 91% of lap-model pace on two circuits; the Kart reaches 100% (the check can't find its limit). Not investigated: it could be the lap model, the bicycle model or the driver.
 
 ---

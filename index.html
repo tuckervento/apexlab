@@ -35,15 +35,14 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 #view.editing{cursor:crosshair}
 .panel{overflow-y:auto;background:var(--panel);padding-block:20px 32px;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
 
-/* HUD */
-.hud{position:absolute;top:16px;left:max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:2px;pointer-events:none;
-  background:color-mix(in srgb,var(--paper) 82%,transparent);padding:10px 14px 12px;border:1px solid var(--rule);border-radius:4px;backdrop-filter:blur(4px)}
+/* Lap block and status chip (Telemetry and Optimiser sections) */
+.lapblock{display:flex;flex-direction:column;gap:2px}
 .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .lap{font-family:var(--display);font-weight:600;font-size:44px;line-height:1;letter-spacing:.01em;font-variant-numeric:tabular-nums}
-.hud-row{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
-.hud-row b{color:var(--ink);font-weight:500}
-.hud-row.ghost b{color:var(--ghost)}
-.chip{align-self:flex-start;margin-top:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px 3px 20px;border-radius:2px;border:1px solid var(--rule);position:relative}
+.lap-row{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.lap-row b{color:var(--ink);font-weight:500}
+.lap-row.ghost b{color:var(--ghost)}
+.chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px 3px 20px;border-radius:2px;border:1px solid var(--rule);position:relative}
 .chip::before{content:"";position:absolute;left:8px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--muted)}
 .chip[data-s="searching"]::before{background:var(--accent);animation:pulse 1s infinite alternate}
 .chip[data-s="refining"]::before{background:var(--s1);animation:pulse 1.4s infinite alternate}
@@ -95,6 +94,18 @@ select{font-family:var(--body);font-size:13px;padding:7px 8px;border-radius:4px;
 .chart-cap{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .chart-cap i{display:inline-block;width:12px;height:2px;vertical-align:middle;margin-right:4px}
 .note{color:var(--muted);font-size:12.5px;max-width:60ch}
+/* Live telemetry readout: car, ghost and their difference */
+.tele{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.tele th,.tele td{padding:1px 0;text-align:right;font-weight:400}
+.tele thead th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-bottom:2px}
+.tele thead th.g{color:var(--ghost)}
+.tele tbody th{text-align:left;color:var(--muted)}
+.tele tbody th small{font-size:10.5px}
+.tele td{color:var(--ink);width:21%}
+.tele td.g{color:var(--ghost)}
+.tele td.d{color:var(--muted)}
+.tele tr.grp th{padding-top:8px;color:var(--ink);font-family:var(--display);font-weight:600;font-size:12.5px;letter-spacing:.04em;text-transform:uppercase}
+.tele.noghost .gcol{display:none}
 details{font-size:12.5px;color:var(--muted)}
 details summary{cursor:pointer;color:var(--ink);font-weight:500}
 details p{margin:6px 0 0}
@@ -104,7 +115,6 @@ details p{margin:6px 0 0}
   .stage{height:62vh;height:62svh;min-height:340px;border-right:0;border-bottom:1px solid var(--rule)}
   .panel{overflow:visible}
   .lap{font-size:34px}
-  .hud{padding:8px 10px 10px}
   .legend .bar{width:120px}
 }
 </style>
@@ -112,14 +122,6 @@ details p{margin:6px 0 0}
 <div class="app">
   <main class="stage" id="stage">
     <canvas id="view" aria-label="Circuit map with the optimised racing line"></canvas>
-    <div class="hud">
-      <div class="eyebrow">Best lap</div>
-      <div class="lap" id="lapTime">–:––.–––</div>
-      <div class="hud-row"><b id="deltaRef">—</b> vs centreline</div>
-      <div class="hud-row ghost" id="ghostRow" hidden>Ghost <b id="ghostTime">—</b> <span id="ghostDelta"></span> · gap <b id="liveGap" style="color:var(--ink)">—</b></div>
-      <div class="hud-row">Car <b id="carSpeed">—</b> km/h<span id="gearWrap"> · gear <b id="carGear">—</b></span> · <b id="gLat">—</b> g lat · <b id="gLong">—</b> g long</div>
-      <div class="chip" id="status" data-s="searching">Searching</div>
-    </div>
     <div class="zoom">
       <button id="zIn" aria-label="Zoom in">+</button>
       <button id="zOut" aria-label="Zoom out">−</button>
@@ -143,6 +145,7 @@ details p{margin:6px 0 0}
 
     <section>
       <h2>Optimiser <span id="evals">0 laps simulated</span></h2>
+      <div class="row"><div class="chip" id="status" data-s="searching">Searching</div></div>
       <div class="row">
         <button class="btn primary" id="runBtn">Pause</button>
         <button class="btn" id="resetC">Restart from centreline</button>
@@ -154,6 +157,10 @@ details p{margin:6px 0 0}
       <div class="row">
         <span class="ctl-label">Colour</span>
         <div class="seg" id="colorSeg"><button aria-pressed="true" data-v="speed">Speed</button><button aria-pressed="false" data-v="pedal">Pedals</button><button aria-pressed="false" data-v="util">Tyre use</button></div>
+      </div>
+      <div class="row">
+        <span class="ctl-label">Tag</span>
+        <div class="seg" id="tagSeg"><button aria-pressed="false" data-v="off">Off</button><button aria-pressed="true" data-v="speed">Speed</button><button aria-pressed="false" data-v="g">g</button><button aria-pressed="false" data-v="grip">Grip</button></div>
       </div>
       <div class="row">
         <span class="ctl-label">Replay</span>
@@ -170,6 +177,21 @@ details p{margin:6px 0 0}
 
     <section>
       <h2>Telemetry</h2>
+      <div class="lapblock">
+        <div class="eyebrow">Best lap</div>
+        <div class="lap" id="lapTime">–:––.–––</div>
+        <div class="lap-row"><b id="deltaRef">—</b> vs centreline</div>
+        <div class="lap-row ghost" id="ghostRow" hidden>Ghost <b id="ghostTime">—</b> <span id="ghostDelta"></span> · gap <b id="liveGap" style="color:var(--ink)">—</b></div>
+      </div>
+      <table class="tele noghost" id="tele" aria-label="Live telemetry during replay">
+        <thead><tr><th></th><th>Car</th><th class="gcol g">Ghost</th><th class="gcol">Δ</th></tr></thead>
+        <tbody id="teleBody"></tbody>
+      </table>
+      <div class="row" id="deltaRow" hidden>
+        <span class="ctl-label">Δ at</span>
+        <div class="seg" id="deltaSeg"><button aria-pressed="true" data-v="time">Same time</button><button aria-pressed="false" data-v="place">Same place</button></div>
+      </div>
+      <p class="note">Forces are what the lap model's speed profile asks of each axle (inverse dynamics), during replay. Lateral values are magnitudes; longitudinal ones are + drive, − braking.</p>
       <div class="chart-wrap">
         <canvas class="chart" id="speedChart" height="150"></canvas>
         <div class="chart-cap"><span><i style="background:var(--ink)"></i>Racing line</span><span><i style="background:var(--muted)"></i>Centreline</span><span id="capGhost" hidden><i style="background:var(--ghost)"></i>Ghost</span><span>km/h over lap distance</span></div>

@@ -22,10 +22,15 @@ export function dynSetup(car){
 }
 export function fyCurve(alpha,D,B){return D*Math.sin(DYN.C*Math.atan(B*alpha));}
 export function alphaFor(F,D,B,apk){if(D<=1)return apk*Math.sign(F);const r=F/D;if(Math.abs(r)>=1)return apk*Math.sign(F);return Math.tan(Math.asin(r)/DYN.C)/B;}
+// Quasi-static axle loads [Wf, Wr] at speed v and longitudinal acceleration ax (downforce by aero balance,
+// longitudinal transfer over the wheelbase), and the downforce DF itself; all N.
+export function axleLoads(dc,v,ax){
+  const {m,wf,wr,h,L,aF,p}=dc,DF=0.5*RHO*p.cla*v*v;
+  return [Math.max(0,m*G*wf+DF*aF-m*ax*h/L),Math.max(0,m*G*wr+DF*(1-aF)+m*ax*h/L),DF];
+}
 // Axle peaks for given accelerations (quasi-static loads).
 export function axleCaps(dc,v,ax,ay){
-  const {m,wf,wr,h,L,tireF,aF,rF,p}=dc,DF=0.5*RHO*p.cla*v*v;
-  const Wf=Math.max(0,m*G*wf+DF*aF-m*ax*h/L),Wr=Math.max(0,m*G*wr+DF*(1-aF)+m*ax*h/L),dF=m*Math.abs(ay)*h/p.track;
+  const {m,h,tireF,rF,p}=dc,[Wf,Wr]=axleLoads(dc,v,ax),dF=m*Math.abs(ay)*h/p.track;
   const df=Math.min(dF*rF,Wf/2),dr=Math.min(dF*(1-rF),Wr/2);
   return [tireF(Wf/2+df)+tireF(Wf/2-df),tireF(Wr/2+dr)+tireF(Wr/2-dr)];
 }
@@ -37,10 +42,11 @@ export function splitFx(dc,Fx,Df,Dr,Fyf,Fyr){
   return [0,Fx];
 }
 
-// Inverse dynamics along the line at speeds v (per station): nominal inputs and per-axle grip utilisation.
+// Inverse dynamics along the line at speeds v (per station): nominal inputs and per-axle grip utilisation, plus the
+// forces on the car for telemetry: axle tyre forces Fxf, Fxr, Fyf, Fyr, axle loads Wf, Wr, downforce and drag (N).
 export function dynNominal(car,dc,line,v){
-  const N=line.N,{m,a,b,L,Izz,B,apk,p}=dc,k=line.k,ds=line.ds;
-  const o={delta:new Float64Array(N),vy:new Float64Array(N),r:new Float64Array(N),Fx:new Float64Array(N),ax:new Float64Array(N),uf:new Float64Array(N),ur:new Float64Array(N),af:new Float64Array(N),ar:new Float64Array(N)};
+  const N=line.N,{m,a,b,L,Izz,B,apk,p}=dc,k=line.k,ds=line.ds,F=()=>new Float64Array(N);
+  const o={delta:F(),vy:F(),r:F(),Fx:F(),ax:F(),uf:F(),ur:F(),af:F(),ar:F(),Fxf:F(),Fxr:F(),Fyf:F(),Fyr:F(),Wf:F(),Wr:F(),down:F(),drag:F()};
   for(let i=0;i<N;i++){
     const ip=(i-1+N)%N,jn=(i+1)%N,u=Math.max(1,v[i]);
     const ax=(v[jn]*v[jn]-v[ip]*v[ip])/(2*(ds[ip]+ds[i])),ay=u*u*k[i],r=u*k[i];
@@ -55,6 +61,8 @@ export function dynNominal(car,dc,line,v){
     const af=alphaFor(Fyf,Math.max(Dfl,0.25*Df),B,apk),ar=alphaFor(Fyr,Math.max(Drl,0.25*Dr),B,apk);
     const vy=b*r-u*ar; // from αr = −(vy − b·r)/v
     o.delta[i]=af+(vy+a*r)/u;o.vy[i]=vy;o.r[i]=r;o.Fx[i]=Fx;o.ax[i]=ax;o.af[i]=af;o.ar[i]=ar;
+    const [Wf,Wr,DF]=axleLoads(dc,u,ax);
+    o.Fxf[i]=Fxf;o.Fxr[i]=Fxr;o.Fyf[i]=Fyf;o.Fyr[i]=Fyr;o.Wf[i]=Wf;o.Wr[i]=Wr;o.down[i]=DF;o.drag[i]=drag;
   }
   return o;
 }

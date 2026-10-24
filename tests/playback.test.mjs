@@ -66,6 +66,27 @@ test('playback: lap pose properties', () => {
   }
 });
 
+// stationPose is the second half of a lap pose: given the pose's own station and frac it must reproduce the pose,
+// telemetry included; at frac 0 the telemetry is the station's own value.
+test('playback: stationPose reproduces the lap pose; phys interpolates the snapshot telemetry', () => {
+  let n = 0;
+  for (const { info, snaps } of LAPS) for (const d of snaps) {
+    assert.ok(d.phys && d.phys.wf.length === d.px.length, 'snapshot has no telemetry');
+    for (const t of times(d, 200)) {
+      const p = core.pose(d, t, info), q = core.stationPose(d, p.station, p.frac, info);
+      assert.ok(p.frac >= 0 && p.frac <= 1, `frac ${p.frac} at t=${t}`);
+      for (const k of Object.keys(p)) if (k !== 'phys' && !Object.is(p[k], q[k])) assert.fail(`t=${t}: ${k} ${p[k]} vs stationPose ${q[k]}`);
+      for (const k of Object.keys(d.phys)) if (!Object.is(p.phys[k], q.phys[k])) assert.fail(`t=${t}: phys.${k} ${p.phys[k]} vs stationPose ${q.phys[k]}`);
+      n++;
+    }
+    for (let i = 0; i < d.px.length; i += 37) {
+      const q = core.stationPose(d, i, 0, info);
+      for (const k of Object.keys(d.phys)) assert.equal(q.phys[k], d.phys[k][i], `phys.${k} at station ${i}, frac 0`);
+    }
+  }
+  assert.ok(n > 500, `only ${n} poses compared`);
+});
+
 test('playback: raceClock', () => {
   assert.equal(core.raceClock([80], 100), 20);
   assert.equal(core.raceClock([80, 78], 100), 100 % 81, 'the quicker car waits 1 s at the line');

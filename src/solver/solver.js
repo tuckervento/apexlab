@@ -89,11 +89,12 @@ export class Solver{
     const S=makeScratch(N),t=lapEval(T,car,this.pub,S),tc=new Float64Array(N+1);
     for(let i=0;i<N;i++){const j=(i+1)%N;tc[i+1]=tc[i]+2*S.ds[i]/(S.v[i]+S.v[j]+1e-9);}
     let vmin=1e9,vmax=0;for(let i=0;i<N;i++){vmin=Math.min(vmin,S.v[i]);vmax=Math.max(vmax,S.v[i]);}
-    const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer];
-    if(this.util){ // per-axle grip utilisation from inverse dynamics (tyre-use colouring)
-      const th=new Float64Array(N);for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(S.py[j]-S.py[i],S.px[j]-S.px[i]);}
-      const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds},S.v);line.u=Float64Array.from(n.uf,(x,i)=>Math.max(x,n.ur[i]));tr.push(line.u.buffer);
-    }
+    // forces on the car from inverse dynamics (telemetry), and with util the per-axle grip use for tyre-use colouring
+    const th=new Float64Array(N);for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(S.py[j]-S.py[i],S.px[j]-S.px[i]);}
+    const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds},S.v); // fresh arrays: sent as they are
+    const phys={fxf:n.Fxf,fxr:n.Fxr,fyf:n.Fyf,fyr:n.Fyr,wf:n.Wf,wr:n.Wr,uf:n.uf,ur:n.ur,down:n.down,drag:n.drag};
+    const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,...Object.values(phys).map(a=>a.buffer)];
+    if(this.util){line.u=Float64Array.from(n.uf,(x,i)=>Math.max(x,n.ur[i]));tr.push(line.u.buffer);}
     const ev={type:'snapshot',carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev,lap:t,line,vmin,vmax};
     if(this.refDirty){ev.ref={t:this.ref.t,v:Float64Array.from(this.ref.v)};tr.push(ev.ref.v.buffer);this.refDirty=false;}
     this.lap=t;this.pending=false;this.lastPub=this.now();

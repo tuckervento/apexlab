@@ -55,7 +55,7 @@ export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S
 export function showError(msg){S.frameErr=S.frameErr||new Error(msg);S.running=false;runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f){S.followZ=Math.max(S.cam.z,7);if(S.replay===0){S.replay=1;setSeg($('#replaySeg'),1);}}}
-export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearGhost').hidden=!g;$('#capGhost').hidden=!g;$('#gapWrap').hidden=!g;}
+export function updGhostUI(){const g=S.ghost;$('#ghostRow').hidden=!g;$('#clearGhost').hidden=!g;$('#capGhost').hidden=!g;$('#gapWrap').hidden=!g;$('#deltaRow').hidden=!g;$('#tele').classList.toggle('noghost',!g);}
 
 // ---------- readouts (also redrawn by the solver client's hooks)
 function setSeg(el,v){el.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===String(v))));}
@@ -118,13 +118,16 @@ export function buildTrackUI(){
   $('#editBtn').onclick=()=>{S.editing=!S.editing;const ed=S.editing;$('#editBtn').classList.toggle('on',ed);$('#editBtn').textContent=ed?'Done editing':'Edit shape';$('#editbar').hidden=!ed;$('#view').classList.toggle('editing',ed);if(ed)send({type:'pause'});else setRunning(true);};
   $('#revertTrack').onclick=()=>{S.ctrl=S.origCtrl.map(p=>p.slice());S.ghost=null;updGhostUI();rebuildTrack(true);setRunning(true);};
 }
-// Run/pause, restart, ghost, colouring, replay and dynamic-check buttons.
+// Run/pause, restart, ghost, colouring, tags, telemetry Δ basis, replay and dynamic-check buttons.
 export function bindButtons(){
   $('#runBtn').onclick=()=>{if(!S.running&&S.prog&&S.prog.converged){S.hist=[];setRunning(true,true);}else setRunning(!S.running);};
   $('#resetC').onclick=()=>{send({type:'setLine'});S.hist=[];setRunning(true);};
-  $('#pinBtn').onclick=()=>{const d=S.disp;S.ghost={px:Float64Array.from(d.px),py:Float64Array.from(d.py),v:Float64Array.from(d.v),ds:Float64Array.from(d.ds),k:Float64Array.from(d.k),tc:Float64Array.from(d.tc),t:d.t,wb:S.P.wb,track:S.P.track};S.animT=0;updGhostUI();};
+  $('#pinBtn').onclick=()=>{const d=S.disp;S.ghost={px:Float64Array.from(d.px),py:Float64Array.from(d.py),v:Float64Array.from(d.v),ds:Float64Array.from(d.ds),k:Float64Array.from(d.k),tc:Float64Array.from(d.tc),t:d.t,wb:S.P.wb,track:S.P.track,
+    phys:Object.fromEntries(Object.entries(d.phys).map(([k,a])=>[k,Float64Array.from(a)]))};S.animT=0;updGhostUI();};
   $('#clearGhost').onclick=()=>{S.ghost=null;updGhostUI();};
   $('#colorSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;const m=S.colorMode=b.dataset.v;setSeg($('#colorSeg'),m);$('#legSpeed').hidden=m!=='speed';$('#legPedal').hidden=m!=='pedal';$('#legUtil').hidden=m!=='util';send({type:'view',util:m==='util'});};
+  $('#tagSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.tagMode=b.dataset.v;setSeg($('#tagSeg'),S.tagMode);};
+  $('#deltaSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.deltaMode=b.dataset.v;setSeg($('#deltaSeg'),S.deltaMode);};
   $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);if(S.replay===0&&S.follow)setFollow(false);};
   $('#dynBtn').onclick=()=>{S.running=false;runLabel();send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
 }
