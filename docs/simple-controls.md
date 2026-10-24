@@ -82,14 +82,14 @@ Every knob is centred on the base car's own value.
 | Knob | Fields it sets | Mapping rule |
 |---|---|---|
 | Base car (the 6 presets) | all 25, including those not exposed: `cg`, `track`, `wb`, `yawDI`, `rear`, `gears`, `nRed`, `nT` | starting point |
-| Weight (kg) | `mass` | direct |
-| Power (kW) | `power`; `vTopG`, `v1` (ICE) or `evMax`, `evBase` (EV) | auto gearing: scale top gear by new ÷ base drag-limited top speed, from P·η = (½ρ·CdA·v² + m·g·Crr)·v; keep the base's 1st-to-top spread. At base power the ratio is exactly 1. |
+| Weight (±25 %) | `mass` | base × (1 + w/100); also moves the gearing (below) |
+| Power (±50 %) | `power`; `vTopG`, `v1` (ICE) and `evMax`, `evBase` (EV) | auto gearing: both gear sets scaled by new ÷ base drag-limited top speed, from P·η = (½ρ·CdA·v² + m·g·Crr)·v, so Weight and Downforce move it too. At base power, mass and drag the ratio is exactly 1. |
 | Tyres: Street / Sport / Semi-slick / Slick / as base | `mu`, `sens`, `slipPk` | values taken from the presets: 1.00 / 0.10 / 8°, 1.08 / 0.10 / 8°, 1.38 / 0.15 / 6°, 1.60 / 0.20 / 5° |
 | Downforce | `cla`, `cda` | one knob; drag follows downforce: `cda = base_cda + Δcla / LD`, LD ≈ 8 (presets imply about 7–11) |
 | Balance: understeer ↔ oversteer, 0 = base | `rollF`, `aeroF` | e.g. `rollF − 10b`, `aeroF + 5b` for b in [−1, 1], clamped |
 | Drivetrain | `pt`, `drive` | the existing ICE/EV and RWD/AWD toggles |
 | Gearbox: Manual / DCT / Sequential (ICE) | `shiftT` | 0.2 / 0.1 / 0.04 s |
-| Brake bias (derived, no knob) | `brakeF` | base bias + the change in ideal bias as weight, weight split or downforce change; equals the preset's value when nothing changes, so the Kart keeps its rear-only brakes |
+| Brake bias (no knob) | `brakeF` | **the base car's, unchanged** (decided 2026-10-24): the derived ideal-bias rule ignored load sensitivity and braked worse than the base bias on some cars (EV saloon on slicks 1.17 g against 1.35 g). The Advanced slider tunes it |
 
 Optional extras: **Engine character** (torquey ↔ peaky, sets `nT`) and **Layout** (front / mid / rear engine, sets
 `rear`).
@@ -145,7 +145,7 @@ A new `tests/simple.test.mjs` pins the mapping. No physics changes, so goldens, 
     - a grippier tyre gives more lateral g;
     - Balance at its understeer end makes the front axle the limit at 100 and 200 km/h, and at its oversteer end the
       rear.
-4. **Auto gearing:** across the Power range, top speed is set by drag, not by the rev limiter.
+4. **Auto gearing:** as the knobs move the drag-limited top speed, top speed moves with it (within 1 %). Not "set by drag": three presets (Hot hatch, EV saloon, GT racer) sit on their rev limiter, and identity keeps them there.
 
 ---
 

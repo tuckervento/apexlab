@@ -12,7 +12,6 @@ const TYRES=Object.freeze({street:Object.freeze({mu:1.00,sens:0.10,slipPk:8}),sp
 const SHIFT=Object.freeze({manual:0.2,dct:0.1,seq:0.04}); // s; 'base' keeps the base car's
 const LD=8;                 // lift/drag of added (or removed) downforce: cda follows cla by Δcla/LD (presets imply ~7–11)
 const BAL_ROLL=10,BAL_AERO=5; // balance b in [−1, 1]: rollF − 10b, aeroF + 5b (percentage points)
-const BRAKE_REF=150/3.6;    // m/s: speed at which the ideal brake bias is evaluated (describeCar's braking reference)
 
 // The knobs, in panel order. Numeric knobs: range, step, unit (offsets from the base car). Choice knobs: [value, label].
 export const SIMPLE=Object.freeze([
@@ -42,12 +41,6 @@ function vDrag(power,mass,cda){
   const a=0.5*RHO*cda,p=mass*G*CRR/a,q=-power*1000*ETA/a,A=Math.cbrt(-q/2+Math.sqrt(q*q/4+p*p*p/27));
   return A-p/(3*A);
 }
-// Ideal front share of braking at the tyre limit at BRAKE_REF: static plus aero load on the front, plus the transfer
-// m·a·h/wb with a = μ·(m·g + DF)/m, all over the total load. Ignores load sensitivity; used only as a ratio.
-function idealBias(q){
-  const DF=0.5*RHO*q.cla*BRAKE_REF*BRAKE_REF,W=q.mass*G;
-  return (W*(1-q.rear/100)+DF*q.aeroF/100)/(W+DF)+q.mu*q.cg/q.wb;
-}
 
 // The full 25-field CarParams for a set of knobs. Throws on a missing, unknown or out-of-range knob.
 export function deriveParams(simple){
@@ -72,8 +65,6 @@ export function deriveParams(simple){
   const r=vDrag(p.power,p.mass,p.cda)/vDrag(b.power,b.mass,b.cda);
   p.vTopG=clamp('vTopG',b.vTopG*r);p.v1=clamp('v1',b.v1*r);
   p.evMax=clamp('evMax',b.evMax*r);p.evBase=clamp('evBase',b.evBase*r);
-  // Brake bias: keep the base car's bias in proportion to the ideal one, so it is exactly the base's when nothing
-  // changes and a rear-only base (the Kart) stays rear-only.
-  p.brakeF=clamp('brakeF',b.brakeF*(idealBias(p)/idealBias(b)));
+  // Brake bias stays the base car's: a closed-form ideal bias (no load sensitivity) braked worse than it on some cars.
   return p;
 }

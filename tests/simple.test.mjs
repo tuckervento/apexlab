@@ -123,3 +123,27 @@ test('simple: Balance moves every base car from understeer toward oversteer', ()
     for (let i = 1; i < gaps.length; i++) assert.ok(gaps[i] > gaps[i - 1], `${base} at ${kmh} km/h: front-rear gap ${gaps.map(g => (100 * g).toFixed(2)).join(' ')} %`);
   }
 });
+
+// Brake bias has no knob and is not derived: a closed-form "ideal" bias ignores load sensitivity and braked worse than
+// the base car's own on some cars (EV saloon on slicks 1.17 g against 1.35 g). The Advanced slider tunes it.
+test('simple: every knob setting keeps the base car\'s brake bias', () => {
+  for (const s of grid()) assert.equal(deriveParams(s).brakeF, CARS[s.base].brakeF, JSON.stringify(s));
+});
+
+// Auto gearing keeps each base car's gearing relative to its top speed: as Power, Weight and Downforce (through drag)
+// move the drag-limited top speed, the car's top speed moves with it, whether the base is drag- or rev-limited.
+// Measured worst case 0.61 %; with the gearing left as the base car's, 27 %.
+test('simple: top speed follows the drag-limited top speed as the knobs change it', () => {
+  const { G, RHO, ETA, CRR } = core;
+  const vDrag = p => { let lo = 0, hi = 200; // bisection on P·η = (½ρ·CdA·v² + m·g·Crr)·v, independent of simple.js
+    for (let i = 0; i < 200; i++) { const v = (lo + hi) / 2; if ((0.5 * RHO * p.cda * v * v + p.mass * G * CRR) * v < p.power * 1000 * ETA) lo = v; else hi = v; }
+    return lo; };
+  for (const base of BASES) for (const k of ['power', 'weight', 'downforce']) {
+    const rows = sweep(base, k), [, p0] = rows.find(r => r[0] === 0) ?? [, deriveParams(defaults(base))];
+    const d0 = core.describeCar(core.buildCar(p0)).derived.vTop, v0 = vDrag(p0);
+    for (const [v, p, d] of rows) {
+      const got = d.derived.vTop / d0, want = vDrag(p) / v0;
+      assert.ok(Math.abs(got / want - 1) < 0.01, `${base}, ${k} ${v}: top speed ×${got.toFixed(4)}, drag limit ×${want.toFixed(4)}`);
+    }
+  }
+});
