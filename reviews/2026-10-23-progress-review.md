@@ -48,7 +48,7 @@ No Critical or High issues, before or after save/load. The physics core and its 
 | L4 | non-atomic `setTrack`/`setCar` | **Open** for both; `load` validates first (tested) but can still fail after it mutates |
 | L5 | ghost/track mismatch race | **Open** for `#pinBtn`; the new load paths use `ghostFrom`, which checks N and telemetry channels but not `trackRev` |
 | L6 | no range checks in `carSpec` | **Raised to Medium (M6)**: a run file can now feed unchecked values in; verified |
-| L7 | `STAGES` unfrozen | **Open** |
+| L7 | `STAGES` unfrozen | **Done** |
 | L8 | adjoint nit | **Open**, theoretical |
 | L9 | dead code | **Done** (`drawConv` null handling kept: unreachable from callers, part of the view's contract) |
 | L10 | repeated convergence in tests | **Done** (solver tests share one run; suite ~27.5 s to ~20 s) |
@@ -219,7 +219,7 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 
 #### L6. → moved to M6 (severity raised after save/load).
 
-#### [ ] L7. `STAGES` exported unfrozen (unchanged)
+#### [x] L7. `STAGES` exported unfrozen (unchanged)
 
 - **Where:** `src/core/optimiser.js:10`. Every other shared constant (`DYN`, `CARS`, `TRACKS`) is frozen.
 - **Fix:** `Object.freeze` it and each stage object. **Hash:** regenerate `physics-version.js`.

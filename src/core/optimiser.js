@@ -7,13 +7,13 @@ import { makeScratch, lapEval } from './lap.js';
 // refines the knots and sharpens the smoothing. The last stage is the exact (hard) lap model.
 // Track edges are a stiffening quadratic penalty rather than a clamp, so the line stays a smooth (C²) spline
 // that meets the kerb tangentially instead of being cut off with a kink at each apex.
-export const STAGES=[
+export const STAGES=Object.freeze([
   {knot:48,tau:3,  pen:2},
   {knot:24,tau:1,  pen:10},
   {knot:12,tau:0.3,pen:50},
   {knot:8, tau:0.08,pen:300},
   {knot:6, tau:0,  pen:2000}
-];
+].map(s=>Object.freeze(s))); // shared module constant, like DYN: read-only
 export class Optimizer{
   setup(T,car,B,off){
     this.T=T;this.car=car;this.B=B;this.off=off;const N=T.N;

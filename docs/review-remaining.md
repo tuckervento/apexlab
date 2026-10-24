@@ -199,8 +199,9 @@ revision rules are what the architecture leans on.
 
 ## Small items
 
-- **L7.** `export const STAGES=[` (`src/core/optimiser.js:10`) is unfrozen; every other shared constant (`DYN`, `CARS`,
-  `TRACKS`) is frozen. `Object.freeze` it and each stage. Hash.
+- [x] **L7.** `export const STAGES=[` (`src/core/optimiser.js:10`) was unfrozen; every other shared constant (`DYN`, `CARS`,
+  `TRACKS`) is frozen. Now `Object.freeze` on the array and each stage (every use in `optimiser.js` only reads `knot`,
+  `tau`, `pen` and `length`). Hash regenerated; goldens untouched.
 - **L8.** `v[i]=Math.max(0.1,r)` (`src/core/lap.js:148`) isn't mirrored in the reverse pass. Unreachable in practice (speeds
   are floored by `VSTEP`/the backward pass), and elevation added a `stall` counter for stations at that floor (`lap.js:23`).
   Document it at the line; if the adjoint is ever touched, re-check against central finite differences (≥4 sig figs, hard
