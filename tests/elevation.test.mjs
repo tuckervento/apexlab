@@ -44,3 +44,50 @@ test('track: generated hills close the loop and stay within racing-circuit grade
     assert.ok(zhi - zlo >= H * 0.999 && zhi - zlo <= H * 1.15, `${name}: height range ${(zhi - zlo).toFixed(1)} m for Hills ${H}`);
   }
 });
+
+// The load-factor tables (car.load) are the flat car's tables at other loads; at n = 1 they must be the flat car's own.
+test('car: the n = 1 slice of the load tables is the flat car, bit for bit', () => {
+  const { NT, NQ, NL, NSTEP } = core, l1 = Math.round(1 / NSTEP);
+  assert.equal(l1 * NSTEP, 1, 'n = 1 is a grid node');
+  for (const [name, P] of Object.entries(core.CARS)) {
+    const flat = core.buildCar(P), car = core.buildCar(P, { loads: true });
+    assert.equal(flat.load, null, `${name}: a flat build has no load tables`);
+    for (const k of ['alat', 'kcrit', 'kcF', 'kcR']) {
+      assert.equal(car.load[k].length, NL * NT);
+      for (let i = 0; i < NT; i++) if (!Object.is(car.load[k][l1 * NT + i], flat[k][i])) assert.fail(`${name}: load.${k} at n = 1, speed index ${i}`);
+    }
+    for (const k of ['ggB', 'ggT']) {
+      assert.equal(car.load[k].length, NL * NT * NQ);
+      for (let i = 0; i < NT * NQ; i++) if (!Object.is(car.load[k][l1 * NT * NQ + i], flat[k][i])) assert.fail(`${name}: load.${k} at n = 1, cell ${i}`);
+    }
+    for (const k of ['alat', 'kcrit', 'ggB', 'ggT', 'vTop', 'lF', 'lR']) assert.deepEqual(car[k], flat[k], `${name}: ${k} of a loads build`);
+  }
+});
+
+// Between nodes the lookups are linear in n. Against a direct solve at every midpoint, for all presets. Measured when
+// written (NSTEP 0.125): alat within 0.29% for n >= 0.25 (1.31% below, where static load nearly vanishes); GGV within
+// 0.27 m/s² anywhere (largest at q >= 0.9, where the GGV is a small residual), 99th percentile 0.05 m/s².
+test('car: the load tables interpolate in n to within 0.5% lateral and 0.4 m/s² longitudinal of a direct solve', async t => {
+  const { NT, NQ, NL, NSTEP } = core;
+  for (const [name, P] of Object.entries(core.CARS)) {
+    const car = core.buildCar(P, { loads: true }), L = car.load, all = [];
+    let eA = 0, eA0 = 0, eG = 0;
+    for (let l = 0; l < NL - 1; l++) {
+      const x = core.gripTables(car.spec, (l + 0.5) * NSTEP);
+      for (let i = 1; i < NT; i++) {
+        const ea = Math.abs((L.alat[l * NT + i] + L.alat[(l + 1) * NT + i]) / 2 - x.alat[i]) / x.alat[i];
+        if ((l + 0.5) * NSTEP >= 0.25) eA = Math.max(eA, ea); else eA0 = Math.max(eA0, ea);
+        for (const k of ['ggB', 'ggT']) for (let q = 0; q < NQ; q++) {
+          const j = i * NQ + q, e = Math.abs((L[k][l * NT * NQ + j] + L[k][(l + 1) * NT * NQ + j]) / 2 - x[k][j]);
+          all.push(e); eG = Math.max(eG, e);
+        }
+      }
+    }
+    all.sort((a, b) => a - b);
+    const p99 = all[Math.floor(all.length * 0.99)];
+    t.diagnostic(`${name}: alat ${(eA * 100).toFixed(2)}% (n < 0.25: ${(eA0 * 100).toFixed(2)}%), GGV max ${eG.toFixed(3)} p99 ${p99.toFixed(3)} m/s²`);
+    assert.ok(eA < 0.005, `${name}: alat interpolation ${(eA * 100).toFixed(2)}% for n >= 0.25`);
+    assert.ok(eA0 < 0.02, `${name}: alat interpolation ${(eA0 * 100).toFixed(2)}% for n < 0.25`);
+    assert.ok(eG < 0.4 && p99 < 0.1, `${name}: GGV interpolation max ${eG} p99 ${p99} m/s²`);
+  }
+});
