@@ -1,7 +1,8 @@
 // Solver behind the worker protocol (ARCHITECTURE.md §10.1). No DOM and no worker APIs: src/solver/worker.js adapts
 // it to postMessage, and tests drive it directly. It owns the car, track, bounds, working line, optimiser and dynamic
 // check. Everything it emits is a fresh copy, listed as transferable, so no receiver shares its memory.
-// A command or slice that throws emits {type:'error'} and pauses the solver, which stays usable.
+// A command or slice that throws emits {type:'error', rev} (the command's rev, null for a slice) and pauses the solver,
+// which stays usable.
 import { buildCar, describeCar, buildTrack, makeBounds, makeScratch, lapEval, Optimizer } from '../core/index.js';
 import { dynSetup, dynNominal, DynCheck } from '../dynamics/index.js';
 
@@ -29,7 +30,7 @@ export class Solver{
         this.dynRevs={carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev};break;
       default:throw new Error(`Unknown command type "${c.type}"`);
     }
-  });}
+  },c.rev??null);}
   // One slice of work: dynamic-check laps if one is in progress, else optimiser steps. Returns whether work remains.
   tick(budget){return this.guard(()=>{
     const t0=this.now();
@@ -49,9 +50,9 @@ export class Solver{
     else if(now-this.lastProg>=PUBLISH_MS)this.progress();
     return true;
   });}
-  guard(fn){
+  guard(fn,rev=null){ // rev: the command that failed, so the client knows which of its commands won't be answered; null for a slice
     try{return fn();}
-    catch(e){this.running=false;this.dyn=null;this.emit({type:'error',message:String(e&&e.message||e),stack:String(e&&e.stack||'')});return false;}
+    catch(e){this.running=false;this.dyn=null;this.emit({type:'error',rev,message:String(e&&e.message||e),stack:String(e&&e.stack||'')});return false;}
   }
   need(){if(!this.car||!this.T)throw new Error('Solver needs setCar and setTrack before this command');}
 

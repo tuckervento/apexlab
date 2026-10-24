@@ -177,6 +177,22 @@ test('solver: a failing command emits error, pauses, and leaves the solver usabl
   assert.ok(b.last('progress').evals > e0, 'solver did not resume after the error');
 });
 
+// The client matches an error to the command it answers (and a load or a coalesced setCar waits for that answer), so an
+// error carries the rev of the failing command, and null when no command is to blame.
+test('solver: an error carries the rev of the failing command, null for a slice or a command without one', () => {
+  const b = boot();
+  const bad = { ...core.CARS[CAR] }; delete bad.slipPk;
+  b.s.handle({ type: 'setCar', rev: 7, params: bad });
+  assert.equal(b.last('error').rev, 7, 'a rejected command');
+  b.s.handle({ type: 'warp' });
+  assert.equal(b.last('error').rev, null, 'a command without a rev');
+  b.s.handle({ type: 'run' });
+  b.s.opt.step = () => { throw new Error('slice blew up'); };
+  b.s.tick(30);
+  assert.match(b.last('error').message, /slice blew up/);
+  assert.equal(b.last('error').rev, null, 'an error in a slice');
+});
+
 // The line on screen must be one the optimiser accepted: during the polish stage, Optimizer.step() leaves `off`
 // holding the last candidate tried, even when it rejects it and restores the spline coefficients `c`.
 test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 * 1000 }, t => {
