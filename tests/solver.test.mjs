@@ -31,6 +31,9 @@ test(`solver: converges through the protocol, ${CAR}, ${TRACK.name}`, { timeout:
     assert.equal(snap.carRev, 1); assert.equal(snap.trackRev, 2);
     assert.ok(snap.lap < centreLap, `lap ${snap.lap} not faster than centreline ${centreLap}`);
     assert.equal(b.of('carInfo').length, 1); assert.equal(b.of('track').length, 1);
+    assert.equal(snap.line.off.length, b.s.pub.length);
+    assert.ok(snap.line.off.every((x, i) => x === b.s.pub[i]), 'snapshot off is the published line (run files export it)');
+    assert.notEqual(snap.line.off.buffer, b.s.pub.buffer, 'off is a copy, never the solver\'s own array');
   });
   await t.test('golden', () => {
     const g = loadGolden();

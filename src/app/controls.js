@@ -1,9 +1,12 @@
-// Side panel and buttons: car and track setup, run/pause, ghost, colouring, replay, dynamic check; the actions they
-// trigger (carChanged, rebuildTrack, setRunning) and the panel readouts the solver client redraws through its hooks.
+// Side panel and buttons: car and track setup, run/pause, ghost, colouring, replay, dynamic check, saved runs; the
+// actions they trigger (carChanged, rebuildTrack, setRunning) and the panel readouts the solver client redraws through
+// its hooks.
 import { genCtrl } from '../core/index.js';
 import { CARS, TRACKS } from './presets.js';
 import { S, $ } from './state.js';
-import { send, sendState } from './client.js';
+import { send, sendState, sendLoad, settled } from './client.js';
+import { PHYSICS } from './physics-version.js';
+import { makeRunFile, readRunFile, toGhost, liveHash, CAR_KEYS } from './runfile.js';
 import { fmtTime } from '../views/format.js';
 import { findCorners } from '../views/map2d/map.js';
 
@@ -130,4 +133,86 @@ export function bindButtons(){
   $('#deltaSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.deltaMode=b.dataset.v;setSeg($('#deltaSeg'),S.deltaMode);};
   $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);}; // 0 = Pause: the clock stops, the car and its readouts stay
   $('#dynBtn').onclick=()=>{S.running=false;runLabel();send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
+}
+
+// ---------- saved runs (src/app/runfile.js): export the displayed car, circuit and line; load one back
+// pendingLoad: {rev, mode: 'run' | 'ghost', run, name}. liveSha: hash of the physics source this page fetched, which
+// differs from PHYSICS.sha256 when the source was edited and physics-version.js not regenerated.
+let pendingLoad=null,liveSha=null,pickMode=null;
+liveHash(PHYSICS.files,async f=>{const r=await fetch(new URL('../'+f,import.meta.url));if(!r.ok)throw new Error(`${f}: HTTP ${r.status}`);return r.arrayBuffer();})
+  .then(h=>{liveSha=h;},e=>console.error('physics hash:',e));
+const ctrlEqual=(a,b)=>a.length===b.length&&a.every((p,i)=>p[0]===b[i][0]&&p[1]===b[i][1]);
+const short=h=>h?h.slice(0,7):'unknown';
+// File contents are untrusted: lines go in as text nodes, never as HTML.
+function runMsg(...lines){$('#runInfo').replaceChildren(...lines.flatMap((l,i)=>i?[document.createElement('br'),l]:[l]));}
+function physicsNote(run){
+  const rec=run.physics.sha256,cur=PHYSICS.sha256;
+  let s=rec===cur?`Physics source is the same as this build (${short(cur)}).`:`Physics source differs: recorded ${short(rec)}, this build ${short(cur)}. A refactor changes the hash without changing results.`;
+  if(run.physics.live&&run.physics.live!==rec)s+=' The file was exported from uncommitted physics edits.';
+  if(liveSha&&liveSha!==cur)s+=` This page is running uncommitted physics edits (${short(liveSha)}).`;
+  return s;
+}
+const runSummary=(run,name)=>[`${name} · exported ${run.exported?run.exported.slice(0,10):'(no date)'} · recorded lap ${fmtTime(run.result.lap)}${run.result.dyn?` · dynamic check ${(run.result.dyn.frac*100).toFixed(1)}%`:''}${run.result.converged?'':' · search not converged'}`,physicsNote(run)];
+const pinGhost=g=>{S.ghost=g;S.animT=0;updGhostUI();};
+// The recorded lap as a ghost on the displayed circuit; throws why it can't be compared.
+function ghostFrom(run){
+  if(S.T.N!==run.line.N)throw new Error(`No ghost: the file's lap has ${run.line.N} stations but this circuit has ${S.T.N}.`);
+  const lacks=Object.keys(S.disp.phys).filter(k=>!(k in run.result.snapshot.phys));
+  if(lacks.length)throw new Error(`No ghost: the file has no telemetry for ${lacks.join(', ')}.`);
+  return toGhost(run);
+}
+function exportRun(){
+  try{
+    if(!settled())throw new Error('Not exported: a car or circuit change is still being built. Try again in a moment.');
+    const d=S.disp,tv=$('#trackPreset').value,cv=$('#carPreset').value,tp=isNaN(+tv)?null:TRACKS[+tv],trackName=tp?tp.name:tv==='r'?'Random':'Edited';
+    const run=makeRunFile({P:S.P,ctrl:S.ctrl,width:S.width,trackName,seed:tp?tp.seed:null,disp:d,prog:S.prog,refT:S.refT,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,
+      physics:{sha256:PHYSICS.sha256,live:liveSha},exported:new Date().toISOString(),userAgent:navigator.userAgent});
+    const name=[cv,trackName,fmtTime(d.t)].join('-').toLowerCase().replace(/[^a-z0-9.]+/g,'-')+'.apexlab.json';
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(run)],{type:'application/json'}));a.download=name;a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    runMsg(`Exported ${name}: lap ${fmtTime(d.t)}${S.prog.converged?'':', search not converged'}.`);
+  }catch(e){runMsg(e.message);}
+}
+// mode 'run': replace car, circuit and line with the file's, paused. 'ghost': keep this car, take the file's circuit and
+// line (searching from it), and race the recorded lap. On the same circuit a ghost needs no rebuild at all.
+async function loadPicked(file,mode){
+  try{
+    if(S.editing)throw new Error('Finish editing the circuit first.');
+    let o;try{o=JSON.parse(await file.text());}catch(e){throw new Error(`Run file: ${file.name} is not valid JSON (${e.message}).`);}
+    const run=readRunFile(o);
+    if(mode==='ghost'&&run.track.width===S.width&&ctrlEqual(S.ctrl,run.track.ctrl)){
+      if(!settled())throw new Error('Not loaded: a car or circuit change is still being built. Try again in a moment.');
+      pinGhost(ghostFrom(run));runMsg(...runSummary(run,file.name),'Recorded lap pinned as the ghost.');return;
+    }
+    const keep=mode==='ghost';
+    pendingLoad={mode,run,name:file.name,rev:sendLoad({params:keep?{...S.P}:run.car,ctrl:run.track.ctrl,width:run.track.width,off:run.line.off,run:keep})};
+    runMsg(`Loading ${file.name}…`);
+  }catch(e){runMsg(e.message);}
+}
+// The solver has replaced car, track and line (and the snapshot on them has arrived): bring the panel in line.
+export function loaded(m){
+  const L=pendingLoad;if(!L||L.rev!==m.rev)return;pendingLoad=null;
+  const {run}=L,notes=runSummary(run,L.name);
+  S.ctrl=run.track.ctrl.map(p=>p.slice());S.origCtrl=S.ctrl.map(p=>p.slice());S.width=run.track.width;
+  $('#f-width').value=S.width;$('#o-width').textContent=S.width+' m';
+  const ti=run.track.seed==null?-1:TRACKS.findIndex(t=>t.seed===run.track.seed&&ctrlEqual(genCtrl(t.seed,S.width),S.ctrl));
+  if(ti>=0)S.trackIdx=ti;
+  $('#trackPreset').value=ti>=0?String(ti):run.track.name==='Random'?'r':'e';
+  if(L.mode==='run'){
+    S.P={...run.car};
+    $('#carPreset').value=Object.keys(CARS).find(n=>CAR_KEYS.every(k=>CARS[n][k]===S.P[k]))||'custom';syncFields();
+  }
+  S.running=L.mode==='ghost';S.hist=[];S.dynRes=null;S.dynStale=false;S.dynRunning=false;renderDyn();runLabel();fit();
+  if(run.line.N!==m.N)notes.push(`The line was resampled from ${run.line.N} to ${m.N} stations.`);
+  if(m.clamped.n)notes.push(`${m.clamped.n} stations were moved inside this build's track limits (by up to ${m.clamped.max.toFixed(2)} m).`);
+  try{pinGhost(ghostFrom(run));notes.push('Recorded lap pinned as the ghost.');}catch(e){S.ghost=null;updGhostUI();notes.push(e.message);}
+  runMsg(...notes);
+}
+export function loadFailed(){pendingLoad=null;runMsg('Not loaded: the solver refused the file (see the status line). Nothing was changed.');}
+export function bindRun(){
+  const input=$('#runFile');
+  $('#exportRun').onclick=exportRun;
+  $('#loadRun').onclick=()=>{pickMode='run';input.click();};
+  $('#loadGhost').onclick=()=>{pickMode='ghost';input.click();};
+  input.onchange=()=>{const f=input.files[0];input.value='';if(f)loadPicked(f,pickMode);};
 }

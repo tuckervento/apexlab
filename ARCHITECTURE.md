@@ -14,7 +14,7 @@ This document describes the current code (physics in ES modules under `src/`, th
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
   - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
   - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
-  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`).
+  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
   - `index.html` — markup and CSS, plus `<script type="module" src="./src/app/main.js">`.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
 - **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
@@ -247,7 +247,7 @@ Plain objects are frozen; arrays are fresh copies.
 ### Display snapshot (`disp`, built by `refreshDisplay`)
 
 ```ts
-{ px[], py[], v[], ds[], k[], tc[] /* cumulative time, length N+1 */, t, vmin, vmax, u[] | null,
+{ px[], py[], v[], ds[], k[], tc[] /* cumulative time, length N+1 */, off[] /* the line's lateral offsets */, t, vmin, vmax, u[] | null,
   phys: { fxf[], fxr[], fyf[], fyr[] /* axle tyre forces */, wf[], wr[] /* axle loads */, uf[], ur[] /* grip use */,
           down[], drag[] /* drag: aero + rolling */ } }   // N; from dynNominal on the line at v (inverse dynamics)
 ```
@@ -256,6 +256,27 @@ A pinned ghost is a copy of `disp` (with `phys`), plus the car's `wb` and `track
 
 ```
 ```
+
+### Run file (`src/app/runfile.js`; `*.apexlab.json`)
+
+A car, the circuit it ran on, the line it converged to and the lap that line gave, so a run from an older build can be loaded into a newer one and compared.
+
+```ts
+{ format: 'apexlab-run', version: 1, exported: ISO date, userAgent,
+  physics: { sha256, live },          // committed hash of the physics source; hash of what the exporting page fetched
+  car: CarParams,                     // exactly the 25 fields of §7; no more, no fewer
+  track: { name, seed: number | null, width, ctrl: [x, y][] },     // control points, not the seed: genCtrl may change
+  line: { N, off: number[] },
+  result: { lap, converged, evals, ref /* centreline lap */,
+            dyn: { frac, t, umax, uaxle, fail } | null,           // only a current dynamic result
+            snapshot: { px, py, v, ds, k /* N */, tc /* N + 1 */, phys: { …N each } } } }   // becomes the ghost
+```
+
+- **Version identity.** `physics.sha256` is the SHA-256 of `core/`, `dynamics/` and `app/presets.js` (`coreSource()` in `tests/load-core.mjs`), committed as `src/app/physics-version.js`. `tests/make-physics-version.mjs --write` regenerates it and `tests/runfile.test.mjs` fails when it is stale, so `git log -S <hash>` finds the commit behind a file. The page also hashes the files it fetched (`liveHash`), so loading can say that it is running uncommitted edits. **The hash identifies source, not results**: a mechanical refactor changes it while the goldens still pass. `solver.js` is outside the hashed set.
+- **Reading is strict.** `readRunFile` refuses a wrong `format` or `version`, any missing or unknown car field (all named), bad circuit data, wrong array lengths and non-finite numbers. It fills in nothing; a car with a field made up is a different car. A change to the car parameters or this layout bumps `version` and adds an explicit migration then. Value-level car checks stay with `carSpec` in the worker.
+- **Loading.** The `load` command (§10.1) replaces car, track and line in one step and publishes the line as given, not as the optimiser's spline fit, so an unchanged build reproduces the recorded lap bit for bit (tested for the GT racer on Harrow Ring). *Load run* stays paused on that line; *Run* then restarts the search from it through the coarse stages. *Load as ghost* keeps the current car and searches from the saved line.
+- **Ghost limits.** A ghost needs the saved lap's station count to equal the circuit's, and every telemetry channel the live snapshot has. If `buildTrack` ever changes N, a run still loads (the line is resampled) but gets no ghost, and the page says so.
+- JSON drops the sign of `-0`; nothing in the physics depends on it.
 
 ### `DynCheck.result`
 
@@ -345,6 +366,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'setCar',   rev, params: CarParams }        // build car → carInfo; rescore; new reference lap → snapshot
 { type: 'setTrack', rev, ctrl, width, keepLine }    // build track → track; fresh search from the old line resampled, or the centreline → snapshot
 { type: 'setLine' }                                 // fresh search from the centreline → snapshot
+{ type: 'load',     rev, params, ctrl, width, off, run } // car + track + line in one step (§7 run file) → carInfo, track, snapshot, loaded; run: search from it, else paused
 { type: 'run', fresh? } | { type: 'pause' }         // fresh: restart the search from the current line ("Search again")
 { type: 'view', util }                              // include tyre use u in snapshots → snapshot
 { type: 'dynCheck' }                                // pause; republish the current line; check it
@@ -356,7 +378,8 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'carInfo',   carRev, info: CarInfo }       // describeCar (§7)
 { type: 'track',     trackRev, N, L, ds, cx, cy, nx, ny, kc, width, issue }
 { type: 'snapshot',  carRev, trackRev, lineRev, lap, vmin, vmax,
-                     line: { px, py, v, k, ds, tc, u, phys }, ref?: { t, v } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7
+                     line: { px, py, v, k, ds, tc, u, phys, off }, ref?: { t, v } }   // ≤20 Hz while improving; ref = centreline lap, sent when it changes; phys: §7; off = the line's offsets
+{ type: 'loaded',    rev, N, clamped: { n, max } }   // after the load's snapshot; clamped: stations moved to fit this build's track limits, and by how much
 { type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
 { type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }
 { type: 'error',     message, stack }                // the solver pauses and stays usable
@@ -370,6 +393,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
   - `corners` are computed on the main thread (label placement).
   - `dynCheck` takes no `lineRev`: a line revision sent from the main thread was usually stale by the time it arrived (lines publish at 20 Hz), so the worker checks the current line and republishes it.
   - `setLine` with an explicit `off`, and `view`, `run.fresh` and `ref`, were added or deferred as the UI needed.
+  - `load` is one command, not `setCar` + `setTrack` + `setLine`: those are coalesced per kind, so the line could land on a track it wasn't recorded on. It builds car and track before changing any state (a throw leaves the solver as it was; it also refuses a circuit of zero length, which `buildTrack` accepts silently and which would give a NaN lap), gives both the load's `rev`, and `Optimizer.setup` is followed by restoring the exact line, because `setup` overwrites the line with its spline fit.
 
 ### 10.2 Pose contract (shared by every view)
 

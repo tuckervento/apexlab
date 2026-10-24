@@ -206,6 +206,18 @@ details p{margin:6px 0 0}
       </div>
     </section>
 
+    <section id="runSection">
+      <h2>Saved runs</h2>
+      <p class="note">Export the car, circuit and line shown, to load into this or a newer version later. <i>Load run</i> replaces all three, paused on the saved line, with the saved lap as the ghost. <i>Load as ghost</i> keeps your car and races the saved lap.</p>
+      <div class="row">
+        <button class="btn" id="exportRun">Export run</button>
+        <button class="btn" id="loadRun">Load run</button>
+        <button class="btn" id="loadGhost">Load as ghost</button>
+      </div>
+      <input type="file" id="runFile" accept=".json,application/json" hidden>
+      <p class="note" id="runInfo" role="status"></p>
+    </section>
+
     <section id="carSection">
       <h2>Car</h2>
       <div class="row"><select id="carPreset" aria-label="Car preset"></select></div>

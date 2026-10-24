@@ -47,6 +47,13 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 - Telemetry plots speed over lap distance against the centreline.
 - **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart. The readouts gain ghost and Δ columns, compared at the same race time or the same place on track, or as each lap's maxima (left and right turns, drive and braking apart). Each map tag adds a Δ against the other car at that same spot.
 
+**Save and compare runs**
+- **Export run** saves the car, circuit and line on screen, with the lap it gives, as one JSON file (about 240 KB).
+- **Load run** replaces all three and stops on the saved line, re-scored by the current physics, with the saved lap as the ghost. The Δ against the ghost is then the effect of the physics change alone. *Run* re-optimises from there.
+- **Load as ghost** keeps your car and races the saved lap, on the saved circuit.
+- Each file records a hash of the physics source that made it. Loading says whether it matches this build, and whether this page is running uncommitted physics edits.
+- Files from a different file format or car-parameter set are refused, naming the fields.
+
 **Dynamic check**
 - A time-stepped bicycle model drives the optimised line. It has yaw inertia, Pacejka-style tyres, load-transfer lag and a steering-rate limit.
 - It reports the highest fraction of the lap model's pace it can hold on track without sliding, its lap time at that pace, and the peak tyre use.
@@ -76,7 +83,7 @@ index.html ─ src/app/                 state, worker client, controls, frame lo
 | `src/solver/` | `Solver` behind a message protocol (commands in, events out), and the Web Worker that runs it. The main thread never runs physics. |
 | `src/playback/` | `pose()` (position, heading, speed, accelerations, gear; plus steering and slip for dynamic traces) and the race clock. |
 | `src/views/map2d/` | Camera, palette, map drawing and side-panel charts: pure functions of what they're given. |
-| `src/app/` | The page: one state object, the solver client, controls, input, frame loop and boot. Car and circuit presets. |
+| `src/app/` | The page: one state object, the solver client, controls, input, frame loop and boot. Car and circuit presets. Saved runs (file format, committed physics hash). |
 | `tests/` | Node tests: see below. |
 | `prototype/` | The original single-file prototype, frozen as a reference. |
 
@@ -92,8 +99,9 @@ node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
 - **Golden values:** 6 cars × 4 circuits, bit for bit.
 - **Parity:** the modules against the prototype.
 - **Solver protocol, `describeCar` and playback.**
+- **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, and the committed physics hash.
 
-Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff.
+Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`.
 
 ## Documentation
 

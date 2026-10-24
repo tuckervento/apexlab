@@ -18,6 +18,7 @@ export class Solver{
     switch(c.type){
       case 'setCar':this.setCar(c);break;
       case 'setTrack':this.setTrack(c);break;
+      case 'load':this.load(c);break;
       case 'setLine':this.need();this.resetLine(null);break; // centreline
       case 'run':this.need();if(c.fresh){this.off.set(this.pub);this.opt.setup(this.T,this.car,this.B,this.off);}this.running=true;this.progress();break;
       case 'pause':this.running=false;this.progress();break;
@@ -57,8 +58,7 @@ export class Solver{
   setCar(c){
     const car=buildCar(c.params),info=describeCar(car); // throws on invalid params, leaving the solver unchanged
     this.car=car;this.carRev=c.rev;this.dyn=null;
-    const cv=info.curves;
-    this.emit({type:'carInfo',carRev:c.rev,info},[cv.drive.buffer,cv.traction.buffer,cv.resist.buffer,cv.gear.buffer,cv.rpm.buffer,...cv.gears.map(g=>g.buffer)]);
+    this.emitCar(info,c.rev);
     if(!this.T)return;
     this.B=makeBounds(this.T,car);
     if(!this.off){this.resetLine(null);return;}
@@ -67,16 +67,45 @@ export class Solver{
   setTrack(c){
     const T=buildTrack(c.ctrl,c.width);
     this.T=T;this.trackRev=c.rev;this.dyn=null;
-    const f=a=>Float64Array.from(a),ev={type:'track',trackRev:c.rev,N:T.N,L:T.L,ds:T.ds,cx:f(T.cx),cy:f(T.cy),nx:f(T.nx),ny:f(T.ny),kc:f(T.kc),width:T.width,issue:T.issue};
-    this.emit(ev,[ev.cx.buffer,ev.cy.buffer,ev.nx.buffer,ev.ny.buffer,ev.kc.buffer]);
+    this.emitTrack(T,c.rev);
     if(!this.car)return;
     this.B=makeBounds(T,this.car);this.resetLine(c.keepLine?this.pub:null);
+  }
+  // Replace car, track and line in one command (a saved run, ARCHITECTURE.md §7), so the line can't land on a different
+  // track than it was recorded on. The line is published exactly as given (clamped to the new bounds, resampled if the
+  // station count differs), not as the optimiser's spline fit of it. run: start searching from it; otherwise stay paused.
+  load(c){
+    const car=buildCar(c.params),info=describeCar(car),T=buildTrack(c.ctrl,c.width); // these throw before any state changes
+    if(!c.off||!(c.off.length>=2)||!c.off.every(Number.isFinite))throw new Error('load: line must be an array of finite offsets');
+    if(!(T.L>0))throw new Error('load: the circuit has no length (control points all in one place?)'); // buildTrack reports this neither by throwing nor in T.issue, and the lap would be NaN
+    const B=makeBounds(T,car),N=T.N,off=c.off.length===N?Float64Array.from(c.off):this.resample(c.off,N);
+    let n=0,max=0;
+    for(let i=0;i<N;i++){const x=Math.min(B.hi[i],Math.max(B.lo[i],off[i])),d=Math.abs(x-off[i]);if(d>0){n++;max=Math.max(max,d);}off[i]=x;}
+    this.car=car;this.T=T;this.B=B;this.carRev=this.trackRev=c.rev;this.dyn=null;
+    this.emitCar(info,c.rev);this.emitTrack(T,c.rev);
+    const line=Float64Array.from(off);
+    this.off=off;this.opt.setup(T,car,B,off);off.set(line); // setup overwrites off with its spline fit; later rescores should start from the exact line
+    this.computeRef();this.pub=line;this.lineRev++;this.running=!!c.run;this.publish(false);
+    this.emit({type:'loaded',rev:c.rev,N,clamped:{n,max}});
+  }
+  emitCar(info,rev){
+    const cv=info.curves;
+    this.emit({type:'carInfo',carRev:rev,info},[cv.drive.buffer,cv.traction.buffer,cv.resist.buffer,cv.gear.buffer,cv.rpm.buffer,...cv.gears.map(g=>g.buffer)]);
+  }
+  emitTrack(T,rev){
+    const f=a=>Float64Array.from(a),ev={type:'track',trackRev:rev,N:T.N,L:T.L,ds:T.ds,cx:f(T.cx),cy:f(T.cy),nx:f(T.nx),ny:f(T.ny),kc:f(T.kc),width:T.width,issue:T.issue};
+    this.emit(ev,[ev.cx.buffer,ev.cy.buffer,ev.nx.buffer,ev.ny.buffer,ev.kc.buffer]);
+  }
+  // A line resampled to N stations by linear interpolation around the loop.
+  resample(from,N){
+    const off=new Float64Array(N),oN=from.length;
+    for(let i=0;i<N;i++){const x=i*oN/N,a=x|0,f=x-a;off[i]=from[a%oN]*(1-f)+from[(a+1)%oN]*f;}
+    return off;
   }
   // Fresh optimiser run from the previous published line resampled to the new stations, or from the centreline;
   // either way clamped to the bounds.
   resetLine(from){
-    const N=this.T.N,off=new Float64Array(N);
-    if(from){const oN=from.length;for(let i=0;i<N;i++){const x=i*oN/N,a=x|0,f=x-a;off[i]=from[a%oN]*(1-f)+from[(a+1)%oN]*f;}}
+    const N=this.T.N,off=from?this.resample(from,N):new Float64Array(N);
     for(let i=0;i<N;i++)off[i]=Math.min(this.B.hi[i],Math.max(this.B.lo[i],off[i]));
     this.off=off;this.opt.setup(this.T,this.car,this.B,off);this.computeRef();this.publish(true);
   }
@@ -93,7 +122,8 @@ export class Solver{
     const th=new Float64Array(N);for(let i=0;i<N;i++){const j=(i+1)%N;th[i]=Math.atan2(S.py[j]-S.py[i],S.px[j]-S.px[i]);}
     const n=dynNominal(car,dynSetup(car),{N,px:S.px,py:S.py,k:S.k,th,ds:S.ds},S.v); // fresh arrays: sent as they are
     const phys={fxf:n.Fxf,fxr:n.Fxr,fyf:n.Fyf,fyr:n.Fyr,wf:n.Wf,wr:n.Wr,uf:n.uf,ur:n.ur,down:n.down,drag:n.drag};
-    const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,...Object.values(phys).map(a=>a.buffer)];
+    const off=Float64Array.from(this.pub); // the offsets themselves: a saved run needs the exact line, not just its points
+    const line={px:S.px,py:S.py,v:S.v,ds:S.ds,k:S.k,tc,u:null,phys,off},tr=[S.px.buffer,S.py.buffer,S.v.buffer,S.ds.buffer,S.k.buffer,tc.buffer,off.buffer,...Object.values(phys).map(a=>a.buffer)];
     if(this.util){line.u=Float64Array.from(n.uf,(x,i)=>Math.max(x,n.ur[i]));tr.push(line.u.buffer);}
     const ev={type:'snapshot',carRev:this.carRev,trackRev:this.trackRev,lineRev:this.lineRev,lap:t,line,vmin,vmax};
     if(this.refDirty){ev.ref={t:this.ref.t,v:Float64Array.from(this.ref.v)};tr.push(ev.ref.v.buffer);this.refDirty=false;}
