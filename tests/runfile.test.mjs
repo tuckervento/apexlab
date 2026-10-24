@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadCore, coreSource } from './load-core.mjs';
+import { loadCore, runSource } from './load-core.mjs';
 import { loadGolden, assertRuntime, comboKey } from './golden-util.mjs';
 import { PHYSICS } from '../src/app/physics-version.js';
 import { liveHash, makeRunFile, readRunFile, toGhost, CAR_KEYS } from '../src/app/runfile.js';
@@ -47,14 +47,14 @@ test(`load: the recorded line comes back bit for bit, ${CAR}, ${TRACK.name}`, as
 });
 
 test('physics version: the committed hash is current', () => {
-  const live = coreSource();
+  const live = runSource();
   assert.deepEqual(PHYSICS, { sha256: live.sha256, files: live.files },
     'src/app/physics-version.js is stale: run `node tests/make-physics-version.mjs --write` and commit it with the physics change');
 });
 
-test('liveHash: the browser-side hash equals coreSource()', async () => {
+test('liveHash: the browser-side hash equals runSource()', async () => {
   const root = process.env.APEX_SRC || fileURLToPath(new URL('../src', import.meta.url));
-  assert.equal(await liveHash(PHYSICS.files, async f => readFileSync(join(root, f))), coreSource().sha256);
+  assert.equal(await liveHash(PHYSICS.files, async f => readFileSync(join(root, f))), runSource().sha256);
 });
 
 // A run exported from a solver that has loaded the committed GT racer / Harrow Ring fixture line (non-trivial doubles).

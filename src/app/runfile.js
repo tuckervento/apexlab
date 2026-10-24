@@ -9,7 +9,7 @@ export const CAR_KEYS = Object.keys(CARS['GT racer']);
 const LINE_ARRAYS = ['px', 'py', 'v', 'ds', 'k']; // snapshot arrays of length N (tc has N + 1)
 
 // ---------- hash of the running source
-// The same SHA-256 as coreSource() in tests/load-core.mjs: for each file, "// <path>\n" then its bytes, in order.
+// The same SHA-256 as runSource() in tests/load-core.mjs: for each file, "// <path>\n" then its bytes, in order.
 // fetchBytes(path) resolves to the bytes of one file of PHYSICS.files (src/app/physics-version.js).
 export async function liveHash(files, fetchBytes) {
   const enc = new TextEncoder(), parts = [];
