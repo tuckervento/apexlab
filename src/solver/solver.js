@@ -86,7 +86,6 @@ export class Solver{
   load(c){
     const T=buildTrack(c.ctrl,c.width),car=buildCar(c.params,{loads:needsLoads(T)}),info=describeCar(car); // these throw before any state changes
     if(!c.off||!(c.off.length>=2)||!c.off.every(Number.isFinite))throw new Error('load: line must be an array of finite offsets');
-    if(!(T.L>0))throw new Error('load: the circuit has no length (control points all in one place?)'); // buildTrack reports this neither by throwing nor in T.issue, and the lap would be NaN
     const B=makeBounds(T,car),N=T.N,off=c.off.length===N?Float64Array.from(c.off):this.resample(c.off,N);
     let n=0,max=0;
     for(let i=0;i<N;i++){const x=Math.min(B.hi[i],Math.max(B.lo[i],off[i])),d=Math.abs(x-off[i]);if(d>0){n++;max=Math.max(max,d);}off[i]=x;}
@@ -126,6 +125,7 @@ export class Solver{
     const T=this.T,N=T.N,car=this.car;
     if(bump){this.pub=this.opt.current(new Float64Array(N));this.lineRev++;} // accepted line, never a rejected trial
     const S=makeScratch(N),t=lapEval(T,car,this.pub,S),tc=new Float64Array(N+1);
+    if(!Number.isFinite(t))throw new Error(`publish: the lap time is ${t}`); // last line of defence: commands validate their inputs, so this is a bug
     for(let i=0;i<N;i++){const j=(i+1)%N;tc[i+1]=tc[i]+2*S.ds[i]/(S.v[i]+S.v[j]+1e-9);}
     let vmin=1e9,vmax=0;for(let i=0;i<N;i++){vmin=Math.min(vmin,S.v[i]);vmax=Math.max(vmax,S.v[i]);}
     // forces on the car from inverse dynamics (telemetry), and with util the per-axle grip use for tyre-use colouring

@@ -292,3 +292,15 @@ test('solver: a hilly circuit builds load tables under the same car revision and
   got = step({ type: 'load', rev: 6, params: { ...core.CARS[CAR] }, ctrl: hills, width: WIDTH, off: new Float64Array(s.T.N), run: false });
   assert.ok(s.car.load && got.some(e => e.type === 'loaded'), 'a hilly run loads');
 });
+
+// A circuit with no length (every control point in one place: L ~ 1e-13 m from rounding) gave a NaN lap, published with
+// no error (review L2). load refused it; setTrack must too, and leave everything as it was.
+test('solver: setTrack refuses a circuit with no length and changes nothing', () => {
+  const { s, ev } = boot(), state = () => ({ car: s.car, T: s.T, B: s.B, off: s.off, pub: s.pub, carRev: s.carRev, trackRev: s.trackRev, lineRev: s.lineRev });
+  const before = state(), n0 = ev.length;
+  s.handle({ type: 'setTrack', rev: 3, ctrl: [[50, 50, 0], [50, 50, 0], [50, 50, 0], [50, 50, 0]], width: WIDTH, keepLine: false });
+  const got = ev.slice(n0);
+  assert.deepEqual(got.map(e => e.type), ['error']);
+  assert.match(got[0].message, /shorter than the track is wide/);
+  assert.deepEqual(state(), before);
+});

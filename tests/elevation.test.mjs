@@ -354,3 +354,14 @@ test('pose: height and grade on a hilly lap snapshot', () => {
   const flat = core.stationPose({ ...L, pz: undefined }, 3, 0.5); // a snapshot from before elevation has no heights
   assert.deepEqual([flat.z, flat.grade], [0, 0]);
 });
+
+// Where a hilly track meets a car (deferred A10): both callers evaluate a lap while being set up, so a car built
+// without load tables is refused at construction, not on some later step.
+test('a hilly circuit with a car built without load tables is refused at setup and construction', () => {
+  const ctrl = core.genCtrl(core.TRACKS[0].seed, WIDTH), u = core.genElev(core.TRACKS[0].seed, ctrl);
+  const T = core.buildTrack(withZ(ctrl, u.map(x => 40 * x)), WIDTH), car = core.buildCar(core.CARS['GT racer']), off = new Float64Array(T.N);
+  assert.equal(T.flat, false);
+  const msg = /needs a car built with \{loads: true\}/;
+  assert.throws(() => new core.Optimizer().setup(T, car, core.makeBounds(T, car), off), msg, 'Optimizer.setup');
+  assert.throws(() => new core.DynCheck(T, car, off), msg, 'DynCheck');
+});

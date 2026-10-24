@@ -26,6 +26,8 @@ export function buildTrack(ctrl,width){
   const m=dense.length,cum=new Float64Array(m+1);
   for(let i=0;i<m;i++){const a=dense[i],b=dense[(i+1)%m];cum[i+1]=cum[i]+Math.hypot(b[0]-a[0],b[1]-a[1]);}
   const L=cum[m],N=Math.max(240,Math.min(1600,Math.round(L/4))),ds=L/N;
+  // Not L > 0: identical control points still give L ~ 1e-13 m from rounding in the spline, and a NaN lap
+  if(!(L>=width))throw new Error(`buildTrack: the circuit is shorter than the track is wide (${L} m < ${width} m): are the control points all in one place?`);
   const cx=new Float64Array(N),cy=new Float64Array(N),cz=new Float64Array(N),nx=new Float64Array(N),ny=new Float64Array(N),kc=new Float64Array(N);
   let j=0;
   for(let i=0;i<N;i++){const s=i*ds;while(j<m-1&&cum[j+1]<s)j++;const seg=cum[j+1]-cum[j]||1,t=(s-cum[j])/seg,a=dense[j],b=dense[(j+1)%m];cx[i]=a[0]+(b[0]-a[0])*t;cy[i]=a[1]+(b[1]-a[1])*t;cz[i]=a[2]+(b[2]-a[2])*t;}
