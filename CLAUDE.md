@@ -33,6 +33,10 @@ Key couplings across the layers:
 - A new track is swapped in only together with its first snapshot (station counts differ); snapshots never step back to an older car/track revision; dynamic results are current only while their three revisions match the displayed snapshot.
 - Worker exceptions arrive as `error` events (the solver pauses itself); `frame()`/`frameBody()` also catch exceptions. Both show in the status chip rather than killing the page — a past silent freeze was a missing `Optimizer.clamp` at convergence.
 
+## Deferred work
+
+`docs/deferred.md` keeps the items set aside on purpose (2.5D map, banking, load-table and lap-model speed, elevation's simplifications, saved-run gaps), each with its context, approach, open questions and how to verify. Read it before starting any of them, and update it when one lands.
+
 ## Things that bite
 
 - **`lapEval` has a hand-written exact adjoint gradient.** Any change to `lapEval` (including yaw limit, shift losses, GGV interpolation, and on hills the load factor's `dn/du` chain and the 3D steps) must be re-checked against central finite differences (≥4 sig figs, hard and `tau > 0` modes); `gradient.test.mjs` does this on flat and hilly circuits, through the load clamps too.

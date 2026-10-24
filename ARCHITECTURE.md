@@ -480,6 +480,8 @@ Each step keeps behaviour identical and is checked against §8.
 
 ## 12. Known issues and cleanup
 
+Items deferred on purpose, with their context and planned approach, are in [`docs/deferred.md`](docs/deferred.md).
+
 - **Preset circuits are seeds.** Any change to the generator silently changes them; store generated control points as data files instead.
 - **`buildCar` costs about 16 ms** in Node (the GGV bisections included), **~250 ms with load tables** on hilly circuits (17 load levels). Fine on slider release; heavy on continuous drag on hills. Options: only the load slices the circuit can reach, fewer bisection steps, or memoising by parameter hash.
 - **Elevation's simplifications** (§4.7): grade and vertical curvature from the centreline, not the line driven; lateral demand on the 3D speed; no banking. And hilly `lapEval` costs ~1.7× flat.
