@@ -48,3 +48,30 @@ test('simple: every knob setting gives a valid car inside the slider ranges', ()
   }
   assert.equal(n, 6 * 2 * 2 * 5 * 4 * 3 ** 4);
 });
+
+// Knob k swept over its range from centred knobs on a base car: [knob value, CarParams, describeCar] per step.
+function sweep(base, k, n = 10, over = {}) {
+  const { min, max } = knob(k), out = [];
+  for (let i = 0; i <= n; i++) {
+    const v = min + (max - min) * i / n, p = deriveParams({ ...defaults(base), ...over, [k]: v });
+    out.push([v, p, core.describeCar(core.buildCar(p))]);
+  }
+  return out;
+}
+// Strictly increasing where the field the knob drives changed, unchanged where it was clamped.
+function risesWith(rows, field, value, what) {
+  for (let i = 1; i < rows.length; i++) {
+    const [v0, p0, d0] = rows[i - 1], [v1, p1, d1] = rows[i];
+    if (p1[field] > p0[field]) assert.ok(value(d1) > value(d0), `${what}: ${value(d0)} -> ${value(d1)} at ${v0} -> ${v1}`);
+    else assert.equal(value(d1), value(d0), `${what}: ${field} clamped at ${v0} -> ${v1}`);
+  }
+}
+
+test('simple: more power gives more kW/t and a higher top speed', () => {
+  for (const base of BASES) {
+    const rows = sweep(base, 'power');
+    risesWith(rows, 'power', d => d.derived.powerToWeight, `${base} kW/t`);
+    risesWith(rows, 'power', d => d.derived.vTop, `${base} top speed`);
+    assert.ok(rows.at(-1)[1].power > rows[0][1].power, `${base}: the Power knob moves power`);
+  }
+});
