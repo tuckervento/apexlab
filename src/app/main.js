@@ -195,6 +195,15 @@ function applyEffects3d(view,input,dtAnim){
   else effects.step(effectsState,input.car,input.T,dtAnim,{replay:S.replay,reduced:S.reducedMotion,sample:input.sample});
   effects.apply(effectsState,view,{reduced:S.reducedMotion});
 }
+const streakInput3d={speed:0,tAnim:0,on:false,reducedMotion:false};
+$('#streaksOn3d').onchange=()=>{dirty3d=true;};
+function syncStreaks3d(input){
+  const toggle=$('#streaksOn3d'),note=$('#streaksNote3d');
+  toggle.disabled=S.reducedMotion;note.hidden=!S.reducedMotion;
+  streakInput3d.speed=input.car?.speed??0;streakInput3d.tAnim=S.animT;
+  streakInput3d.on=toggle.checked&&['chase','heli','pair','tv'].includes(S.cam3d.mode);
+  streakInput3d.reducedMotion=S.reducedMotion;
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -209,6 +218,7 @@ function draw3d(dt){
     syncTrace3d(input);
     syncPair3d();
     syncHeight3d();
+    syncStreaks3d(input);
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
     const carAttitude=stepAttitude3d(api,input,dtAnim,seek);
     input.attitude=input.dyn&&S.traceShow==='dynamic'?carAttitude.trace:carAttitude.car;
@@ -219,7 +229,7 @@ function draw3d(dt){
     const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state);
     applyEffects3d(view,input,dtAnim);
     const keyView=JSON.stringify(view);
-    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude});lastView3d=keyView;dirty3d=false;}
+    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude,streaks:streakInput3d});lastView3d=keyView;dirty3d=false;}
     placeOverlays3d();
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}

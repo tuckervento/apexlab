@@ -51,6 +51,7 @@ function syncBonnet3d(){
 export function setView(v){syncBonnet3d();if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
   $('#camera3d').hidden=!on;
   $('#orthoControls').hidden=!on||S.cam3d.mode!=='ortho';
+  $('#streaks3d').hidden=!on||!['chase','heli','pair','tv'].includes(S.cam3d.mode);
   $('#height3d').hidden=!on||!new Set(['overview','ortho']).has(S.cam3d.mode);
   renderTraceUI();
   for(const b of ['#zIn','#zOut','#zFit'])$(b).disabled=on&&!['overview','ortho'].includes(S.cam3d.mode);$('#zFollow').disabled=on;}

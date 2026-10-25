@@ -167,6 +167,7 @@ details p{margin:6px 0 0}
       <option value="ortho">Map</option>
       <option value="tv">TV</option>
     </select>
+    <label class="height3d" id="streaks3d" hidden><input id="streaksOn3d" type="checkbox" style="width:auto"> Streaks <span id="streaksNote3d" hidden>(reduced motion)</span></label>
     <label class="height3d" id="height3d" hidden>Height <input id="heightScale3d" type="range" min="1" max="5" step="0.1" value="1" aria-label="Height exaggeration"><output id="heightValue3d">1×</output></label>
     <div class="seg trace3d" id="trace3d" aria-label="3D cars" hidden><button data-v="lap" aria-pressed="true">Lap model</button><button data-v="dynamic" aria-pressed="false">Dynamic check</button><button data-v="both" aria-pressed="false">Both</button></div>
     <label class="orthoControls" id="orthoControls" hidden>Tilt <input id="orthoTilt" type="range" min="0" max="60" step="1" value="0" aria-label="Map tilt in degrees"></label>
