@@ -1,13 +1,15 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave F batch 1)_
+_Last updated: 2026-10-25 (Wave F batch 2)_
 
 ## Snapshot
 
-24 of 33 tasks done (Waves A–E, plus Wave F's 1.9, 2.1, 3.6, 5.3), all merged to `main`. 1.9's verdict: P6 (render
-worker) is not triggered, and R10's 60 fps is met on Q's MacBook Air. On `main`, 382/382 tests pass and all 17 scenarios exit 0 (every reference compares at fraction 0;
-`view-toggle` is byte-identical to pre-Wave-E `main` in 2D). The 3D view now has overview, chase and TV cameras, corner
-labels and map tags, the dynamic-check failure marker and a trace car. Next: the rest of Wave F.
+28 of 33 tasks done (Waves A–E, plus Wave F's 1.9, 2.1, 2.2, 2.4, 2.6, 3.5, 3.6, 5.3), all merged to `main`, with
+the two batch 1 follow-ups (board backs, the tag in "Dynamic check" mode). On `main`, 414/414 tests pass and 20 of 21
+scenarios exit 0, every reference at fraction 0; the exception is `view3d`'s `phoneSelector` (the camera selector no
+longer fits a phone), which the layout job in progress fixes. `view-toggle` is byte-identical to pre-Wave-E `main` in 2D.
+The 3D view has six cameras (overview, chase, heli, pair, Map, TV), attitude, height exaggeration, overlays and a trace
+car. Next: the layout job, then Wave F batch 3 (2.3, 4.1, 4.3) on Q's go.
 
 ## Completed
 
@@ -111,8 +113,34 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   - Q's run on a MacBook Air, Chrome, mains power: running p50 16.7 ms and p95 17.4–17.6 ms in 2D, 3D overview, chase
     and TV, with 0 long tasks during a search. **P6 is not triggered; R10's 60 fps is met** (fewer than 5% of frames
     dropped at most). Recorded with the verdict in `investigations/3d-perf.md`.
+- [x] Follow-ups "fu": plain board/sign backs; the 3D tag follows the shown car, "grip: lap model only" for the trace
+  car (Q's choice) (Codex, one follow-up) — done 2026-10-25 — `3d/fu` `7fd6c30` — verified: suite 392/392;
+  `markings.mjs` all true (pixel variance inside a board: 0 from behind, 80,620 from the front); `trace3d.mjs` 20/20
+  (dynamic, lap, both and grip tag checks); coordinator's teeth (no grip case) fail 1/5 trace tests.
+- [x] 2.6 cosmetic attitude on the cars (Codex, one follow-up) — done 2026-10-25 — `3d/2.6` `ada3d77` — verified: suite
+  385/385; `attitude3d.mjs` 14/14 (outward roll and right steer mid right-hander, rear wheels straight, wheels spinning,
+  frozen when paused, trace car steered by the recorded `steer`); coordinator's teeth (roll sign flipped) fail 1/3.
+- [x] 2.2 heli and pair cameras (Codex) — done 2026-10-25 — `3d/2.2` `b0640f1` — verified: suite 389/389; `heli3d.mjs`
+  11/11 (both cars inside the viewport in pair with a pinned ghost); coordinator's teeth (pair ignores the ghost) fail
+  the NDC framing test.
+- [x] 2.4 orthographic Map camera (Codex; scenario fixes by the coordinator) — done 2026-10-25 — `3d/2.4` `0aa82e2` —
+  verified: suite 392/392; `ortho3d.mjs` 14/14 including `frozen` (projection within 1 px of the 2D map's fit at tilt 0,
+  zoom, Fit, control visibility), references at fraction 0; coordinator's teeth (tilt ignored) fail the crest test.
+- [x] 3.5 height exaggeration (Codex; scenario lookups by the coordinator) — done 2026-10-25 — `3d/3.5` `37bb66d` —
+  verified: suite 384/384; `heights3d.mjs` all true (crest ×3, car on the scaled road, chase at 1×, shadow box covers
+  the ground at 5×); coordinator's teeth: `fitShadow` without the scale fails `shadowGround`, and a theme switch that
+  rebuilds the kerbs fails the repaired `themeStable`.
+- Wave F batch 2 on merged `main` (merges `c375ee9`, `73be708`, `9cbfe49`, `ae1e757`, `bb6bc2c`; scenario fixes
+  `742bc85`; references `1a3deaf`): suite 414/414; 20 of 21 scenarios exit 0 with every reference at fraction 0 (the
+  exception: `view3d` `phoneSelector`); all 23 changed or new images reviewed; board backs measured rigid at 3×;
+  `git diff 515ec30 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
 
 ## In Progress
+
+- The 3D control layout (Q chose option A): `#camera3d` becomes a `<select>`, and the camera, trace, height and tilt
+  controls stack in one bottom-left column; every scenario that picks a camera moves to the select, and `view3d`'s
+  phone check asserts the new layout with every control visible. Codex job in `../apexlab-wt/layout` (`3d/layout`,
+  from `1a3deaf`), started 2026-10-25. Batch 3 (2.3, 4.1, 4.3) follows on Q's go.
 
 ## Blocked
 
@@ -307,10 +335,38 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
     "no frame dropped at all" isn't shown, only "fewer than 5%".
   - R10's edit-drag rebuild target isn't measured: editing is in 2D. P6 stays not triggered unless later
     measurements change that.
+- 2026-10-25: Wave F batch 2 ran as one parallel cycle of 5 Codex jobs (Q's request), from `515ec30`, merged
+  `--no-ff` in the order fu, 2.6, 2.2, 2.4, 3.5. Conflicts (all keep-both) in `main.js` (imports, helper blocks,
+  `CAMERAS`, `cameraInput`), `scene.js` (`frame()`, camera construction, the returned API), `index.html` and
+  `controls.js`. Decisions:
+  - **Q:** in "Dynamic check" mode with Tag = Grip, the trace car's tag reads "grip: lap model only" (a trace has no
+    lap-model tyre use); `tagText` itself is unchanged.
+  - **Coordinator (2.6):** the trace car's attitude is initialised with the lap snapshot (same car, same peak scaling)
+    and steered by the trace's recorded `steer`; `attitude.js` is unchanged.
+  - **Merge-time:** board backs are rigid panels at any height scale like the fronts (measured: both shrink locally to
+    1/3 at 3×); `frameHeights()` runs before `frameAttitude()` so only the grade pitch is scaled; the height slider also
+    shows in Map mode.
+  - 3.5 keeps board panels and the gantry at their true size by re-anchoring their vertices (same geometry objects);
+    posts stretch. The road mesh is now named `'road'`.
+  - 2.2 added `input.sampleGhost` for the pair camera's per-tick ghost sampling.
+- **Scenario defects found in review and fixed by the coordinator (Q approved):**
+  - `ortho3d`: waited for `#view3d` to be exactly 390 px wide (the page has margins, so never) and paused *before*
+    the hill change (which restarts the search, so the line moved under the screenshots).
+  - 3.5's height group took meshes off the scene's top level, breaking three lookups: `world.mjs` and
+    `overlay3d.mjs` couldn't find the road, and `scene3d.mjs`'s `themeStable` became **vacuous** (it compared two empty
+    lists). All now look up by name or `traverse`; `themeStable` has teeth again.
+  - `heli3d` and `attitude3d` produced different images run to run (0.4–0.98% of pixels against a 1% tolerance): the
+    car's line came from a timed search, and the live 1× run stops within a frame of its target. Both are now
+    deterministic (two centreline laps of different cars; a fixed pose and attitude rendered through `frame()`).
+  - Lesson, again: tolerant screenshot compares hide nondeterminism and vacuous checks. Comparing a second run at
+    fraction 0 caught both.
+- **Layout (Q chose option A):** the six-camera `.seg` no longer fits a phone (`view3d` `phoneSelector` fails on
+  `main` until the layout job lands, recorded rather than weakened), and the trace, height and tilt controls collided
+  on the left. Option A: a `<select>` for the camera and one stacked control column.
+- Still open for Q: the 3.6 label-position direct check (not requested). Pair framing ignores the inset (minor).
 
 ## Next Up
 
-- The rest of Wave F (all need 1.8, done): 2.2, 2.3, 2.4, 2.6, 3.5, 4.1, 4.3; then 4.2 (needs 2.6) and 6.1 (needs
-  everything). Suggested next batch (≤ 4, by file overlap): 2.6 (attitude; unblocks 4.2), 2.2 and 2.4 (cameras, now
-  just table entries), and 3.5 (height scale; touches the scene's world, `fitShadow` and the overlays). 2.3 and 4.1/4.3
-  after, since 4.1 changes the views every camera produces.
+- After the layout job: Wave F batch 3, 2.3 (bonnet and free-fly cameras; bonnet uses 2.6's attitude), 4.1 (FOV, g
+  response, shake; wired for chase and heli) and 4.3 (speed streaks), on Q's go. Then Wave G: 4.2 (wheel blur, needs
+  2.6) and 6.1 (documentation close-out).
