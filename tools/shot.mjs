@@ -6,8 +6,9 @@
 //   const f = await diffPng(ctx, pngA, pngB, { threshold: 16 });       // 0..1; 1 if the sizes differ
 //   const r = await compareToReference(ctx, png, 'ref.png', { maxFraction: 0.01 });  // {fraction, ok, wrote}
 //
-// ctx is what a scenario receives from withApp ({run, call, ...}). A missing reference (or APEX_UPDATE_REFS=1) is written from
-// the shot and reported as wrote:true, ok:true: review and commit it next to the scenario.
+// ctx is what a scenario receives from withApp ({run, call, ...}). Missing references fail verification; only update:true
+// (default: APEX_UPDATE_REFS=1) writes, reporting wrote:true, update:true, ok:false. Review every written image, then verify.
+// Empty captures and captures without the PNG signature fail in either mode and are never written.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -36,10 +37,16 @@ export async function diffPng({ run }, a, b, { threshold = 16 } = {}) {
   })()`);
 }
 
-export async function compareToReference(ctx, png, refPath, { threshold = 16, maxFraction = 0.01 } = {}) {
-  if (!existsSync(refPath) || process.env.APEX_UPDATE_REFS === '1') {
+export async function compareToReference(ctx, png, refPath, { threshold = 16, maxFraction = 0.01, update = process.env.APEX_UPDATE_REFS === '1' } = {}) {
+  if (png.length < 8 || !Buffer.from(png).subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return { ok: false, empty: true };
+  if (update) {
     mkdirSync(dirname(refPath), { recursive: true }); writeFileSync(refPath, png);
-    return { fraction: 0, ok: true, wrote: true };
+    console.log('UPDATED reference (review): ' + refPath);
+    return { wrote: true, update: true, ok: false, fraction: 0 };
+  }
+  if (!existsSync(refPath)) {
+    console.log('MISSING reference: ' + refPath);
+    return { ok: false, missing: true, wrote: false };
   }
   const fraction = await diffPng(ctx, png, readFileSync(refPath), { threshold });
   return { fraction, ok: fraction <= maxFraction, wrote: false };

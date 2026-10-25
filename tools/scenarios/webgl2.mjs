@@ -1,6 +1,6 @@
 // WebGL2 under headless Chrome (task 0.5): draws a triangle, reads its pixels back, and reports the renderer and whether
 // EXT_clip_control exists (it decides the 3D depth strategy). Also self-checks the screenshot comparison helper.
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareToReference, diffPng, screenshot } from '../shot.mjs';
@@ -43,15 +43,25 @@ export default async ctx => {
   const a = await png(0), same = await diffPng(ctx, a, await png(0)), shifted = await diffPng(ctx, a, await png(1));
   console.log('diffPng identical: ' + same + '\ndiffPng shifted by 1 px: ' + shifted);
   const ref = join(mkdtempSync(join(tmpdir(), 'apexlab-ref-')), 'ref.png');
-  const wrote = await compareToReference(ctx, a, ref), okRef = await compareToReference(ctx, a, ref), badRef = await compareToReference(ctx, await png(1), ref);
-  console.log('compareToReference: first ' + JSON.stringify(wrote) + ', same ' + JSON.stringify(okRef) + ', shifted ' + JSON.stringify(badRef));
+  const missing = await compareToReference(ctx, a, ref, { update: false }), missingUnwritten = !existsSync(ref);
+  const wrote = await compareToReference(ctx, a, ref, { update: true }), updated = existsSync(ref);
+  const okRef = await compareToReference(ctx, a, ref, { update: false }), badRef = await compareToReference(ctx, await png(1), ref, { update: false });
+  const empty = await compareToReference(ctx, Buffer.alloc(0), ref + '.empty', { update: true });
+  const nonPng = await compareToReference(ctx, Buffer.from('not a PNG'), ref + '.invalid', { update: true });
+  const checks = { missingReference: !missing.ok && missing.missing === true && missing.wrote === false && missingUnwritten,
+    updateReference: wrote.wrote === true && wrote.update === true && !wrote.ok && updated,
+    sameReference: okRef.ok && okRef.fraction === 0 && !okRef.wrote,
+    shiftedReference: !badRef.ok && badRef.fraction === shifted,
+    emptyCapture: !empty.ok && empty.empty === true && !existsSync(ref + '.empty'),
+    nonPngCapture: !nonPng.ok && nonPng.empty === true && !existsSync(ref + '.invalid') };
+  console.log('compareToReference: missing ' + JSON.stringify(missing) + ', update ' + JSON.stringify(wrote) + ', same ' + JSON.stringify(okRef) + ', shifted ' + JSON.stringify(badRef));
   const { png: shot, path } = await screenshot(ctx, join(mkdtempSync(join(tmpdir(), 'apexlab-shot-')), 'page.png'));
   const self = await diffPng(ctx, shot, shot);
   console.log('screenshot of the page saved: ' + path + ' (' + shot.length + ' bytes), diffPng against itself: ' + self);
 
   const px = gl.centre, bg = gl.topLeft;
-  return { gl, same, shifted, self,
+  return { seen: { gl, same, shifted, self, missing, wrote, okRef, badRef, empty, nonPng },
     allTrue: gl.webgl2 && gl.error === 0 && px[0] > 250 && px[1] === 0 && px[2] === 0 && bg[2] > 250 && bg[0] === 0 && same === 0 && shifted > 0 && self === 0
-      && wrote.wrote && okRef.ok && !okRef.wrote && okRef.fraction === 0 && !badRef.ok && badRef.fraction === shifted,
-    checks: { triangle: px, background: bg } };
+      && Object.values(checks).every(Boolean),
+    checks: { triangle: px, background: bg, ...checks } };
 };

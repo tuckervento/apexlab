@@ -16,9 +16,9 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
   - **Paths and ports.** `cdp.mjs` serves the tree it is started in. `APEX_PORT`/`APEX_DEBUG_PORT` let several runs
     (for example, in worktrees) go at once.
   - **References.** Screenshot references live in `tools/scenarios/ref/` and are compared by `tools/shot.mjs`
-    (`compareToReference`, `diffPng`). A missing reference, or `APEX_UPDATE_REFS=1`, writes it. Review every image you
-    write, then run the scenario twice: each reference must compare at fraction 0.
-    - `webgl2.mjs` (the driver's self-test) always fails under `APEX_UPDATE_REFS=1`, by design.
+    (`compareToReference`, `diffPng`). Missing references fail. `APEX_UPDATE_REFS=1` writes them and the run exits
+    non-zero with "UPDATED reference (review)". Review every written image, then run the scenario twice without
+    update mode: each reference must compare at fraction 0. `webgl2.mjs` tests both modes explicitly in a temp directory.
     - `view-toggle.mjs` checks that 2D is byte-identical with 3D unopened, against PNGs saved on `main`
       (`VIEW_TOGGLE_SAVE`/`VIEW_TOGGLE_BASELINE`; see its header). Without the baseline it skips that check.
 - `tests/parity.test.mjs` compares `src/` against the frozen prototype bit for bit (via `tests/load-prototype.mjs`, which extracts the prototype's `CORE`/`DYN` blocks into a `vm` context). Elevation (step 8) left flat circuits bit-identical, so it still passes; delete it after the first intended change to *flat* physics.
