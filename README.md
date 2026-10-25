@@ -125,5 +125,6 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 12. banking
 13. movable/collapsible minimap in 3d
 14. ghost waits for you, you don't wait for ghost
+15. smoothing turning rotations
 
 Progress ([docs/race-mode.md](docs/race-mode.md) §9): phase 1 (plant/driver split) and phase 2 (race loop and judge at constant grip, Node only) are done. Next: per-axle grip scales, then tyre wear.
