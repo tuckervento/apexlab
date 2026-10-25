@@ -1,7 +1,7 @@
 import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
 import { findCorners } from '../map2d/map.js';
 import { startBand, gantry, boardPlacements, signPlacements, labelPlanes, labelAtlas, markerPosts } from './markings.js';
-import { stationFrames } from './frame.js';
+import { dataToThree, stationFrames } from './frame.js';
 import { trackRibbon, groundPlane, skirts, groundHeight } from './meshes.js';
 import { fogRange, worldSize } from './fog.js';
 import { kerbs, kerbColors } from './kerbs.js';
@@ -125,7 +125,26 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     }
     themeMarkings();
   }
+  const projected=new THREE.Vector3();
+  let cssWidth=1,cssHeight=1;
+  function project(point,out){
+    projected.fromArray(point).applyMatrix4(camera.matrixWorldInverse);
+    const front=projected.z<0;projected.applyMatrix4(camera.projectionMatrix);
+    out.x=(projected.x+1)*cssWidth/2;out.y=(1-projected.y)*cssHeight/2;
+    out.visible=front&&Math.abs(projected.x)<=1&&Math.abs(projected.y)<=1&&Math.abs(projected.z)<=1;return out;
+  }
+  let failMarker=null;
+  function setFailMarker(station){
+    remove(failMarker);failMarker=null;if(station==null||!T)return;
+    const i=((Math.round(station)%T.N)+T.N)%T.N,r=T.width/2+3;
+    failMarker=new THREE.Mesh(new THREE.RingGeometry(r-0.15,r+0.15,48),
+      new THREE.MeshBasicMaterial({color:pal.colors.accent,side:THREE.DoubleSide,depthTest:false}));
+    failMarker.name='failMarker';failMarker.rotation.x=-Math.PI/2;
+    failMarker.position.fromArray(dataToThree(T.cx[i],T.cy[i],T.z[i]));failMarker.renderOrder=5;scene.add(failMarker);
+  }
+  function themeFailMarker(){if(failMarker)failMarker.material.color.setStyle(pal.colors.accent);}
   function setTrack(value){
+    setFailMarker(null);
     T=value;remove(track);track=null;if(!T){disposeWorld();disposeKerbs();disposeMarkings();return;}
     const data=trackRibbon(T,stationFrames(T),{heightColors:!T.flat,pal});
     track=new THREE.Mesh(geometry(data),new THREE.MeshStandardMaterial({color:data.color?0xffffff:pal.colors.track,
@@ -162,9 +181,10 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     if(line)recolor(line,lineColors(disp,mode,pal));
     if(ghostLine)recolor(ghostLine,lineColors(g,'ghost',pal));
     themeMarkings();
+    themeFailMarker();
     tintCar(car,pal.colors.accent);tintCar(ghostCar,pal.colors.ghost);
   }
-  function resize(rect,dpr){renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
+  function resize(rect,dpr){cssWidth=rect.width;cssHeight=rect.height;renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
   function frame(input){
     if(car){car.visible=!!input.car;if(input.car){placeCar(car,input.car);sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}}
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
@@ -181,7 +201,8 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     disposeWorld();
     disposeKerbs();
     disposeMarkings();
+    setFailMarker(null);
     remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);sun.shadow.dispose();renderer.dispose();
   }
-  return {setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
+  return {project,setFailMarker,setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
 }

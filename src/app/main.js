@@ -9,6 +9,8 @@ import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
 import { pose, smoothPose, stationPose, raceClock } from '../playback/pose.js';
+import { dataToThree } from '../views/scene3d/frame.js';
+import { cornerAnchor } from '../views/scene3d/overlays.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
 import { renderTelemetry, tagText } from './telemetry.js';
@@ -85,6 +87,28 @@ function bind3dInput(canvas){
   canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
 }
 bind3dInput($('#view3d'));
+let overlayTrack=null,overlayCorners=null,cornerLabels=[],tagCar=null,tagGhost=null,failApi=null,failResult=null,failStation=null;
+const overlayPoint={x:0,y:0,visible:false};
+function placeOverlays3d(){
+  const api=S.scene3d,layer=$('#overlay3d');
+  if(overlayTrack!==S.T||overlayCorners!==S.corners){
+    layer.replaceChildren();overlayTrack=S.T;overlayCorners=S.corners;
+    const element=(text,cls)=>{const e=document.createElement('div');e.textContent=text;e.className=cls;layer.append(e);return e;};
+    cornerLabels=S.corners.map((c,i)=>({el:element('T'+(i+1),'corner3d'),point:cornerAnchor(S.T,c)}));
+    tagCar=element('','tag3d car3d');tagGhost=element('','tag3d ghost3d');
+  }
+  const place=(el,point)=>{api.project(point,overlayPoint);el.hidden=!overlayPoint.visible;if(overlayPoint.visible){el.style.left=overlayPoint.x+'px';el.style.top=overlayPoint.y+'px';}};
+  for(const label of cornerLabels)place(label.el,label.point);
+  const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],S.animT);
+  const cs=d.t>0?pose(d,rt,S.info):null,gs=g&&g.t>0?pose(g,rt):null;
+  const ghostHere=cs&&g?stationPose(g,cs.station,cs.frac):null,carHere=gs?stationPose(d,gs.station,gs.frac):null;
+  const tag=(el,p,other)=>{if(!p||S.tagMode==='off'){el.hidden=true;return;}const text=tagText(S.tagMode,p,other);el.textContent=text.main+(text.delta?'\n'+text.delta:'');place(el,dataToThree(p.x,p.y,p.z??0));};
+  tag(tagCar,cs,ghostHere);tag(tagGhost,gs,carHere);
+  const result=S.dynRes&&!S.dynStale?S.dynRes:null,station=result?.fail?.at??null;
+  if(failApi!==api||failResult!==result||failStation!==station||applied3d.failTrack!==S.T){
+    api.setFailMarker(station);failApi=api;failResult=result;failStation=station;applied3d.failTrack=S.T;dirty3d=true;
+  }
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -104,6 +128,7 @@ function draw3d(dt){
     }
     const view=(S.cam3d.mode==='overview'?orbit:chase).view(S.cam3d.state),keyView=JSON.stringify(view);
     if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({car:input.car,ghost:input.ghost,view});lastView3d=keyView;dirty3d=false;}
+    placeOverlays3d();
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}
 }
