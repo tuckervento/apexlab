@@ -13,9 +13,15 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   const renderer=new THREE.WebGLRenderer({canvas,context,antialias:true,
     reversedDepthBuffer:depth==='reversed',logarithmicDepthBuffer:depth==='log'});
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(),target=new THREE.Vector3();
-  scene.background=new THREE.Color(pal.colors.paper);
-  scene.add(new THREE.HemisphereLight(0xffffff,0x606060,2));
-  const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(200,500,100);scene.add(sun);
+  scene.background=new THREE.Color(pal.colors.sky3d);
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
+  // Neutral fill keeps dark palettes readable; oblique sun separates slopes without washing out the road.
+  scene.add(new THREE.HemisphereLight(0xffffff,0x607080,1.6));
+  const sun=new THREE.DirectionalLight(0xffffff,2.2),sunOffset=new THREE.Vector3(20,35,15);
+  sun.position.copy(sunOffset);sun.castShadow=true;scene.add(sun,sun.target);
+  const shadow=sun.shadow;shadow.mapSize.set(512,512);
+  Object.assign(shadow.camera,{left:-12,right:12,top:12,bottom:-12,near:1,far:80});
+  shadow.camera.updateProjectionMatrix();shadow.normalBias=0.03;
   let track=null,line=null,ghostLine=null,car=null,ghostCar=null,T=null,disp=null,g=null,mode='speed';
   function geometry(data){
     const geo=new THREE.BufferGeometry();
@@ -35,7 +41,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     T=value;remove(track);track=null;if(!T)return;
     const data=trackRibbon(T,stationFrames(T),{heightColors:!T.flat,pal});
     track=new THREE.Mesh(geometry(data),new THREE.MeshStandardMaterial({color:data.color?0xffffff:pal.colors.track,
-      vertexColors:!!data.color,flatShading:true,side:THREE.DoubleSide}));scene.add(track);
+      vertexColors:!!data.color,flatShading:true,side:THREE.DoubleSide}));track.receiveShadow=true;scene.add(track);
   }
   function setLine(value,colorMode=mode,palette=pal){
     disp=value;mode=colorMode;pal=palette;remove(line);line=null;
@@ -49,12 +55,12 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function makeCar(spec,ghost){
     if(!spec)return null;
     const group=buildCarModel(spec,{color:ghost?pal.colors.ghost:pal.colors.accent,opacity:ghost?0.4:1});
-    group.visible=false;group.traverse(o=>{if(o.isMesh){o.renderOrder=ghost?4:3;if(ghost)o.material.depthWrite=false;}});
+    group.visible=false;group.traverse(o=>{if(o.isMesh){o.renderOrder=ghost?4:3;o.castShadow=!ghost;if(ghost)o.material.depthWrite=false;}});
     scene.add(group);return group;
   }
   function setCars(specs){removeCar(car);removeCar(ghostCar);car=makeCar(specs.car,false);ghostCar=makeCar(specs.ghost,true);}
   function setTheme(value){
-    pal=value;scene.background.setStyle(pal.colors.paper);
+    pal=value;scene.background.setStyle(pal.colors.sky3d);
     if(track){
       if(track.geometry.attributes.color)recolor(track,trackRibbon(T,stationFrames(T),{heightColors:true,pal}).color);
       else track.material.color.setStyle(pal.colors.track);
@@ -65,7 +71,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   }
   function resize(rect,dpr){renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
   function frame(input){
-    if(car){car.visible=!!input.car;if(input.car)placeCar(car,input.car);}
+    if(car){car.visible=!!input.car;if(input.car){placeCar(car,input.car);sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}}
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
     const v=input.view;camera.position.fromArray(v.position);camera.up.fromArray(v.up);target.fromArray(v.target);camera.lookAt(target);
     if(camera.fov!==v.fovDeg||camera.near!==v.near||camera.far!==v.far){camera.fov=v.fovDeg;camera.near=v.near;camera.far=v.far;camera.updateProjectionMatrix();}
@@ -76,7 +82,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function info(){return {depth,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,programs:renderer.info.programs.length};}
   function dispose(){
     canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',lost);
-    remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);renderer.dispose();
+    remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);sun.shadow.dispose();renderer.dispose();
   }
   return {setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
 }
