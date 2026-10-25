@@ -14,7 +14,8 @@ export default async ctx=>{
     const original=HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext=function(type,...args){return type==='webgl2'?null:original.call(this,type,...args);};
     const before=q('#view').toDataURL();q('#zView').click();
-    for(let i=0;i<100&&!S.view3dMsg;i++)await wait(50);await wait(100);
+    // The fallback needs the three import to fail over, seconds on a loaded machine: wait for it (60 s cap), not 5 s.
+    for(let i=0;i<1200&&!S.view3dMsg;i++)await wait(50);await wait(100);
     const missingWebgl=S.view==='2d'&&q('#status').textContent.includes('3D off:')&&!S.frameErr;
     S.animT+=2;await wait(100);const mapAlive=q('#view').toDataURL()!==before;
     HTMLCanvasElement.prototype.getContext=original;

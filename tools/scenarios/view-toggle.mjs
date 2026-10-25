@@ -13,6 +13,7 @@
 // The 3D toggle button itself is new pixels, so it is made invisible (visibility, not display: the zoom column keeps its
 // layout) for those screenshots. Without VIEW_TOGGLE_BASELINE the comparison is skipped and says so.
 import { readFileSync, writeFileSync } from 'node:fs';
+import { diffPng } from '../shot.mjs';
 
 export const options = {webgl:true};
 
@@ -52,6 +53,9 @@ export default async ({ run, sleep, call }) => {
   if (BASE) for (const w in shots) {
     const base = readFileSync(`${BASE}-${w}.png`);
     checks['unchanged2d' + w] = base.equals(shots[w]); seen['bytes' + w] = { baseline: base.length, now: shots[w].length };
+    // On a mismatch keep the evidence: the actual image next to the baseline, and how many pixels differ.
+    if (!checks['unchanged2d' + w]) { const path = `${BASE}-${w}-actual-${Date.now()}.png`; writeFileSync(path, shots[w]);
+      seen['mismatch' + w] = { actual: path, fraction: await diffPng({ run }, base, shots[w], { threshold: 0 }) }; }
   } else notes.unchanged2d = 'skipped: set VIEW_TOGGLE_BASELINE=<prefix of the pngs saved on main> (see the header)';
 
   // ---------- toggling: #view3d fills the stage, #view becomes the inset, S.cam survives the round trip
