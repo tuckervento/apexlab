@@ -1,11 +1,11 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave C: 1.1–1.5)_
+_Last updated: 2026-10-25 (1.7)_
 
 ## Snapshot
 
-14 of 33 tasks done (Waves A–C), all merged to `main`; on `main` 320/320 tests pass and the physics hash is current.
-Next: 1.7.
+15 of 33 tasks done (Waves A–C and 1.7), all merged to `main`; on `main` 320/320 tests pass and all 8 scenarios exit
+0. Next: 1.8, alongside 3.1–3.4.
 
 ## Completed
 
@@ -54,10 +54,22 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 - [x] 1.5 chase camera (Codex, one follow-up to its tests) — done 2026-10-25 — `3d/1.5` `f8807b3` — verified: full
   suite 289/289; coordinator's teeth (ignore `input.sample`) fail 2/4, the cross-frame-rate comparison among them
   (0.95 m against a 1 cm tolerance).
+- [x] 1.7 scene module (Codex; browser checks run by the coordinator) — done 2026-10-25 — `3d/1.7` `60e3293` (plus
+  `e4031f2`, PLAN.md checkpoint) — verified:
+  - `node tools/cdp.mjs tools/scenarios/scene3d.mjs` exits 0 twice, the second run comparing against the committed
+    `tools/scenarios/ref/scene3d.png` (fraction 0). All 10 checks are true: depth `reversed`, 5066 triangles equal to
+    the 5066 expected, geometries 9 over 300 frames and 5 rebuilds, theme stable, forced log depth, context
+    lost/restored.
+  - The reference image shows the circuit and speed-coloured line from the orbit view. A one-off chase render (not
+    committed) shows the car's body, cabin and wheels on the line.
+  - Coordinator's teeth: no `geometry.dispose()` makes the geometry count grow 10→14 (`rebuildsStable` false), and
+    `setTrack` building nothing fails `triangles`, `reference` and `logFallback`.
+  - Full suite 320/320 and all 8 scenarios exit 0.
 
 ## In Progress
 
 ## Blocked
+
 
 
 
@@ -143,7 +155,25 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
     "behind" check used a pose that didn't move. The tests now update `input.car` every frame, and a moving-car bound
     is derived as `hypot(8, 3) + 2·vmax/8 + 2 m` (26.8 m flat; observed 24.6 m). The implementation was unchanged.
 
+- 2026-10-25, 1.7:
+  - **Codex can't run the headless driver.** In its `workspace-write` sandbox `serve.mjs` fails with
+    `listen EPERM: operation not permitted 127.0.0.1:8774`. Codex reported it and marked the browser checks
+    "DID NOT RUN" (correct); the coordinator ran them. Browser-verified tasks therefore split: Codex implements, the
+    coordinator runs the scenarios.
+  - **three's `reversedDepthBuffer` falls back to the *default* depth buffer** without `EXT_clip_control`, not to the
+    log one (`three.module.js:2426`). `scene.js` checks the extension itself, and `forceLogDepth` tests the fallback.
+  - three already flips `polygonOffset` for a reversed depth buffer (`three.module.js:10526`), so the line's negative
+    offset is correct in both modes.
+  - `frame()` isn't strictly allocation-free: `placeCar` → `dataToThree` makes two 3-element arrays per frame. Accepted;
+    the rule is there to prevent GC pauses, and that's negligible.
+  - `onLost` fires for both `webglcontextlost` and `webglcontextrestored`, so 1.8 must check `event.type`.
+  - The API revision checkpoint was done by the coordinator, not by 1.7 (it needs plan-wide context): PLAN.md's
+    Context now records the real API and the camera `input.sample` extension. The Scope lines of 2.6, 3.4, 3.5 and 3.6
+    are updated (3.5 needs a new `setHeightScale`, 3.6 a new `project()`), and the four stale `PLAN-3D.md`
+    self-references now read `PLAN.md`.
+  - `CLAUDE.md`'s Views entry was rewritten by the coordinator for clarity.
+
 ## Next Up
 
-- 1.7 scene module (fan-in: needs 0.5 and 1.1–1.4; renders in a browser, so it's the first Codex task to check whether
-  Codex can run the headless driver). After it, 1.8, and the P3 tasks 3.1–3.4 that depend only on 1.7.
+- 1.8 app integration (needs 0.1, 1.5, 1.6, 1.7; browser-verified, so Codex implements and the coordinator runs the
+  scenarios). In parallel: 3.1, 3.2, 3.3 and 3.4, which each need only 1.7.
