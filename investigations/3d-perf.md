@@ -21,7 +21,7 @@ including the fields above, start/end timestamps, mode, `mixed` (mode changed), 
 `window.__perf.flush()` closes and logs the current window early and starts a fresh one.
 Without the flag there is no collector, observer or sample array; the frame hook is a single boolean check.
 
-## Headless measurement — pending coordinator run
+## Headless measurement
 
 Run `node tools/cdp.mjs tools/scenarios/perf3d.mjs`.
 The scenario navigates again to `/?perf` locally, leaving the shared driver unchanged. It waits for boot and
@@ -34,11 +34,15 @@ It checks ≥ 30 running frames, matching unmixed mode, and no frame error (`S.f
 
 | Mode | Running p50 ms | Running p95 ms | Running long tasks | Running long-task ms | Running frames | Idle frames / p50 / p95 ms |
 |---|---|---|---|---|---|---|
-| 2D | | | | | | |
-| 3D overview | | | | | | |
-| 3D chase | | | | | | |
+| 2D | 66.7 | 100.1 | 0 | 0 | 154 | 1 / 66.6 / 66.6 |
+| 3D overview | 133.4 | 166.7 | 81 | 11663 | 81 | 2 / 133.3 / 133.3 |
+| 3D chase | 133.3 | 166.7 | 83 | 11722 | 82 | 2 / 133.3 / 166.8 |
 
-Browser checks: **DID NOT RUN** in the implementation sandbox.
+Run by the coordinator on 2026-10-25 on merged `main` after Wave F batch 1 (`d3ee86d`): headless Chrome 155.0.8059.85
+with `--use-angle=swiftshader`, macOS, Node v26.12.1, viewport 1280×800 at DPR 1, ~12 s per mode, long-task observation
+supported. In 3D nearly every frame is a long task (81 of 81 running frames in overview): software rasterisation makes
+each render ~130 ms, so these numbers say nothing about the main thread's share on a GPU. They only show the
+measurement works end to end; the verdict rests on Q's hardware numbers below.
 
 ## Q's hardware procedure
 
