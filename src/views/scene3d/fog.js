@@ -5,10 +5,10 @@ export function worldSize(position){
   return Math.max(1,Math.hypot(x1-x0,z1-z0));
 }
 
-export function fogRange(position,size,view,out){
+export function fogRange(position,size,view,out,e=1,base=0){
   const p=view.position,t=view.target,dx=t[0]-p[0],dy=t[1]-p[1],dz=t[2]-p[2],length=Math.hypot(dx,dy,dz);
   let depth=0;
-  for(let j=0;j<position.length;j+=3)depth=Math.max(depth,((position[j]-p[0])*dx+(position[j+1]-p[1])*dy+(position[j+2]-p[2])*dz)/length);
+  for(let j=0;j<position.length;j+=3)depth=Math.max(depth,((position[j]-p[0])*dx+(base+(position[j+1]-base)*e-p[1])*dy+(position[j+2]-p[2])*dz)/length);
   // Leave room to fade on small circuits in car cameras as well as fitted overviews.
   out.far=Math.min(view.far,2*size);
   out.near=Math.min(depth+0.1*(out.far-depth),0.99*out.far);

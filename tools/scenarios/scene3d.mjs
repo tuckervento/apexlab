@@ -39,9 +39,11 @@ export default async ctx=>{
       +[startBand(S.T),gantry(S.T),markerPosts(S.T,[...boardPlacements(S.T,findCorners(S.T)),...signPlacements(S.T,findCorners(S.T))]),labelPlanes(boardPlacements(S.T,findCorners(S.T))),labelPlanes(signPlacements(S.T,findCorners(S.T)))].reduce((n,m)=>n+m.index.length/3,0);
     const first=api.info();for(let i=0;i<300;i++)api.frame(input);const afterFrames=api.info();
     const rebuilds=[];for(let i=0;i<5;i++){api.setTrack(S.T);api.frame(input);rebuilds.push(api.info().geometries);}
-    const beforeTheme=api._debug.scene.children.filter(o=>o.geometry).map(o=>o.geometry);
+    // Every geometry in the scene (meshes sit in groups since 3.5), so a theme switch that rebuilds any of them fails.
+    const geometries=()=>{const out=[];api._debug.scene.traverse(o=>{if(o.geometry)out.push(o.geometry);});return out;};
+    const beforeTheme=geometries();
     api.setTheme(pal);api.frame(input);
-    const themeStable=api._debug.scene.children.filter(o=>o.geometry).every((o,i)=>o.geometry===beforeTheme[i]);
+    const afterTheme=geometries(),themeStable=beforeTheme.length>0&&afterTheme.length===beforeTheme.length&&afterTheme.every((g,i)=>g===beforeTheme[i]);
     // Ground past the shadow camera's far plane renders as shadowed: follow the light from each corner of the shadow box
     // down to the ground plane (an oblique sun makes flat ground deeper across the box) and compare with far.
     const shadowBox=sc=>{const sun=sc.children.find(o=>o.isDirectionalLight),cam=sun.shadow.camera,e=cam.matrixWorld.elements,

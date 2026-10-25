@@ -160,6 +160,13 @@ function syncPair3d(){
   if(S.cam3d.mode==='pair'&&pairGhost!==S.ghost)S.cam3d.state=null;
   pairGhost=S.ghost;
 }
+const heightModes=new Set(['overview','ortho']);
+function syncHeight3d(){
+  const shown=heightModes.has(S.cam3d.mode),slider=$('#heightScale3d'),e=shown?Number(slider.value):1;
+  $('#height3d').hidden=!shown;
+  $('#heightValue3d').textContent=slider.value+'×';
+  if(applied3d.height!==e){S.scene3d.setHeightScale(e);applied3d.height=e;dirty3d=true;}
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -173,6 +180,7 @@ function draw3d(dt){
     if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null,trace:input.dyn?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
     syncTrace3d(input);
     syncPair3d();
+    syncHeight3d();
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
     if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv','heli','pair'].includes(S.cam3d.mode)))initCamera(input);
     else{

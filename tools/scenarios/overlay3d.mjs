@@ -69,7 +69,7 @@ export default async ctx=>{
     const info=S.info;send({type:'setCar',params:{...S.P,mass:S.P.mass+20},resume:false});await wait(()=>S.info!==info);await wait(()=>S.dynStale);await frames();
     const staleClears=!scene.getObjectByName('failMarker');
     const old=S.T,slider=q('#f-hills');slider.value=40;slider.dispatchEvent(new Event('input',{bubbles:true}));await wait(()=>S.T!==old);await frames();
-    const road=scene.children.find(o=>o.isMesh&&o.receiveShadow&&o.material.vertexColors);
+    const road=scene.getObjectByName('road'); // meshes sit in the height group since 3.5
     return {dragOrbits,markerAtFail,markerMemory,staleClears,heightColors:!S.T.flat&&!!road?.geometry.attributes.color,fail:fail??null,
       note:fail?null:'Centreline dynamic check passed cleanly; a failing setup still needs coordinator verification.'};
   })()`);
