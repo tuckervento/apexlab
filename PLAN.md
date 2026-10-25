@@ -143,6 +143,12 @@ every not-yet-started P2–P5 task name the real functions and fields.
     before the render-skip key. Streaks: `frame({..., streaks: {speed, tAnim, on, reducedMotion}})`, one
     `InstancedMesh`, toggled from `#streaksOn3d` in `#controls3d` for chase, heli, pair and TV.
   - `#view3d` takes focus for the free-fly keys: no browser ring, a 1 px accent inset under `:focus-visible`.
+- **Wave G 4.2 (done).** Each wheel's spin child now holds a four-spoke face (`'wheelFace'`) and a hidden flat disc
+  (`'wheelBlur'`), sharing one geometry across the wheels. `wheels.js` gives `wheelBlurred(speed, radius, replay,
+  {spokes, frameDt = 1/60})`, which is true when `(v/r)·replay·frameDt > π/spokes`, and `applyWheelBlur(group, on)`.
+  The scene takes `frame({..., wheelBlur: {car, ghost, trace}})`, with the flags from `syncWheels3d()` in `main.js`;
+  pausing is never blurred, and the static disc stays under reduced motion. The lap car is drawn twice per frame
+  (main and shadow pass), so triangle budgets count it twice.
 
 ## Non-Goals
 

@@ -1,14 +1,22 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave F batch 3)_
+_Last updated: 2026-10-25 (Wave G, 4.2)_
 
 ## Snapshot
 
-31 of 33 tasks done (Waves A–F), all merged to `main`, with the batch 1 follow-ups and the layout job. On `main`,
-427/427 tests pass and all 24 scenarios exit 0, run twice, every reference at fraction 0. `view-toggle` is
-byte-identical to pre-Wave-E `main` in 2D. The 3D view has eight cameras (overview, chase, bonnet, free, heli, pair,
-Map, TV), attitude, height exaggeration, overlays, a trace car, speed-linked FOV, g response and shake, and speed
-streaks, all off under reduced motion. Next: Wave G, 4.2 (wheel blur) then 6.1 (documentation close-out).
+32 of 33 tasks done (Waves A–F and 4.2), all merged to `main`, along with the batch 1 follow-ups and the layout job.
+On `main`:
+- 430/430 tests pass;
+- all 25 scenarios exit 0 in two full runs, every reference at fraction 0;
+- `view-toggle` is byte-identical to pre-Wave-E `main` in 2D.
+
+The 3D view has:
+- eight cameras: overview, chase, bonnet, free, heli, pair, Map and TV;
+- attitude, height exaggeration, overlays and a trace car;
+- speed-linked FOV, g response and shake, and speed streaks, all off under reduced motion;
+- spoked wheels that turn into a blurred disc past the per-frame Nyquist limit.
+
+Only 6.1 (documentation close-out) remains.
 
 ## Completed
 
@@ -153,8 +161,22 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   focus; `99371ac` view3d; references `c6d3f49`): suite 427/427; all 24 scenarios exit 0 in two full passes, every
   reference at fraction 0; 14 changed or new images reviewed; `git diff eed5328 HEAD` over physics, goldens,
   playback, `prototype/` and `vendor/` is empty.
+- [x] 4.2 wheel blur (Codex; scenario fixes by the coordinator) — done 2026-10-25 — `3d/4.2` `dfa8962`, merge `841beac`,
+  references `ec6b684` — verified:
+  - suite 430/430 on the branch;
+  - coordinator's teeth: a threshold at the full spoke spacing fails 1 test, and a no-op `applyWheelBlur` fails 1
+    test; in `wheels3d` the same no-op exits 1 with `straightDisc`, `blurReference` and `wheelImagesDiffer` false;
+  - `wheels3d.mjs` all true over three runs (generate plus two compares), references at fraction 0. At a threshold
+    of 15.55 m/s it shows the disc at 12× on a 47.3 m/s straight and spokes at 1× in an 11.5 m/s corner. The geometry
+    count holds at 17. The side-view shots of the same pose differ by 2.0% of pixels;
+  - `scene3d` triangles: expected = rendered = 10770;
+  - side views of both sides, in both states, reviewed;
+  - on merged `main`: all 25 scenarios exit 0 in two full passes, every reference at fraction 0; 8 regenerated images
+    reviewed; `git diff 4a2d5c4 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
 
 ## In Progress
+
+- Wave G: 6.1 documentation close-out (coordinator), started 2026-10-25; gated by Q's review of the doc diff.
 
 ## Blocked
 
@@ -403,7 +425,26 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 - Open for Q (cosmetic): with reduced motion on, the camera `<select>` widens to fit "Bonnet (off: reduced motion)";
   Streaks isn't offered in bonnet (4.3 listed chase, heli, pair and TV; bonnet ran in parallel). Still open: the 3.6
   label-position check; pair framing ignores the inset; worktree cleanup.
+- **4.2 wheel faces (Q approved):** the wheels were plain 10-sided cylinders in one colour, so nothing could strobe and
+  PLAN's "spoked wheel" didn't exist. 4.2 changed `car.js` (a 1.3 file): each spin child now has a four-spoke face and
+  a hidden disc. The threshold is `(v/r)·replay/60 > π/4`, as Q approved. For the GT racer (r 0.33 m) that is 15.5 m/s
+  (56 km/h), so **at 1× the disc shows for most of the lap** and spokes only in slow corners. That is physically right
+  (a 4-spoke wheel aliases past it at 60 fps), but it is more than §7.2's "strobing at 4–12×" suggests; told to Q, no
+  change asked.
+- **4.2 `scene3d` triangle count:** the formula counted the cars twice (lap car and ghost), but the renderer draws them
+  three times: the lap car again in the shadow pass (only it casts a shadow). The coordinator proved this by tallying
+  `renderBufferDirect` per pass. The 1.7 formula predates the shadows, and PLAN's 5% tolerance hid the extra 184
+  triangles (2%) until the wheel faces made them 568 (5.6%). It now counts `3*carTriangles`; expected = rendered
+  exactly.
+- **4.2 scenario fixes by the coordinator:**
+  - `wheels3d`'s reference shots were from chase, where the wheel faces are edge-on; both images were identical and
+    blind to the feature (the prompt's mistake). They now show one pose from the side, plus a check that the two shots
+    differ.
+  - Its state loop waited on the visibility it was testing, so a broken swap timed out as a driver error (exit 2). It
+    now waits on the pose only and has a 60 s page-side limit, so the same mutation exits 1 with named checks.
+- `webgl2` (the driver self-test) always exits 1 under `APEX_UPDATE_REFS=1`: it asserts that a second compare doesn't
+  write and that a shifted image fails, and update mode writes every compare. Ignore it in update passes.
 
 ## Next Up
 
-- Wave G: 4.2 (wheel blur; needs 2.6, done), then 6.1 (documentation close-out; needs everything, so last).
+- Wave G: 6.1 (documentation close-out; needs everything, so last). It stops for Q's review of the doc diff.
