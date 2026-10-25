@@ -1,7 +1,8 @@
 # Simple car controls: findings and recommendations
 
-A proposal for README TODO #9 ("simple" controls that map to the full configurables), not yet started. File:line
-references are as of commit `b12517d` (2026-10-24); re-check them when picking this up. Online copy (same content, with
+**Done** (README TODO #9, 2026-10-24): steps 1 and 2 landed; `ARCHITECTURE.md` §7 has the state shape and
+`tools/scenarios/simple.mjs` checks the panel. The proposal and decisions below are kept for the record. File:line
+references are as of commit `b12517d` (2026-10-24). Online copy (same content, with
 the chart drawn): <https://claude.ai/artifact/Uu4HgKxXom3SUE9qYCkY52>.
 
 ## Summary
@@ -183,4 +184,4 @@ For step 2 (UI):
 | Gearbox knob on an EV | hidden |
 | Switching Type on a preset | fine to use the preset's unused fields (EV saloon as ICE becomes a 1-gear car) |
 | Weight and Downforce moving the gearing | fine |
-| An Advanced edit of a knob's field | **open, needs a design:** Q's direction is per knob, so the knobs whose fields were edited by hand grey out (stop applying) rather than the whole page detaching. Question to settle: the gearing fields (`vTopG`, `v1`, `evMax`, `evBase`) come from Power, Weight and Downforce together, so a hand-edited top gear would grey all three; and how a greyed knob comes back (reset to base?) |
+| An Advanced edit of a knob's field | **decided:** fields set by hand sit on top of the knobs (`S.manual`); a knob whose fields are all hand-set greys out, one with some is marked, each with ↺; hand-set gearing greys no knob and has its own note; a new base clears hand edits. Was **open, needs a design:** Q's direction is per knob, so the knobs whose fields were edited by hand grey out (stop applying) rather than the whole page detaching. Question to settle: the gearing fields (`vTopG`, `v1`, `evMax`, `evBase`) come from Power, Weight and Downforce together, so a hand-edited top gear would grey all three; and how a greyed knob comes back (reset to base?) |

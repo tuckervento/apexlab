@@ -14,7 +14,7 @@ This document describes the current code (physics, solver, views and app in ES m
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
   - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
   - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
-  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `telemetry` (live readout, map-tag text), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
+  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `telemetry` (live readout, map-tag text), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`), `sliders` (the car slider table), `simple` (simple car controls: base car and knobs → `CarParams`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
   - `index.html` — markup and CSS, plus `<script type="module" src="./src/app/main.js">`.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
 - **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
@@ -66,7 +66,7 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 
 ### 3.3 App (everything else)
 
-The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core the app uses only `genCtrl`, `genElev` and constants (`G`; `src/app/simple.js`, the simple-controls knob mapping, also reads `RHO`, `ETA` and `CRR`); the views import nothing from core.
+The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` (always `carFor(simple, manual)`: a base car, the simple knobs, and fields set by hand in Advanced; §7) and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core the app uses only `genCtrl`, `genElev` and constants (`G`; `src/app/simple.js`, the simple-controls knob mapping, also reads `RHO`, `ETA` and `CRR`); the views import nothing from core.
 
 - `setCar`/`setTrack` are coalesced: one in flight per kind, and only the latest pending one is sent next, so a slider or handle drag can't queue up ~60 ms rebuilds.
 - A snapshot never steps back to an older car or track, and a new track is swapped in together with its first snapshot (stations change with the track).
@@ -216,6 +216,23 @@ The check runs on the line the solver last published, the one on screen, and its
   mu: number, sens: number, slipPk: deg
 }
 ```
+
+### Simple controls (app only; `src/app/simple.js`)
+
+The car panel's Simple page edits `CarParams` through a base car and seven knobs; nothing below the app layer sees them,
+and run files store only the 25 fields.
+```
+S.simple = { base: { name, car },      // a preset ({name, car: CARS[name]}) or a loaded run's car ('Loaded: …')
+             weight, power,            // % from the base (±25, ±50)
+             tyre, gearbox,            // 'base' or a compound / gearbox
+             downforce, balance,       // CL·A offset (m²), balance −1…1 (understeer…oversteer)
+             pt, drive }
+S.manual = { field: value, … }         // CarParams fields set by hand in Advanced
+S.P      = carFor(S.simple, S.manual)  // deriveParams(S.simple) with S.manual on top
+```
+Centred knobs give the base back bit for bit (the clamp to the slider ranges widens to the base's own value). A knob
+whose `KNOB_FIELDS` are all in `S.manual` is greyed (`knobStates`), one with some is marked; the gearing (`GEARING`)
+follows Power, Weight and Downforce as a side effect, so a hand-set gear greys none. Brake bias stays the base car's.
 
 ### `CarSpec` (`car.spec`, SI; built by `carSpec`)
 
