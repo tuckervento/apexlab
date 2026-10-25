@@ -17,6 +17,10 @@ export default async ({ run }) => run(`(async () => {
       .every(([k, f]) => q(k).compareDocumentPosition(q(f)) & Node.DOCUMENT_POSITION_FOLLOWING);
   checks.typeShownOnce = !q('#seg-pt') && !q('#seg-drive') && !!q('#ks-pt') && !!q('#ks-drive') && !q('#carMode');
   checks.bootIsBase = same(S.P, CARS['GT racer']) && q('#ks-tyre [data-v=base]').textContent === 'Base';
+  checks.knobLabels = q('#k-tyre .ctl-label').textContent === 'Compound' && q('#k-downforce label').textContent === 'Downforce offset'
+    && q('#ko-downforce').textContent === '±0.00 m²';
+  const bg = e => getComputedStyle(e).backgroundColor; seen.knobsBg = bg(q('.knobs')); seen.panelBg = bg(q('#carSection'));
+  checks.knobsStandOut = seen.knobsBg !== seen.panelBg && getComputedStyle(q('.knobs')).borderLeftWidth === '3px';
 
   checks.presetsIdentical = true;
   for (const n of Object.keys(CARS)) { pick(n); await wait(400); if (!(same(S.P, CARS[n]) && +q('#f-mass').value === CARS[n].mass)) { checks.presetsIdentical = false; seen.presetFail = n; } }

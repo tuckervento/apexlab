@@ -126,7 +126,8 @@ function baseOptions(){
 }
 const signed=(v,d=0)=>(v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(d);
 const KNOB_OUT={weight:v=>`${signed(v)} % · ${Math.round(S.P.mass)} kg`,power:v=>`${signed(v)} % · ${Math.round(S.P.power)} kW`,
-  downforce:v=>`${signed(v,2)} · CL·A ${S.P.cla.toFixed(2)} m²`,balance:v=>v===0?'base':`${signed(v,2)} · toward ${v<0?'understeer':'oversteer'}`};
+  downforce:v=>`${signed(v,2)} m²`, // the CL·A itself is the slider just below
+balance:v=>v===0?'base':`${signed(v,2)} · toward ${v<0?'understeer':'oversteer'}`};
 // Knob positions and readouts, and which knobs are greyed by fields set by hand.
 function syncKnobs(){
   const st=knobStates(S.manual),n=Object.keys(S.manual).length;
