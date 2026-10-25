@@ -20,10 +20,12 @@ import * as ortho from '../views/scene3d/cameras/ortho.js';
 import * as tv from '../views/scene3d/cameras/tv.js';
 import * as heli from '../views/scene3d/cameras/heli.js';
 import * as pair from '../views/scene3d/cameras/pair.js';
+import * as bonnet from '../views/scene3d/cameras/bonnet.js';
+import * as free from '../views/scene3d/cameras/free.js';
 import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
 
-const CAMERAS={overview:orbit,chase,tv,heli,pair,ortho}; // S.cam3d.mode → camera module (each: init, step, view)
+const CAMERAS={overview:orbit,chase,tv,heli,pair,ortho,bonnet,free}; // S.cam3d.mode → camera module (each: init, step, view)
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed,refused,ghostDropped:updGhostUI});
 
@@ -56,7 +58,9 @@ function cameraInput(){
   };
   return {T:S.T,corners:S.corners,car:follow?trace:lap,lap,trace,dyn,sample,sampleGhost:t=>g&&g.t>0?smoothPose(g,raceClock([d.t,g.t],cameraStart+t)):null,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d(),width:$('#view3d').clientWidth,height:$('#view3d').clientHeight,tilt:Number($('#orthoTilt').value)};
 }
+let freeStart=null;
 function initCamera(input=cameraInput()){
+  if(S.cam3d.mode==='free'){input.view=freeStart;freeStart=null;}
   S.cam3d.state=CAMERAS[S.cam3d.mode].init(input);cameraStart=S.animT;cameraTrack=S.T;dirty3d=true;
 }
 function zoom3d(f){if(['overview','ortho'].includes(S.cam3d.mode)&&S.cam3d.state){CAMERAS[S.cam3d.mode].zoom(S.cam3d.state,f);dirty3d=true;}}
@@ -64,7 +68,7 @@ $('#orthoTilt').oninput=()=>{if(S.cam3d.mode==='ortho'&&S.cam3d.state){S.cam3d.s
 function fail3d(reason){
   S.view3dMsg=reason;setView('2d');
   if(S.scene3d){S.scene3d.dispose();S.scene3d=null;}
-  const old=$('#view3d'),fresh=old.cloneNode(false);old.replaceWith(fresh);bind3dInput(fresh);
+  const old=$('#view3d'),fresh=old.cloneNode(false);old.replaceWith(fresh);bind3dInput(fresh);bindFree3dInput(fresh);
   applied3d={};lastView3d='';lastAnim3d=null;S.cam3d.state=null;
 }
 async function open3d(){
@@ -79,7 +83,7 @@ async function open3d(){
     finally{opening3d=null;}
   })();
 }
-$('#camera3d').onchange=e=>{S.cam3d.mode=e.target.value;S.cam3d.state=null;setView(S.view);};
+$('#camera3d').onchange=e=>{freeStart=S.cam3d.state?CAMERAS[S.cam3d.mode].view(S.cam3d.state):null;S.cam3d.mode=e.target.value;S.cam3d.state=null;setView(S.view);};
 function bind3dInput(canvas){
   const points=new Map();let gesture=null;
   const active=()=>S.view==='3d'&&S.cam3d.mode==='overview'&&S.cam3d.state;
@@ -99,6 +103,25 @@ function bind3dInput(canvas){
   canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
 }
 bind3dInput($('#view3d'));
+
+function bindFree3dInput(canvas){
+  canvas.tabIndex=0;let drag=null;
+  const active=()=>S.view==='3d'&&S.cam3d.mode==='free'&&S.cam3d.state;
+  canvas.addEventListener('pointerdown',e=>{if(!active())return;canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);drag={id:e.pointerId,x:e.clientX,y:e.clientY};});
+  canvas.addEventListener('pointermove',e=>{if(!active()||drag?.id!==e.pointerId)return;free.look(S.cam3d.state,e.clientX-drag.x,e.clientY-drag.y);drag.x=e.clientX;drag.y=e.clientY;dirty3d=true;});
+  const end=()=>{drag=null;};canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('wheel',e=>{if(!active())return;e.preventDefault();free.move(S.cam3d.state,-e.deltaY*0.02);dirty3d=true;},{passive:false});
+  window.addEventListener('keydown',e=>{
+    if(!canvas.isConnected||!active()||e.ctrlKey||e.metaKey||e.altKey)return;
+    const el=document.activeElement;
+    if(el?.matches('input,select,textarea,[contenteditable]'))return;
+    if(el!==canvas&&!$('#stage').matches(':hover'))return;
+    const moves={KeyW:[1,0,0],ArrowUp:[1,0,0],KeyS:[-1,0,0],ArrowDown:[-1,0,0],KeyA:[0,-1,0],ArrowLeft:[0,-1,0],KeyD:[0,1,0],ArrowRight:[0,1,0],KeyQ:[0,0,-1],KeyE:[0,0,1]};
+    if(!moves[e.code])return;e.preventDefault();free.move(S.cam3d.state,...moves[e.code]);dirty3d=true;
+  });
+}
+bindFree3dInput($('#view3d'));
+
 let overlayTrack=null,overlayCorners=null,cornerLabels=[],tagCar=null,tagGhost=null,failApi=null,failResult=null,failStation=null;
 const overlayPoint={x:0,y:0,visible:false};
 function placeOverlays3d(){
@@ -179,11 +202,12 @@ function draw3d(dt){
     syncPair3d();
     syncHeight3d();
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
-    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv','heli','pair'].includes(S.cam3d.mode)))initCamera(input);
+    const carAttitude=stepAttitude3d(api,input,dtAnim,seek);
+    input.attitude=input.dyn&&S.traceShow==='dynamic'?carAttitude.trace:carAttitude.car;
+    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv','heli','pair','bonnet'].includes(S.cam3d.mode)))initCamera(input);
     else{
       CAMERAS[S.cam3d.mode].step(S.cam3d.state,input,dtAnim);
     }
-    const carAttitude=stepAttitude3d(api,input,dtAnim,seek);
     const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state),keyView=JSON.stringify(view);
     if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude});lastView3d=keyView;dirty3d=false;}
     placeOverlays3d();
@@ -237,8 +261,8 @@ function refreshColors(){S.pal=readColors(document.documentElement);if(S.scene3d
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshColors);
 new MutationObserver(refreshColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','class']});
 // Reduced motion (R9): the 3D cameras and effects read S.reducedMotion; one listener keeps it current.
-const motionQuery=matchMedia('(prefers-reduced-motion: reduce)');S.reducedMotion=motionQuery.matches;
-motionQuery.addEventListener('change',e=>{S.reducedMotion=e.matches;dirty3d=true;});
+const motionQuery=matchMedia('(prefers-reduced-motion: reduce)');S.reducedMotion=motionQuery.matches;setView(S.view);
+motionQuery.addEventListener('change',e=>{S.reducedMotion=e.matches;setView(S.view);dirty3d=true;});
 
 // ---------- drawing (views in src/views/map2d/)
 function draw(){
