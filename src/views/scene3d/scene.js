@@ -1,6 +1,8 @@
 import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
 import { stationFrames } from './frame.js';
 import { trackRibbon } from './meshes.js';
+import { kerbs, kerbColors } from './kerbs.js';
+import { findCorners } from '../map2d/map.js';
 import { lineRibbon, lineColors } from './line.js';
 import { buildCarModel, placeCar, disposeCar } from './car.js';
 
@@ -31,11 +33,25 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   }
   function recolor(mesh,colors){mesh.geometry.attributes.color.array.set(colors);mesh.geometry.attributes.color.needsUpdate=true;}
   function tintCar(group,color){if(group)group.traverse(o=>{if(o.isMesh&&o.name==='body')o.material.color.setStyle(color);});}
+  let kerbMesh=null,corners=[];
+  function disposeKerbs(){remove(kerbMesh);kerbMesh=null;}
+  function buildKerbs(){
+    disposeKerbs();corners=T?findCorners(T):[];if(!T)return;
+    kerbMesh=new THREE.Mesh(geometry(kerbs(T,stationFrames(T),corners,{pal})),
+      new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,
+        polygonOffset:true,polygonOffsetFactor:-0.5,polygonOffsetUnits:-0.5}));
+    kerbMesh.name='kerbs';kerbMesh.renderOrder=0.5;scene.add(kerbMesh);
+  }
+  function recolorKerbs(){
+    if(!kerbMesh)return;
+    const attr=kerbMesh.geometry.attributes.color;kerbColors(T,corners,attr.array,{pal});attr.needsUpdate=true;
+  }
   function setTrack(value){
-    T=value;remove(track);track=null;if(!T)return;
+    T=value;remove(track);track=null;if(!T){disposeKerbs();return;}
     const data=trackRibbon(T,stationFrames(T),{heightColors:!T.flat,pal});
     track=new THREE.Mesh(geometry(data),new THREE.MeshStandardMaterial({color:data.color?0xffffff:pal.colors.track,
       vertexColors:!!data.color,flatShading:true,side:THREE.DoubleSide}));scene.add(track);
+    buildKerbs();
   }
   function setLine(value,colorMode=mode,palette=pal){
     disp=value;mode=colorMode;pal=palette;remove(line);line=null;
@@ -59,6 +75,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
       if(track.geometry.attributes.color)recolor(track,trackRibbon(T,stationFrames(T),{heightColors:true,pal}).color);
       else track.material.color.setStyle(pal.colors.track);
     }
+    recolorKerbs();
     if(line)recolor(line,lineColors(disp,mode,pal));
     if(ghostLine)recolor(ghostLine,lineColors(g,'ghost',pal));
     tintCar(car,pal.colors.accent);tintCar(ghostCar,pal.colors.ghost);
@@ -76,6 +93,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function info(){return {depth,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,programs:renderer.info.programs.length};}
   function dispose(){
     canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',lost);
+    disposeKerbs();
     remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);renderer.dispose();
   }
   return {setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
