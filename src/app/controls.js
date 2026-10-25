@@ -39,6 +39,8 @@ export function setRunning(r,fresh){if(!S.editing)send(r?{type:'run',fresh:!!fre
 export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S.prog.converged?'Search again':'Run');}
 export function showError(msg){S.frameErr=S.frameErr||new Error(msg);runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
+// 2D map or 3D view ('2d' | '3d'; always 2D while editing the track). main.js sizes the map canvas for it on the next frame.
+export function setView(v){if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too
 // The Hills slider drives the heights while every control point has its generator height; after a height is set by
 // hand (or loaded from a run) it is disabled until Revert shape.
@@ -61,6 +63,7 @@ export function renderDerived(){
 export function trackArrived(){
   $('#trackRefused').hidden=true; // a circuit the worker accepted
   const T=S.T;S.corners=findCorners(T);if(S.fitPending&&S.cam.cw){fit();S.fitPending=false;}
+  if(S.camMini.cw)S.camMini.fit(T,S.width); // the 3D view's inset always shows the whole circuit
   $('#trackInfo').textContent=(T.L/1000).toFixed(2)+' km · '+S.corners.length+' turns'; // (#warn: main.js, with the lap's own warnings)
   $('#elevWrap').hidden=T.flat;$('#legElev').hidden=T.flat;
   if(!T.flat){let lo=Infinity,hi=-Infinity,gr=0;for(let i=0;i<T.N;i++){lo=Math.min(lo,T.z[i]);hi=Math.max(hi,T.z[i]);gr=Math.max(gr,Math.abs(T.dz[i]/T.ds));}
@@ -161,7 +164,9 @@ export function buildTrackUI(){
   const ph=$('#f-ph');ph.oninput=()=>{const p=S.ctrl[S.sel];if(!p)return;p[2]=+ph.value;for(const q of S.ctrl)q[3]=null;$('#o-ph').textContent=p[2].toFixed(1)+' m';$('#trackPreset').value='e';updHillsUI();rebuildTrack(true);};
   updHillsUI();
   const w=$('#f-width');w.oninput=()=>{S.width=+w.value;$('#o-width').textContent=S.width+' m';S.ghost=null;updGhostUI();rebuildTrack(true);};
-  $('#editBtn').onclick=()=>{S.editing=!S.editing;const ed=S.editing;$('#editBtn').classList.toggle('on',ed);$('#editBtn').textContent=ed?'Done editing':'Edit shape';$('#editbar').hidden=!ed;$('#view').classList.toggle('editing',ed);selectHandle(-1);if(ed)send({type:'pause'});else setRunning(true);};
+  $('#editBtn').onclick=()=>{S.editing=!S.editing;const ed=S.editing;$('#editBtn').classList.toggle('on',ed);$('#editBtn').textContent=ed?'Done editing':'Edit shape';$('#editbar').hidden=!ed;$('#view').classList.toggle('editing',ed);selectHandle(-1);
+    if(ed)setView('2d');$('#zView').disabled=ed; // the track is edited on the 2D map
+    if(ed)send({type:'pause'});else setRunning(true);};
   $('#revertTrack').onclick=()=>{S.ctrl=S.origCtrl.map(p=>p.slice());S.ghost=null;updGhostUI();selectHandle(-1);updHillsUI();rebuildTrack(true);};
 }
 // Run/pause, restart, ghost, colouring, tags, telemetry Δ basis, replay and dynamic-check buttons.

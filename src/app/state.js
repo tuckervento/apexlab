@@ -21,6 +21,9 @@ export const S={
   T:null, refT:0, refV:null, disp:null, prog:null, ghost:null, corners:[],
   running:false /* mirrors the worker's, from its progress events */, colorMode:'speed', tagMode:'speed' /* map tags: off, speed, g, grip */, deltaMode:'time' /* telemetry with a ghost: time, place (live) or max (lap maxima) */, replay:4, animT:0, editing:false, follow:false, followZ:7 /* closest follow zoom, px/m */, frameErr:null,
   hist:[], pal:null /* {colors, ramp} from the page's CSS */, cam:new Camera(), carPos:-1, carV:0,
+  // '2d' or '3d'; in 3D the 2D map is a corner inset drawn with camMini (fitted edge to edge: no overlays sit on it), and
+  // cam keeps its framing for the way back
+  view:'2d', camMini:Object.assign(new Camera(),{pads:()=>({padT:8,padB:8,padX:8})}),
   dynRes:null, dynStale:false, dynRunning:false,
 };
 export const $=s=>document.querySelector(s);

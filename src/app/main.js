@@ -4,7 +4,7 @@
 import { S, $ } from './state.js';
 import { send, sendState, connect, settled } from './client.js';
 import { bindButtons, bindRun, buildCarUI, buildTrackUI, carView, dynLap, fit, loaded, loadFailed, rebuildTrack, refused, renderDerived, renderDyn,
-  runLabel, selectHandle, setFollow, showError, trackArrived, updGhostUI, updHillsUI } from './controls.js';
+  runLabel, selectHandle, setFollow, setView, showError, trackArrived, updGhostUI, updHillsUI } from './controls.js';
 import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
@@ -16,19 +16,25 @@ connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,l
 
 // ---------- canvas + map input
 const cv=$('#view'),ctx=cv.getContext('2d'),cam=S.cam;
-function resize(){cam.resize(cv,$('#stage').getBoundingClientRect(),window.devicePixelRatio);}
+// In 3D the canvas is the inset, sized and fitted for S.camMini; cam isn't resized then, and gets the stage back on the way to 2D.
+function resize(){
+  if(S.view!=='3d'){cam.resize(cv,$('#stage').getBoundingClientRect(),window.devicePixelRatio);return;}
+  S.camMini.resize(cv,cv.getBoundingClientRect(),window.devicePixelRatio);if(S.T)S.camMini.fit(S.T,S.width);
+}
 const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy),zoomAt=(f,sx,sy)=>cam.zoomAt(f,sx,sy);
 // Following, zoom sets the closest the camera may go (S.followZ); draw() zooms out further to keep the ghost in view.
 // Zooming out scales the current zoom (visible at once); zooming in raises S.followZ (cam.z never exceeds it).
 const zoomFollow=f=>{S.followZ=Math.max(0.05,Math.min(40,(f<1?cam.z:S.followZ)*f));},FOLLOW_MARGIN=40;
-$('#zFollow').onclick=()=>setFollow(!S.follow);
+$('#zFollow').onclick=()=>setFollow(!S.follow);$('#zView').onclick=()=>setView(S.view==='3d'?'2d':'3d');
 $('#zIn').onclick=()=>S.follow?zoomFollow(1.5):zoomAt(1.5,cam.cw/2,cam.ch/2);$('#zOut').onclick=()=>S.follow?zoomFollow(1/1.5):zoomAt(1/1.5,cam.cw/2,cam.ch/2);$('#zFit').onclick=()=>{setFollow(false);fit();};
-cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),f=Math.exp(-e.deltaY*0.0015);if(S.follow)zoomFollow(f);else zoomAt(f,e.clientX-r.left,e.clientY-r.top);},{passive:false});
+// The inset (3D showing) takes no map input: a click on it goes back to 2D.
+cv.addEventListener('click',()=>{if(S.view==='3d')setView('2d');});
+cv.addEventListener('wheel',e=>{if(S.view==='3d')return;e.preventDefault();const r=cv.getBoundingClientRect(),f=Math.exp(-e.deltaY*0.0015);if(S.follow)zoomFollow(f);else zoomAt(f,e.clientX-r.left,e.clientY-r.top);},{passive:false});
 
 const ptrs=new Map();let drag=null,lastTap={t:0,idx:-1};
 function handleAt(sx,sy){let best=-1,bd=22;S.ctrl.forEach((p,i)=>{const d=Math.hypot(SX(p[0])-sx,SY(p[1])-sy);if(d<bd){bd=d;best=i;}});return best;}
 cv.addEventListener('pointerdown',e=>{
-  cv.setPointerCapture(e.pointerId);const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  if(S.view==='3d')return;cv.setPointerCapture(e.pointerId);const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
   ptrs.set(e.pointerId,{x:sx,y:sy});
   if(ptrs.size===2){const [a,b]=[...ptrs.values()];drag={type:'pinch',d:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};return;}
   const h=S.editing?handleAt(sx,sy):-1;
@@ -71,11 +77,12 @@ new MutationObserver(refreshColors).observe(document.documentElement,{attributes
 // ---------- drawing (views in src/views/map2d/)
 function draw(){
   const {disp,ghost,T}=S,rt=raceClock(ghost?[disp.t,ghost.t]:[disp.t],S.animT); // replay 0 (Pause) freezes the clock, not the car
-  const cs=disp.t>0?pose(disp,rt,S.info):null,gs=ghost&&ghost.t>0?pose(ghost,rt):null;if(S.follow&&cs)cam.frame(gs?[cs,gs]:[cs],S.followZ,FOLLOW_MARGIN);
+  const cs=disp.t>0?pose(disp,rt,S.info):null,gs=ghost&&ghost.t>0?pose(ghost,rt):null,mini=S.view==='3d'; // mini: the inset, with no tags or corner labels
+  if(S.follow&&cs&&!mini)cam.frame(gs?[cs,gs]:[cs],S.followZ,FOLLOW_MARGIN);
   // each car against the other at the same place (both lines index the track's stations; a track change clears the ghost)
   const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
   const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};
-  drawMap(ctx,cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,tags});
+  drawMap(ctx,mini?S.camMini:cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:mini?[]:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,tags:mini?null:tags});
   renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV',hills:!T.flat,mode:ghost?S.deltaMode:'time',carLap:disp,ghostLap:ghost});
   if(ghost)$('#liveGap').textContent=cs?fmtDelta(disp.tc[cs.station]-ghost.tc[cs.station],2)+' s':'—';
   if(cs){S.carPos=cs.station;S.carV=cs.speed;}else S.carPos=-1;
@@ -91,7 +98,7 @@ function showWarn(T,w){
 }
 
 // ---------- loop
-let lastTs=0,frameN=0;
+let lastTs=0,frameN=0,shownView='2d'; // shownView: the view the map canvas is sized for
 // The loop always re-schedules itself; an error pauses the search and shows on the page instead of freezing it.
 function frame(ts){
   try{frameBody(ts);}
@@ -104,6 +111,7 @@ function frame(ts){
 function frameBody(ts){
   if(S.frameErr&&S.running)S.frameErr=null;
   const dt=Math.min(0.1,(ts-lastTs)/1000||0);lastTs=ts;frameN++;
+  if(S.view!==shownView){shownView=S.view;resize();} // setView changed the layout: inset or full stage
   const {T,disp,prog:p,ghost}=S;
   const pin=$('#pinBtn'),unsettled=!settled();if(pin.disabled!==unsettled)pin.disabled=unsettled; // a change still being built: its ghost would be stale
   if(!T||!disp||!p)return; // nothing from the solver yet
