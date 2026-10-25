@@ -117,6 +117,23 @@ every not-yet-started P2–P5 task name the real functions and fields.
     `#dynOut`; `?perf` (`src/app/perf.js`, one call in `frameBody`).
   - The shadow camera's depth range (`fitShadow()` in `scene.js`) covers the whole shadow box down to the ground plane;
     `scene3d.mjs` and `world.mjs` check all four box corners.
+- **Wave F batch 2 and the layout job (2.2, 2.4, 2.6, 3.5, follow-ups; done; the coordinator updated the Scope lines
+  below).** What they added:
+  - Cameras: `CAMERAS={overview:orbit,chase,tv,heli,pair,ortho}`. The camera selector is now a **`<select
+    id="camera3d">`** (one `<option>` per mode; its `change` handler sets `S.cam3d.mode`, nulls the state and calls
+    `setView`); scenarios pick a camera by setting its `value` and dispatching `change`. The mode-specific controls
+    (`#trace3d`, `#height3d`, `#orthoControls`) and the select stack in one bottom-left column, `#controls3d`; a new
+    control goes in that column. `cameraInput()` also returns `sampleGhost(tAnim)`, `width`, `height` and `tilt`.
+  - Scene API: `frame({car, ghost, trace, view, attitude})` with `attitude = {car, ghost, trace}` (each an
+    `attitude.js` `view()` result, applied by `applyAttitude` in `car-attitude.js`); `frame()` renders with an
+    `OrthographicCamera` when `view.ortho` is set; `setHeightScale(e)` scales the `heightWorld` group (road, line,
+    ground, skirts, kerbs, markings, fail marker; panels and gantry stay rigid; the road mesh is named `road`) and the
+    car positions; `carRadii()`. Inside `frame()` the order is place cars, `frameHeights()`, `frameAttitude()`,
+    `frameCamera(view)`.
+  - App: per-car attitude state in `stepAttitude3d()` (`main.js`), re-inited with the camera; the trace car steers by
+    its recorded `steer`. The height slider shows for `heightModes` (`overview`, `ortho`); car cameras run at 1×.
+  - Scenarios: tolerant screenshot compares hid nondeterminism and a vacuous check; references are generated twice
+    and must compare at fraction 0, and meshes are found by name or `traverse`, never on the scene's top level.
 
 ## Non-Goals
 
@@ -376,7 +393,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
 
 - [ ] **2.3 — Bonnet and free-fly cameras**
   - Scope: `cameras/bonnet.js` is fixed rigidly to the smooth pose (plus attitude from 2.6 when present), with near
-    plane 0.1 m. Under reduced motion its `#camera3d` button is disabled with a note (§7.1). `cameras/free.js` is
+    plane 0.1 m. Under reduced motion its `#camera3d` `<option>` is disabled with a note (§7.1). The bonnet
+    view takes the car's cosmetic attitude from the lap car's state in `stepAttitude3d()` (`main.js`). `cameras/free.js` is
     user-driven fly (drag to look, wheel or keys to move) for inspection; its input needs handlers beside `bind3dInput`
     in `main.js`, which acts in overview only. Both are `S.cam3d.mode`s in the `CAMERAS` table in `main.js`.
   - Depends on: 1.8
@@ -507,7 +525,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
 
 - [ ] **4.2 — Wheel blur**
   - Scope: above a threshold of *screen* wheel speed (real × replay), swap the wheels for a blurred disc so wheels
-    don't strobe at 4–12× (§7.2). It is off under reduced motion only if it moves; a static disc is fine.
+    don't strobe at 4–12× (§7.2). It is off under reduced motion only if it moves; a static disc is fine. The wheel
+    spin child is the one `applyAttitude` (`car-attitude.js`) rotates.
   - Depends on: 2.6
   - Acceptance: a pure threshold function is tested, including that the same car speed at 1× and 12× lands on
     different sides of the threshold. A CDP debug accessor shows the disc at 12× on a straight and the spoked wheel at
@@ -515,7 +534,7 @@ every not-yet-started P2–P5 task name the real functions and fields.
 
 - [ ] **4.3 — Speed streaks**
   - Scope: instanced streak particles near the camera, with density and length from the car's real speed, behind an
-    effects toggle beside `#camera3d`. Off under reduced motion. No post-processing passes (Non-Goals).
+    effects toggle in the `#controls3d` column. Off under reduced motion. No post-processing passes (Non-Goals).
   - Depends on: 1.8
   - Acceptance: a pure spawn/length function is tested (zero at rest, monotone in speed, zero under reduced motion).
     In CDP, `renderer.info.memory.geometries` is constant while streaks run, and a chase screenshot at speed is within

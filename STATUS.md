@@ -5,11 +5,11 @@ _Last updated: 2026-10-25 (Wave F batch 2)_
 ## Snapshot
 
 28 of 33 tasks done (Waves A–E, plus Wave F's 1.9, 2.1, 2.2, 2.4, 2.6, 3.5, 3.6, 5.3), all merged to `main`, with
-the two batch 1 follow-ups (board backs, the tag in "Dynamic check" mode). On `main`, 414/414 tests pass and 20 of 21
-scenarios exit 0, every reference at fraction 0; the exception is `view3d`'s `phoneSelector` (the camera selector no
-longer fits a phone), which the layout job in progress fixes. `view-toggle` is byte-identical to pre-Wave-E `main` in 2D.
+the two batch 1 follow-ups (board backs, the tag in "Dynamic check" mode). On `main`, 414/414 tests pass and all 21 scenarios
+exit 0, every reference at fraction 0 (the 3D controls are a camera `<select>` and one stacked column since the layout
+job). `view-toggle` is byte-identical to pre-Wave-E `main` in 2D.
 The 3D view has six cameras (overview, chase, heli, pair, Map, TV), attitude, height exaggeration, overlays and a trace
-car. Next: the layout job, then Wave F batch 3 (2.3, 4.1, 4.3) on Q's go.
+car. Next: Wave F batch 3 (2.3, 4.1, 4.3) on Q's go.
 
 ## Completed
 
@@ -134,13 +134,13 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   `742bc85`; references `1a3deaf`): suite 414/414; 20 of 21 scenarios exit 0 with every reference at fraction 0 (the
   exception: `view3d` `phoneSelector`); all 23 changed or new images reviewed; board backs measured rigid at 3×;
   `git diff 515ec30 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
+- [x] 3D control layout (Q's option A; Codex) — done 2026-10-25 — `3d/layout` `3218117`, merged `e7361cf`, references
+  `2c9b47f` — verified: suite 414/414; all 21 scenarios exit 0 on `main`, every reference at fraction 0 (16 changed
+  images reviewed); `view3d`'s `phoneSelector` and new `desktopSelector` pass with camera, trace, height and tilt
+  controls all visible (phone column 260–398 px, clear of the inset at 413 px and the legend at 474 px). The old layout
+  failed `phoneSelector`.
 
 ## In Progress
-
-- The 3D control layout (Q chose option A): `#camera3d` becomes a `<select>`, and the camera, trace, height and tilt
-  controls stack in one bottom-left column; every scenario that picks a camera moves to the select, and `view3d`'s
-  phone check asserts the new layout with every control visible. Codex job in `../apexlab-wt/layout` (`3d/layout`,
-  from `1a3deaf`), started 2026-10-25. Batch 3 (2.3, 4.1, 4.3) follows on Q's go.
 
 ## Blocked
 
@@ -364,6 +364,14 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   `main` until the layout job lands, recorded rather than weakened), and the trace, height and tilt controls collided
   on the left. Option A: a `<select>` for the camera and one stacked control column.
 - Still open for Q: the 3.6 label-position direct check (not requested). Pair framing ignores the inset (minor).
+- Layout job (2026-10-25): Codex found that a mid-line `//` comment the coordinator had added inside `ortho3d.mjs`'s
+  page-script string commented out the rest of that line (its Fit click and settle), so the phone step had skipped
+  them; restored. Lesson: no `//` comments inside the one-line scenario script strings.
+- Intermittent failures (2026-10-25): in one full sequential sweep on a loaded machine (load ~8, Q running the app),
+  `view3d`'s `missingWebgl` and `view-toggle`'s `unchanged2d1280` failed once; both passed 8 of 9 re-runs.
+  `view3d` now waits up to 60 s (was 5 s) for the fallback message. `unchanged2d1280` couldn't be reproduced, so
+  `view-toggle` now saves the actual image and the differing-pixel fraction on a mismatch. Main suspect for next time:
+  its fixed `sleep(300)` after each viewport resize.
 
 ## Next Up
 
