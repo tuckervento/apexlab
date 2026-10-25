@@ -296,6 +296,37 @@ Separate `dynLap` into:
 
 ### 5.2 The race loop
 
+**Implementation update (2026-10-24, phase 2, `1b86bc0`):** the loop and the judge (§5.6) live in `src/race/`
+(`race.js`, `judge.js`; `src/race/README.md` lists every rule and option). `race(T, car, dc, line, v, options)` takes
+`dynLap`'s inputs and drives `laps` timed laps at constant grip on `createPlant` / `plantStep` / `observe`, with plant
+and driver state carried across laps.
+- **Start and timing.** Rolling start at `dynLap`'s straightest station. Timing starts at the first forward crossing
+  of a directed plane through line station 0. Each crossing is interpolated inside its 4 ms step.
+- **Drivers.** They get `init`, `step` and an optional `lap(state, summary)`. A summary's incidents are that lap's
+  only; formation incidents and their penalties go to lap 1. `obs.lap` is 0 in formation and 1..N in timed laps, and
+  `obs.incident` is 1 on the step after a reset.
+- **Judge.** It reads plant state and circuit geometry only:
+  - track-limit excursions (more than 0.5 m past the usable edge; every `warnings`-th costs `trackPenalty`);
+  - off (more than 3 m);
+  - spin (velocity more than 0.45 rad from the body heading or from the circuit tangent).
+- **Incidents.** `incidentPolicy: 'reset'` (default) puts the car `resetStations` ahead on the line, at
+  `resetSpeed` × plan, with the nominal state, and charges `incidentPenalty`. A reset that wraps past station 0
+  scores that crossing at the incident time. `'dnf'` ends the race at the first incident.
+
+The penalty values are provisional; decision 2 in §10 is still open. Differences from the plan below:
+
+- **Not in the physics hash yet** (§9 said phase 2 would add it). `src/race/` must join the rules hash before race
+  result files exist (§5.7, phase 6).
+- **No trace yet.** The trace bullet below is still to do.
+- **Timing is tied to the line's station 0,** not to the snapshot's `tc[0]`.
+- **A reset gains the track it skips,** which offsets part of its penalty. Measured: GT racer, Harrow Ring centreline
+  at 0.8 of the check's plan, a spin at station 776 of 783 (a slow corner, about 0.33 s per 4 m station). A 10-station
+  reset gained 3.4 s against its 5 s penalty. The default 3-station reset would gain about 1 s there (estimated from
+  the same per-station time, not run). Price this in when deciding §10 item 2.
+- **Verified:** `tests/race.test.mjs` (13 tests; lap 1 against a single `dynLap` measured 0.057 s apart, bound
+  0.1 s). `node tests/check-race-mutations.mjs` runs 12 deliberately broken copies, each failing its targeted test;
+  `node --test tests/` doesn't run it. Review: `reviews/2026-10-24-race-loop-review.md`.
+
 - **Continuous state across laps.** The car's state carries over a line crossing. Today each `dynLap` starts fresh
   from the nominal state.
 - **Start.** Rolling: placed on the line at the straightest station, as `dynLap` does, at the planned speed. Timing
@@ -408,6 +439,9 @@ pace manager's job: from estimate uncertainty, from near-misses (sideslip growth
 situation (lap 19 of 20 can risk more than lap 2).
 
 ### 5.6 The judge
+
+**Implemented in phase 2** (`src/race/judge.js`); see the update at the top of §5.2 for what was built and how it
+differs from this section.
 
 Rules read the plant's state only (§3):
 
@@ -576,7 +610,7 @@ broken on purpose (`APEX_SRC`).
 | Phase | Deliverable | Verify | Touches physics hash? |
 |---|---|---|---|
 | 1 | Plant/driver split; reference driver; `obs`/action interface; auto gearbox in the plant | Dynamic goldens, skidpad, parity untouched | Yes (refactor; regenerate the hash, goldens unchanged) |
-| 2 | Race loop at constant grip: continuous laps, rolling start, timing, judge, incident reset | Steady-state laps; scripted incident tests | Yes (`src/race/` joins the hash) |
+| 2 | Race loop at constant grip: continuous laps, rolling start, timing, judge, incident reset. **Done** (`1b86bc0`, §5.2) | Steady-state laps; scripted incident tests | Planned yes; **not yet**: `src/race/` joins before result files (phase 6) |
 | 3 | Per-axle grip scales in `gripTables` and `dynSetup` (a `buildCar` option) | Bit-identical at 1; direction tests | Yes; goldens unchanged |
 | 4 | Wear in the plant (slip power, wear, grip, cliff) with compound presets; slip-power colouring (`tyres.md` path 0) | Closed forms; monotonic wear; zero-rate identity | Yes; goldens unchanged while off |
 | 5 | Drivers D0, D1, D2; race goldens | §8 driver tests | Driver hashes only |

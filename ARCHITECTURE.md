@@ -11,6 +11,8 @@ This document describes the current code (physics, solver, views and app in ES m
 - **Layers** (migration steps 1–7 done):
   - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model and inverse dynamics), `plant` (integration and automatic gearbox), `observe` (scalar observations), `lap` (legacy `dynLap` orchestration), `check` (`DynCheck`). No DOM.
+  - `src/drivers/` — `reference` (the original controller behind the driver interface, §3), `index`. Outside the `PHYSICS` hash; hashed separately as `DRIVER`.
+  - `src/race/` — `race` (multi-lap race loop at constant grip), `judge` (plant-only race rules), `index`; rules in `src/race/README.md`. No DOM, no module-level mutable state. Node only for now (no solver command or UI) and not yet in either hash.
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
   - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
   - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
@@ -49,6 +51,15 @@ fresh scalar observations. Neither the plant nor observations import driver code
 `dynLap(..., keepTrace, driver?)` defaults to that driver; its legacy start, finish and driver-relative
 trouble tests remain unchanged. Driver initialization receives copies of the car, line and speed plan;
 per-step observations contain scalar copies, no references to plant state. This interface is not a JavaScript sandbox.
+
+`race(T, car, dc, line, v, options)` (`src/race/race.js`) runs several laps on the same plant and driver
+interface:
+- state carries across laps, from a rolling start;
+- lap times come from interpolated crossings of line station 0;
+- drivers may add an optional `lap(state, summary)` callback;
+- a plant-only judge (`judgeStep`) applies track limits, and off/spin incidents with a reset or DNF policy.
+
+Unlike `dynLap` it never reads the driver's plan. Design and status: `docs/race-mode.md` §5.2 and §5.6.
 
 `PHYSICS` hashes core, dynamics and solver source; `DRIVER` hashes the reference driver's own source.
 Both manifests live in `src/app/physics-version.js`, regenerated with
