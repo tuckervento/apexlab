@@ -14,6 +14,7 @@ import { dataToThree } from '../views/scene3d/frame.js';
 import { cornerAnchor } from '../views/scene3d/overlays.js';
 import { currentTrace, tracePoseAt, traceCars, traceTagPose, traceTagText } from './trace3d.js';
 import * as attitude from '../views/scene3d/attitude.js';
+import { wheelBlurred } from '../views/scene3d/wheels.js';
 import * as effects from '../views/scene3d/effects.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
@@ -204,6 +205,15 @@ function syncStreaks3d(input){
   streakInput3d.on=toggle.checked&&['chase','heli','pair','tv'].includes(S.cam3d.mode);
   streakInput3d.reducedMotion=S.reducedMotion;
 }
+const wheelBlur3d={car:false,ghost:false,trace:false};
+function syncWheels3d(api,input){
+  const radii=api.carRadii();
+  for(const name of ['car','ghost','trace']){
+    const p=name==='car'?input.lap:input[name],blur=wheelBlurred(p?.speed??0,radii[name],S.replay);
+    if(wheelBlur3d[name]!==blur)dirty3d=true;
+    wheelBlur3d[name]=blur;
+  }
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -219,6 +229,7 @@ function draw3d(dt){
     syncPair3d();
     syncHeight3d();
     syncStreaks3d(input);
+    syncWheels3d(api,input);
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
     const carAttitude=stepAttitude3d(api,input,dtAnim,seek);
     input.attitude=input.dyn&&S.traceShow==='dynamic'?carAttitude.trace:carAttitude.car;
@@ -229,7 +240,7 @@ function draw3d(dt){
     const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state);
     applyEffects3d(view,input,dtAnim);
     const keyView=JSON.stringify(view);
-    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude,streaks:streakInput3d});lastView3d=keyView;dirty3d=false;}
+    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude,streaks:streakInput3d,wheelBlur:wheelBlur3d});lastView3d=keyView;dirty3d=false;}
     placeOverlays3d();
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}
