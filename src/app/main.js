@@ -236,6 +236,9 @@ cv.addEventListener('pointerup',endPtr);cv.addEventListener('pointercancel',endP
 function refreshColors(){S.pal=readColors(document.documentElement);if(S.scene3d){S.scene3d.setTheme(S.pal);dirty3d=true;}}
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshColors);
 new MutationObserver(refreshColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','class']});
+// Reduced motion (R9): the 3D cameras and effects read S.reducedMotion; one listener keeps it current.
+const motionQuery=matchMedia('(prefers-reduced-motion: reduce)');S.reducedMotion=motionQuery.matches;
+motionQuery.addEventListener('change',e=>{S.reducedMotion=e.matches;dirty3d=true;});
 
 // ---------- drawing (views in src/views/map2d/)
 function draw(){
