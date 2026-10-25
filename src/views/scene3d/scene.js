@@ -6,6 +6,7 @@ import { trackRibbon, groundPlane, skirts, groundHeight } from './meshes.js';
 import { fogRange, worldSize } from './fog.js';
 import { kerbs, kerbColors } from './kerbs.js';
 import { lineRibbon, lineColors } from './line.js';
+import { applyAttitude } from './car-attitude.js';
 import { buildCarModel, placeCar, disposeCar } from './car.js';
 
 // forceLogDepth exercises the fallback even on GPUs with EXT_clip_control.
@@ -197,10 +198,13 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     tintCar(car,pal.colors.accent);tintCar(ghostCar,pal.colors.ghost);
   }
   function resize(rect,dpr){cssWidth=rect.width;cssHeight=rect.height;renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
+  function carRadii(){return {car:car?.userData.radius,ghost:ghostCar?.userData.radius,trace:traceCar?.userData.radius};}
+  function frameAttitude(a){if(car?.visible)applyAttitude(car,a?.car);if(ghostCar?.visible)applyAttitude(ghostCar,a?.ghost);if(traceCar?.visible)applyAttitude(traceCar,a?.trace);}
   function frame(input){
     frameTrace(input.trace);
     if(car){car.visible=!!input.car;if(input.car){placeCar(car,input.car);sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}}
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
+    frameAttitude(input.attitude);
     const v=input.view;camera.position.fromArray(v.position);camera.up.fromArray(v.up);target.fromArray(v.target);camera.lookAt(target);
     if(camera.fov!==v.fovDeg||camera.near!==v.near||camera.far!==v.far){camera.fov=v.fovDeg;camera.near=v.near;camera.far=v.far;camera.updateProjectionMatrix();}
     if(scene.fog)fogRange(track.geometry.attributes.position.array,size,v,scene.fog);
@@ -218,5 +222,5 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     setFailMarker(null);
     remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);sun.shadow.dispose();renderer.dispose();
   }
-  return {project,setFailMarker,setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
+  return {carRadii,project,setFailMarker,setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
 }
