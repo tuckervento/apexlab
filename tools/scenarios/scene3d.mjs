@@ -19,6 +19,8 @@ export default async ctx=>{
     const {smoothPose}=await import('/src/playback/pose.js');
     const {stationFrames}=await import('/src/views/scene3d/frame.js');
     const {trackRibbon}=await import('/src/views/scene3d/meshes.js');
+    const {findCorners}=await import('/src/views/map2d/map.js');
+    const {startBand,gantry,boardPlacements,signPlacements,labelPlanes,markerPosts}=await import('/src/views/scene3d/markings.js');
     const {lineRibbon}=await import('/src/views/scene3d/line.js');
     const {buildCarModel,disposeCar}=await import('/src/views/scene3d/car.js');
     const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;inset:0;width:800px;height:600px;z-index:99999';document.body.append(canvas);
@@ -29,7 +31,8 @@ export default async ctx=>{
     api.frame(input);
     const model=buildCarModel(S.P);let carTriangles=0;
     model.traverse(o=>{if(o.geometry)carTriangles+=o.geometry.index.count/3;});disposeCar(model);
-    const expected=trackRibbon(S.T,stationFrames(S.T),{pal}).index.length/3+2*lineRibbon(S.disp).index.length/3+2*carTriangles;
+    const expected=trackRibbon(S.T,stationFrames(S.T),{pal}).index.length/3+2*lineRibbon(S.disp).index.length/3+2*carTriangles
+      +[startBand(S.T),gantry(S.T),markerPosts(S.T,[...boardPlacements(S.T,findCorners(S.T)),...signPlacements(S.T,findCorners(S.T))]),labelPlanes(boardPlacements(S.T,findCorners(S.T))),labelPlanes(signPlacements(S.T,findCorners(S.T)))].reduce((n,m)=>n+m.index.length/3,0);
     const first=api.info();for(let i=0;i<300;i++)api.frame(input);const afterFrames=api.info();
     const rebuilds=[];for(let i=0;i<5;i++){api.setTrack(S.T);api.frame(input);rebuilds.push(api.info().geometries);}
     const beforeTheme=api._debug.scene.children.filter(o=>o.geometry).map(o=>o.geometry);
