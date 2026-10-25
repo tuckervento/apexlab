@@ -16,8 +16,9 @@ export function dynLap(T,car,dc,line,v,keepTrace,driver=referenceDriver){
   let idx=i0,prog=0,t=0,curG;
   const state=createPlant(car,{x,y,vx,vy,r,psi,delta,axF,ayF});
   // trace (every 6th step): position, speed v (=vx), line error e, time, station; and for playback (pose) the car's
-  // state: heading psi, vy, yaw rate r, steering delta, slip angles alf/alr, body accelerations ax/ay, gear, path length s
-  const trouble=[],tr=keepTrace?{x:[],y:[],v:[],e:[],t:[],st:[],psi:[],vy:[],r:[],delta:[],alf:[],alr:[],ax:[],ay:[],gear:[],s:[]}:null,stV=new Float64Array(N),stE=new Float64Array(N);
+  // state: heading psi, vy, yaw rate r, steering delta, slip angles alf/alr, body accelerations ax/ay, gear, path length s,
+  // and the track height z under the car (level cross-section: the centreline heights interpolated by the observed fraction)
+  const trouble=[],tr=keepTrace?{x:[],y:[],v:[],e:[],t:[],st:[],psi:[],vy:[],r:[],delta:[],alf:[],alr:[],ax:[],ay:[],gear:[],s:[],z:[]}:null,stV=new Float64Array(N),stE=new Float64Array(N);
   let maxOff=0,maxE=0,maxDB=0,maxAf=0,maxAr=0,spun=false,lastSt=-1,path=0;
   const steps=Math.ceil(900/dt);
   for(let it=0;it<steps;it++){
@@ -38,7 +39,7 @@ export function dynLap(T,car,dc,line,v,keepTrace,driver=referenceDriver){
     if(over>DYN.tolOff||dB>0.1)trouble.push(idx);
     if(over>3||dB>0.45){spun=true;break;}
     if(tr&&it%6===0){tr.x.push(x);tr.y.push(y);tr.v.push(vx);tr.e.push(e);tr.t.push(t);tr.st.push(idx);
-      tr.psi.push(psi);tr.vy.push(vy);tr.r.push(r);tr.delta.push(delta);tr.alf.push(alf);tr.alr.push(alr);tr.ax.push(ax);tr.ay.push(ay);tr.gear.push(curG);tr.s.push(path);}
+      tr.psi.push(psi);tr.vy.push(vy);tr.r.push(r);tr.delta.push(delta);tr.alf.push(alf);tr.alr.push(alr);tr.ax.push(ax);tr.ay.push(ay);tr.gear.push(curG);tr.s.push(path);tr.z.push(T.z[seg]+(T.z[j]-T.z[seg])*f);}
   }
   return {t,start:i0,spun,complete:!spun&&prog>=N,trouble,maxOff,maxE,maxDB,maxAf,maxAr,stV,stE,trace:tr,endIdx:idx,nom};
 }

@@ -2,7 +2,7 @@
 // flat circuit is bit for bit what it was before elevation existed, so the goldens keep proving the flat physics.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadCore } from './load-core.mjs';
+import { loadCore, setupPreset } from './load-core.mjs';
 import { stadium, loadGolden, comboKey } from './golden-util.mjs';
 
 const core = await loadCore(), WIDTH = 12;
@@ -361,6 +361,51 @@ test('pose: height and grade on a hilly lap snapshot', () => {
   assert.ok(checked > 50 && L.pz.some(z => z !== 0));
   const flat = core.stationPose({ ...L, pz: undefined }, 3, 0.5); // a snapshot from before elevation has no heights
   assert.deepEqual([flat.z, flat.grade], [0, 0]);
+});
+
+// A11: a dynamic trace records the track height under the car, so a trace plays back in 3D. The height is the
+// centreline's, interpolated between the stations the observation sits between (level cross-section).
+function tracedLap(hills) {
+  const { T, car } = setupPreset(core, 'GT racer', { hills }), dc = core.dynSetup(car), check = new core.DynCheck(T, car, new Float64Array(T.N));
+  const r = core.dynLap(T, car, dc, check.line, Float64Array.from(check.vq, x => x * 0.85), true);
+  assert.ok(r.complete && !r.spun, `${hills} m hills: lap not clean`);
+  return { T, tr: r.trace, info: core.describeCar(car) };
+}
+
+test('pose: a dynamic trace records height; each sample lies on its station segment (25 m hills)', () => {
+  const { T, tr } = tracedLap(25), N = T.N, n = tr.t.length;
+  assert.ok(n > 500 && tr.z.length === n, `z has ${tr.z && tr.z.length} samples for ${n}`);
+  assert.ok(Math.max(...T.z) - Math.min(...T.z) > 5, 'the circuit has hills');
+  let moved = 0;
+  for (let k = 0; k < n; k++) {
+    // the observation's segment is the station the car is nearest, or the one before it (the car is still behind the station)
+    const within = seg => { const a = T.z[seg], b = T.z[(seg + 1) % N]; return tr.z[k] >= Math.min(a, b) - 1e-9 && tr.z[k] <= Math.max(a, b) + 1e-9; };
+    assert.ok(within(tr.st[k]) || within((tr.st[k] - 1 + N) % N), `z[${k}] = ${tr.z[k]} off the segments at station ${tr.st[k]}`);
+    // interpolated: off both candidate endpoint heights (without interpolation z is always one of them)
+    if (tr.z[k] !== T.z[tr.st[k]] && tr.z[k] !== T.z[(tr.st[k] - 1 + N) % N]) moved++;
+  }
+  assert.ok(moved > n / 2, `only ${moved} of ${n} samples are between station heights (is z interpolated?)`);
+});
+
+test('pose: trace height is continuous along a hilly lap, and 0 for a trace without z', () => {
+  const { tr, info } = tracedLap(25), t0 = tr.t[0], t1 = tr.t.at(-1), M = 4000;
+  let prev = core.pose(tr, t0, info).z, worst = 0, lo = Infinity, hi = -Infinity;
+  for (let q = 1; q <= M; q++) {
+    const z = core.pose(tr, t0 + (t1 - t0) * q / M, info).z;
+    worst = Math.max(worst, Math.abs(z - prev)); prev = z; lo = Math.min(lo, z); hi = Math.max(hi, z);
+  }
+  assert.ok(worst < 0.5, `pose z jumps ${worst} m between samples`);
+  assert.ok(hi - lo > 5, `pose z only spans ${lo}..${hi}`);
+  for (const k of [0, 100, 300]) assert.equal(core.pose(tr, tr.t[k], info).z, tr.z[k], 'at a sample the pose is the sample');
+  const old = { ...tr }; delete old.z;
+  assert.equal(core.pose(old, tr.t[100], info).z, 0, 'an older trace has no heights: z = 0');
+});
+
+test('pose: on a flat circuit every trace height is exactly 0', () => {
+  const { tr, info } = tracedLap(0);
+  assert.ok(tr.z.length === tr.t.length && tr.z.length > 500);
+  assert.ok(tr.z.every(z => z === 0), 'a flat trace has a nonzero z');
+  assert.equal(core.pose(tr, tr.t[200], info).z, 0);
 });
 
 // Where a hilly track meets a car (deferred A10): both callers evaluate a lap while being set up, so a car built
