@@ -6,7 +6,8 @@
 //
 // A scenario module's default export gets {run, sleep}: run(expr) evaluates expr in the page (a promise is awaited) and
 // returns its value; the page's own modules are reachable with import('/src/app/state.js') and the like, the same
-// instances the app uses. The result is printed with the page's console errors; a page exception exits 1.
+// instances the app uses. The result is printed with the page's console errors; a page exception exits 1, and so does a
+// result of the form {allTrue: false, checks}.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -63,4 +64,5 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   console.log(JSON.stringify(result, null, 1));
   if (errors.length) console.log('console errors:\n  ' + errors.join('\n  '));
   if (exceptions.length) { console.log('PAGE EXCEPTIONS:\n  ' + exceptions.join('\n  ')); process.exit(1); }
+  if (result && result.allTrue === false) { console.log('FAILED: a check is false'); process.exit(1); } // scenarios that report {allTrue, checks}
 }

@@ -4,6 +4,7 @@
 import { genCtrl, genElev } from '../core/index.js';
 import { CARS, TRACKS } from './presets.js';
 import { Camera } from '../views/map2d/camera.js';
+import { defaults } from './simple.js';
 
 // A generated circuit's control points [x, y, z, u]: z its height (m) and u the generator's unit height (genElev), so
 // z = hills·u while the Hills slider drives the heights. u is null once heights are set by hand or come from a saved
@@ -13,6 +14,9 @@ export const hillsFollow=ctrl=>ctrl.every(p=>p[3]!=null);
 const ctrl=circuit(TRACKS[0].seed,12,0);
 export const S={
   P:{...CARS['GT racer']}, info:null,
+  // the car is built from these (S.P = carFor(simple, manual), simple.js): a base car and knob positions, the fields set by
+  // hand in Advanced on top, and which page of the car panel shows
+  simple:defaults('GT racer'), manual:{}, carMode:'simple',
   trackIdx:0, width:12, hills:0 /* m from lowest to highest point */, ctrl, origCtrl:ctrl.map(p=>p.slice()), sel:-1 /* control point selected while editing */, fitPending:false,
   T:null, refT:0, refV:null, disp:null, prog:null, ghost:null, corners:[],
   running:false /* mirrors the worker's, from its progress events */, colorMode:'speed', tagMode:'speed' /* map tags: off, speed, g, grip */, deltaMode:'time' /* telemetry with a ghost: time, place (live) or max (lap maxima) */, replay:4, animT:0, editing:false, follow:false, followZ:7 /* closest follow zoom, px/m */, frameErr:null,

@@ -10,6 +10,7 @@ import { makeRunFile, readRunFile, toGhost, liveHash, CAR_KEYS } from './runfile
 import { fmtTime } from '../views/format.js';
 import { findCorners } from '../views/map2d/map.js';
 import { SPEC } from './sliders.js';
+import { SIMPLE, defaults, carFor, knobStates, KNOB_FIELDS, GEARING } from './simple.js';
 
 // ---------- actions
 export function rebuildTrack(keepLine){
@@ -21,12 +22,12 @@ export function carChanged(){
   sendState('setCar',{params:{...S.P},resume:!S.editing},carView());S.hist=[];
 }
 // The page's state behind a car or circuit command, for the client to put back if the worker refuses a later one.
-export const carView=()=>({P:{...S.P},preset:$('#carPreset').value});
+export const carView=()=>({P:{...S.P},simple:{...S.simple},manual:{...S.manual}});
 export const trackView=()=>({ctrl:S.ctrl.map(p=>p.slice()),origCtrl:S.origCtrl.map(p=>p.slice()),trackIdx:S.trackIdx,width:S.width,hills:S.hills,preset:$('#trackPreset').value});
 // The worker refused a car or circuit change and kept what it had: put the panel back to the last state it accepted (v;
 // null if it never accepted one) and say what was refused, until the next accepted change of that kind.
 export function refused(kind,msg,v){
-  if(kind==='setCar'){if(v){S.P={...v.P};$('#carPreset').value=v.preset;syncFields();}refusedNote('#carRefused',msg);return;}
+  if(kind==='setCar'){if(v){S.P={...v.P};S.simple={...v.simple};S.manual={...v.manual};baseOptions();syncFields();syncKnobs();}refusedNote('#carRefused',msg);return;}
   if(v){S.ctrl=v.ctrl.map(p=>p.slice());S.origCtrl=v.origCtrl.map(p=>p.slice());S.trackIdx=v.trackIdx;S.width=v.width;S.hills=v.hills;
     $('#trackPreset').value=v.preset;$('#f-width').value=S.width;$('#o-width').textContent=S.width+' m';selectHandle(-1);updHillsUI();}
   refusedNote('#trackRefused',msg);
@@ -79,10 +80,10 @@ export function dynLap(n){$('#dynState').textContent='running · lap '+n;}
 
 // ---------- panels
 export function buildCarUI(){
-  const sel=$('#carPreset');
-  sel.innerHTML=Object.keys(CARS).map(n=>`<option>${n}</option>`).join('')+'<option value="custom">Custom setup</option>';
-  sel.value='GT racer';
-  sel.onchange=()=>{if(sel.value==='custom')return;S.P={...CARS[sel.value]};syncFields();carChanged();};
+  const sel=$('#carPreset');baseOptions();
+  sel.onchange=()=>{if(sel.value!=='loaded')setBase(sel.value);}; // 'loaded': the loaded run's car, already the base
+  const mode=$('#carMode');mode.onclick=e=>{const b=e.target.closest('button');if(b)setCarMode(b.dataset.v);};setCarMode(S.carMode);
+  buildSimpleUI();
   const box=$('#carFields');let html='';
   for(const s of SPEC){
     if(s.g){html+=`<h3>${s.g}</h3>`;continue;}
@@ -92,11 +93,61 @@ export function buildCarUI(){
   box.innerHTML=html;
   for(const s of SPEC){
     if(s.g) continue;
-    if(s.seg){$('#seg-'+s.k).onclick=e=>{const b=e.target.closest('button');if(!b)return;S.P[s.k]=b.dataset.v;setSeg($('#seg-'+s.k),b.dataset.v);sel.value='custom';syncFields();carChanged();};continue;}
+    if(s.seg){$('#seg-'+s.k).onclick=e=>{const b=e.target.closest('button');if(!b)return;S.P[s.k]=S.manual[s.k]=b.dataset.v;setSeg($('#seg-'+s.k),b.dataset.v);syncFields();syncKnobs();carChanged();};continue;}
     const inp=$('#f-'+s.k);
-    inp.oninput=()=>{S.P[s.k]=+inp.value;$('#o-'+s.k).textContent=s.f(S.P[s.k])+(s.u?' '+s.u:'');sel.value='custom';carChanged();};
+    inp.oninput=()=>{S.P[s.k]=S.manual[s.k]=+inp.value;$('#o-'+s.k).textContent=s.f(S.P[s.k])+(s.u?' '+s.u:'');syncKnobs();carChanged();}; // set by hand: knobs no longer move it
   }
   syncFields();
+}
+// ---------- the car: a base car, the simple knobs on it, and fields set by hand in Advanced on top (simple.js). S.P is
+// always carFor(S.simple, S.manual); the dropdown is the base car in both pages.
+function applyCar(){S.P=carFor(S.simple,S.manual);syncFields();syncKnobs();carChanged();}
+function setBase(base){S.simple=defaults(base);S.manual={};baseOptions();applyCar();} // a new base clears knobs and hand edits
+function setCarMode(m){S.carMode=m;setSeg($('#carMode'),m);$('#simpleFields').hidden=m!=='simple';$('#carFields').hidden=m==='simple';}
+// The presets, plus the loaded run's car while it is the base (options built as elements: its name comes from a file).
+function baseOptions(){
+  const sel=$('#carPreset'),b=S.simple.base,loaded=CARS[b.name]!==b.car;
+  sel.replaceChildren(...Object.keys(CARS).map(n=>new Option(n,n)),...(loaded?[new Option(b.name,'loaded')]:[]));
+  sel.value=loaded?'loaded':b.name;
+}
+const signed=(v,d=0)=>(v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(d);
+const KNOB_OUT={weight:v=>`${signed(v)} % · ${Math.round(S.P.mass)} kg`,power:v=>`${signed(v)} % · ${Math.round(S.P.power)} kW`,
+  downforce:v=>`${signed(v,2)} · CL·A ${S.P.cla.toFixed(2)} m²`,balance:v=>v===0?'as base car':`${signed(v,2)} · toward ${v<0?'understeer':'oversteer'}`};
+function buildSimpleUI(){
+  let html='';
+  for(const s of SIMPLE){
+    const note=`<small class="knob-note" id="kn-${s.k}" hidden></small>`;
+    if(s.opts)html+=`<div class="knob" id="k-${s.k}"><div class="row"><span class="ctl-label" style="min-width:auto;flex:1;font-family:var(--body);font-size:13px;color:var(--ink)">${s.l}</span><div class="seg" id="ks-${s.k}">${s.opts.map(([v,l])=>`<button data-v="${v}" aria-pressed="false">${l}</button>`).join('')}</div></div>${note}</div>`;
+    else html+=`<div class="field knob" id="k-${s.k}"><label for="kf-${s.k}">${s.l}</label><output id="ko-${s.k}"></output><input type="range" id="kf-${s.k}" min="${s.min}" max="${s.max}" step="${s.st}">${note}</div>`;
+    if(s.k==='power')html+=`<small class="knob-note" id="gearNote" hidden>Gearing set by hand in Advanced, so Power, Weight and Downforce leave it alone <button data-reset="gearing">↺ give it back</button></small>`;
+  }
+  html+=`<div class="row"><button class="btn" id="simpleReset">Reset to base car</button></div>`;
+  const box=$('#simpleFields');box.innerHTML=html;
+  for(const s of SIMPLE){
+    if(s.opts)$('#ks-'+s.k).onclick=e=>{const b=e.target.closest('button');if(!b||b.disabled)return;S.simple[s.k]=b.dataset.v;applyCar();};
+    else $('#kf-'+s.k).oninput=e=>{S.simple[s.k]=+e.target.value;applyCar();};
+  }
+  box.addEventListener('click',e=>{const r=e.target.closest('[data-reset]');if(!r)return; // ↺: the knob sets these fields again
+    for(const f of r.dataset.reset==='gearing'?GEARING:KNOB_FIELDS[r.dataset.reset])delete S.manual[f];applyCar();});
+  $('#simpleReset').onclick=()=>setBase(S.simple.base);
+  $('#carEdited').addEventListener('click',e=>{if(e.target.closest('button')){S.manual={};applyCar();}});
+  syncKnobs();
+}
+// Knob positions and readouts, and which knobs are greyed by fields set by hand.
+function syncKnobs(){
+  const st=knobStates(S.manual),n=Object.keys(S.manual).length;
+  for(const s of SIMPLE){
+    const v=S.simple[s.k],off=st[s.k]==='off',el=$('#k-'+s.k),note=$('#kn-'+s.k);
+    el.classList.toggle('off',off);
+    if(s.opts){setSeg($('#ks-'+s.k),v);$('#ks-'+s.k).querySelectorAll('button').forEach(b=>b.disabled=off);}
+    else{const inp=$('#kf-'+s.k);inp.value=v;inp.disabled=off;$('#ko-'+s.k).textContent=KNOB_OUT[s.k](v);}
+    note.hidden=st[s.k]==='on';
+    if(!note.hidden)note.innerHTML=`${off?'Set by hand in Advanced':'Partly set by hand in Advanced'} <button data-reset="${s.k}">↺ give it back</button>`;
+  }
+  $('#k-gearbox').hidden=S.P.pt==='EV'; // an EV has no gearbox
+  $('#gearNote').hidden=!st.gearing;
+  const ed=$('#carEdited');ed.hidden=!n;
+  if(n)ed.innerHTML=`${n} field${n>1?'s':''} set by hand in Advanced <button class="textbtn">↺ clear</button>`;
 }
 function syncFields(){
   const P=S.P;
@@ -162,7 +213,7 @@ function ghostFrom(run){
 function exportRun(){
   try{
     if(!settled())throw new Error('Not exported: a car or circuit change is still being built. Try again in a moment.');
-    const d=S.disp,tv=$('#trackPreset').value,cv=$('#carPreset').value,tp=isNaN(+tv)?null:TRACKS[+tv],trackName=tp?tp.name:tv==='r'?'Random':'Edited';
+    const d=S.disp,tv=$('#trackPreset').value,b=S.simple.base,cv=b.name+(CAR_KEYS.every(k=>Object.is(S.P[k],b.car[k]))?'':' custom'),tp=isNaN(+tv)?null:TRACKS[+tv],trackName=tp?tp.name:tv==='r'?'Random':'Edited';
     const run=makeRunFile({P:S.P,ctrl:S.ctrl,width:S.width,trackName,seed:tp?tp.seed:null,disp:d,prog:S.prog,refT:S.refT,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,
       physics:{sha256:PHYSICS.sha256,live:liveSha},exported:new Date().toISOString(),userAgent:navigator.userAgent});
     const name=[cv,trackName,fmtTime(d.t)].join('-').toLowerCase().replace(/[^a-z0-9.]+/g,'-')+'.apexlab.json';
@@ -203,8 +254,10 @@ export function loaded(m){
   S.origCtrl=S.ctrl.map(p=>p.slice());updHillsUI();
   $('#trackPreset').value=ti>=0?String(ti):run.track.name==='Random'?'r':'e';
   if(L.mode==='run'){
-    S.P={...run.car};
-    $('#carPreset').value=Object.keys(CARS).find(n=>CAR_KEYS.every(k=>CARS[n][k]===S.P[k]))||'custom';syncFields();
+    // the run's car becomes the base (a preset if it is one exactly), knobs centred: carFor gives it back bit for bit
+    const n=Object.keys(CARS).find(n=>CAR_KEYS.every(k=>CARS[n][k]===run.car[k]));
+    S.simple=defaults(n||{name:'Loaded: '+L.name.replace(/\.apexlab\.json$|\.json$/,''),car:{...run.car}});S.manual={};
+    S.P=carFor(S.simple,S.manual);baseOptions();syncFields();syncKnobs();
   }
   S.hist=[];S.dynRes=null;S.dynStale=false;S.dynRunning=false;renderDyn();runLabel();fit();
   if(run.line.N!==m.N)notes.push(`The line was resampled from ${run.line.N} to ${m.N} stations.`);
