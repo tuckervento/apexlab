@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadCore } from './load-core.mjs';
 
 const SRC = process.env.APEX_SRC || fileURLToPath(new URL('../src', import.meta.url));
-const { SIMPLE, defaults, deriveParams } = await import(pathToFileURL(join(SRC, 'app/simple.js')).href);
+const { SIMPLE, defaults, deriveParams, carFor, knobStates, KNOB_FIELDS, GEARING } = await import(pathToFileURL(join(SRC, 'app/simple.js')).href);
 const { SPEC } = await import(pathToFileURL(join(SRC, 'app/sliders.js')).href);
 const core = { ...(await loadCore()), SPEC };
 const { CARS } = core;
@@ -52,7 +52,8 @@ test('simple: every knob setting gives a valid car inside the slider ranges', ()
 test('simple: a missing, unknown or out-of-range knob throws, naming it', () => {
   const ok = defaults('GT racer');
   assert.throws(() => defaults('Tractor'), /unknown base car Tractor/);
-  assert.throws(() => deriveParams({ ...ok, base: 'Tractor' }), /base must be one of/);
+  assert.throws(() => deriveParams({ ...ok, base: 'Tractor' }), /unknown base car Tractor/);
+  assert.throws(() => deriveParams({ ...ok, base: { name: 'x' } }), /a base car is a preset name or \{name, car\}/);
   assert.throws(() => deriveParams({ ...ok, wings: 1 }), /unknown knob wings/);
   const { power, ...noPower } = ok;
   assert.throws(() => deriveParams(noPower), /power must be a number/);
@@ -146,4 +147,46 @@ test('simple: top speed follows the drag-limited top speed as the knobs change i
       assert.ok(Math.abs(got / want - 1) < 0.01, `${base}, ${k} ${v}: top speed ×${got.toFixed(4)}, drag limit ×${want.toFixed(4)}`);
     }
   }
+});
+
+// A loaded run's car becomes the base (step 2), so any valid car must come back bit for bit at centred knobs, including
+// values outside the slider ranges (carSpec checks physical limits only): the clamp widens to take in the base's value.
+test('simple: centred knobs reproduce any base car bit for bit, out-of-range values included', () => {
+  for (const name of BASES) {
+    const P = CARS[name], car = { ...P, mass: 3500, cg: P.cg * 1.07, mu: 2.3, cla: P.cla + 0.13, brakeF: 90 }; // mass, mu, brakeF past their sliders
+    core.carSpec(car);
+    const p = deriveParams(defaults({ name: 'Loaded: test', car }));
+    for (const k of Object.keys(car)) assert.ok(Object.is(p[k], car[k]), `${name}.${k}: ${p[k]} vs ${car[k]}`);
+  }
+});
+
+// Fields set by hand in Advanced sit on top of the knobs (step 2): whatever the knobs do, a hand-set field keeps its
+// value, and every other field is the knobs' own.
+test('simple: hand-set fields win over the knobs, and only they do', () => {
+  const manual = { mu: 1.9, wb: 3.1, vTopG: 250 };
+  for (const s of grid()) {
+    const p = carFor(s, manual), d = deriveParams(s), at = JSON.stringify(s);
+    for (const k of Object.keys(d)) assert.ok(Object.is(p[k], k in manual ? manual[k] : d[k]), `${k} ${at}`);
+  }
+  assert.throws(() => carFor(defaults('GT racer'), { wings: 1 }), /unknown car field wings/);
+});
+
+// A knob greys out when every field it sets is set by hand, and is marked when some are (step 2). The gearing is a side
+// effect of Power, Weight and Downforce, so hand-set gearing greys no knob; it gets its own flag.
+test('simple: knob states follow which of their fields are set by hand', () => {
+  const on = Object.fromEntries(SIMPLE.map(s => [s.k, 'on']));
+  assert.deepEqual(knobStates({}), { ...on, gearing: false });
+  assert.deepEqual(knobStates({ mu: 1.5 }), { ...on, tyre: 'partial', gearing: false });
+  assert.deepEqual(knobStates({ mu: 1.5, sens: 0.1, slipPk: 7 }), { ...on, tyre: 'off', gearing: false });
+  assert.deepEqual(knobStates({ mass: 900, vTopG: 250 }), { ...on, weight: 'off', gearing: true });
+  assert.deepEqual(knobStates({ cg: 0.3 }), { ...on, gearing: false }, 'a field no knob sets');
+});
+// The ownership table must be the mapping's: the fields the knobs and the gearing claim are exactly the ones some knob
+// setting changes from its base car, and no field is claimed twice.
+test('simple: the knob field table matches what the knobs change', () => {
+  const claimed = [...Object.values(KNOB_FIELDS).flat(), ...GEARING];
+  assert.equal(new Set(claimed).size, claimed.length, 'a field claimed twice');
+  const changed = new Set();
+  for (const s of grid()) { const p = deriveParams(s), b = s.base.car ?? CARS[s.base]; for (const k of Object.keys(p)) if (!Object.is(p[k], b[k])) changed.add(k); }
+  assert.deepEqual([...changed].sort(), [...claimed].sort());
 });
