@@ -47,7 +47,9 @@ option (Q7, task 5.3); render on the main thread (T1, §5).
   `car`/`ghost` are smooth poses or null. A **view** is
   `{position:[X,Y,Z], target:[X,Y,Z], up:[X,Y,Z], fovDeg, near, far}` in the three frame (plus
   `ortho:{halfHeight}` for orthographic views, task 2.4). Springs run in **animation time** (`dt·S.replay`) with a fixed
-  internal sub-step, so they match at any replay speed and freeze when paused (§7.1).
+  internal sub-step, so they match at any replay speed and freeze when paused (§7.1). Cameras on springs also take an
+  optional `input.sample(tAnim) → pose`, so they can be forced at every sub-step rather than holding one pose over a
+  long frame (added in 1.5, as `attitude.js` does it). Without it, `input.car` is held over the step.
 - **No physics changes**, except task 0.2 (A11), which adds an output. Any edit to `src/core/`, `src/dynamics/` or
   `src/solver/solver.js` needs `node tests/make-physics-version.mjs --write`. `tests/golden.json` must stay unchanged
   through this whole plan.
@@ -63,10 +65,23 @@ option (Q7, task 5.3); render on the main thread (T1, §5).
 `src/app/main.js`, `src/app/state.js`, `src/app/controls.js` and (from P2 on) `src/views/scene3d/scene.js`. Keep
 diffs in them small and rebase before merging.
 
-**API revision checkpoints:** P2–P5 Scope lines below name a *provisional* scene API (`createScene3d`, `setTrack`,
-`setLine`, `frame`, …) and the `S.view`/`S.cam3d` state. Tasks 1.7 and 1.8 fix the real API. Each must, as part of its
-acceptance, edit PLAN-3D.md so the Scope lines of every not-yet-started P2–P5 task name the real functions and
-fields.
+**API revision checkpoints:** P2–P5 Scope lines below name a *provisional* scene API and the `S.view`/`S.cam3d`
+state. Tasks 1.7 and 1.8 fix the real API. Each must, as part of its acceptance, edit PLAN.md so the Scope lines of
+every not-yet-started P2–P5 task name the real functions and fields.
+
+- **1.7 (done; the coordinator updated the Scope lines below).** The real scene API, also in `ARCHITECTURE.md` §3, is
+  `createScene3d(canvas, pal, {onLost, forceLogDepth}) → {setTrack(T), setLine(disp, mode, pal),
+  setGhost(snapshot | null), setCars({car, ghost}), setTheme(pal), resize(rect, dpr), frame({car, ghost, view}),
+  info(), dispose(), _debug: {renderer, scene}}`. It comes from `src/views/scene3d/index.js`, which re-exports
+  `scene.js`.
+  - The car dims are `{wb, track, cg, rear}`. A ghost's `{wb, track}` is enough, with `cg` defaulting to 0.44 and
+    `rear` to 50.
+  - `onLost(event)` is called for both `webglcontextlost` and `webglcontextrestored`, so check `event.type`.
+  - `info()` returns `{depth: 'reversed' | 'log', triangles, geometries, programs}`.
+  - `_debug` is for browser checks only.
+  - `scene.js` and `index.js` import `three.module.js`, so Node tests must not import them. Test the pure modules
+    instead.
+- **1.8 (to do):** fixes `S.cam3d`, the camera selector and the frame-loop hooks.
 
 ## Non-Goals
 
@@ -129,7 +144,7 @@ fields.
   - Depends on: none
   - Acceptance: the new test passes; `node serve.mjs` serves `/vendor/three-0.186.1/build/three.module.js` as 200
     `text/javascript`; `node tools/cdp.mjs tools/scenarios/refused.mjs` still exits 0 (the app doesn't load three yet);
-    and the Context's import rule is confirmed or corrected in PLAN-3D.md.
+    and the Context's import rule is confirmed or corrected in PLAN.md.
   - Context: the tarball is `https://registry.npmjs.org/three/-/three-0.186.1.tgz`. Extract it into its own empty
     scratch directory (untrusted download) and check its integrity before copying. This release has no `.min.js`, so
     vendor the unminified files (§6.1). Vendor no addons now; the task that first needs one adds it and its hash.
@@ -259,7 +274,7 @@ fields.
     - `renderer.info.memory.geometries` is constant over 300 `frame()` calls and after 5 `setTrack` rebuilds;
     - `WEBGL_lose_context.loseContext()` calls `onLost`.
 
-    Also edit PLAN-3D.md so every not-yet-started P2–P5 task's Scope line names the real scene API (see "API
+    Also edit PLAN.md so every not-yet-started P2–P5 task's Scope line names the real scene API (see "API
     revision checkpoints").
 
 - [ ] **1.8 — App integration: lazy 3D, cameras, fallback**
@@ -277,7 +292,7 @@ fields.
       by `setView`. Re-enable the ones that get 3D meanings (at least Fit, re-fitting the overview). A drag on the inset
       counts as a click and switches to 2D, which is accepted as is.
 
-    Also edit PLAN-3D.md so every not-yet-started P2–P5 task names the real `S.cam3d`/selector/frame-loop hooks.
+    Also edit PLAN.md so every not-yet-started P2–P5 task names the real `S.cam3d`/selector/frame-loop hooks.
   - Depends on: 0.1, 1.5, 1.6, 1.7
   - Acceptance: a CDP scenario, `tools/scenarios/view3d.mjs`, exits 0 with no page exceptions and checks:
     - no `vendor/three` resource loads before the toggle (`performance.getEntriesByType('resource')`);
@@ -356,8 +371,10 @@ fields.
     the signs `car.js` uses; and spin over one lap equals `L / r` within 0.1%. Teeth.
 
 - [ ] **2.6 — Apply attitude to the cars, and say it's cosmetic**
-  - Scope: the scene's `frame` takes per-car `{roll, pitch, steer, spin}` and applies them to the body and the wheel
-    pivots from 1.3. `main.js` keeps per-car attitude state. The "How the model works" text in `index.html` says the
+  - Scope: extend the scene's `frame({car, ghost, view})` with an optional per-car attitude, e.g.
+    `frame({car, ghost, view, attitude: {car, ghost}})`, each an `attitude.js` `view()` result
+    `{roll, pitch, steer, spin}`. Apply it to the body and the wheel pivots from 1.3 (`wheelFL`… pivot groups; the spin
+    child rotates about local Z). Use `group.userData.radius` as `attitude.js`'s wheel radius. `main.js` keeps per-car attitude state. The "How the model works" text in `index.html` says the
     body motion, steer and wheel spin in 3D are cosmetic, not physics.
   - Depends on: 1.8, 2.5
   - Acceptance: a CDP scenario reads the car group's transforms through a debug accessor. Mid-corner in a right-hander
@@ -394,8 +411,10 @@ fields.
 
 - [ ] **3.4 — Lighting, car shadow and themes**
   - Scope: tune the sun and hemisphere light. Add a car-only shadow from a small shadow camera following the car (no
-    CSM). New CSS tokens for the 3D background and ground go in both themes in `index.html`. `setTheme(pal)` updates the
-    materials in place, driven by `main.js`'s existing `refreshColors` observer.
+    CSM). New CSS tokens for the 3D background and ground go in both themes in `index.html`. `setTheme(pal)` already
+    exists (1.7). It updates the background, the track, line and ghost-line colours and the car tints in place, with no
+    new geometry. Extend it to cover the new materials, driven by `main.js`'s existing `refreshColors` observer. The
+    geometry count is `info().geometries`.
   - Depends on: 1.7
   - Acceptance: CDP screenshots in light and dark (toggle `data-theme`) are within tolerance of the references; a theme
     switch changes no geometry count (`renderer.info.memory.geometries`); and the shadow map is enabled only for the car
@@ -404,7 +423,9 @@ fields.
 - [ ] **3.5 — Height exaggeration in the overview**
   - Scope: a slider (1–5×), shown only for overview and ortho, scales the vertical axis of the track, line, ground and
     the car *position* (not the car model's shape). The car's pitch uses the same scale. Car cameras (chase, heli, pair,
-    TV, bonnet) always run at 1×. This relies on an unconfirmed default (§13 Q4).
+    TV, bonnet) always run at 1×. This relies on an unconfirmed default (§13 Q4). The 1.7 scene has no height-scale
+    input, so add a scene method (e.g. `setHeightScale(e)`) rather than rebuilding geometry on every slider move.
+    `frame()` must place the cars at the scaled height.
   - Depends on: 1.8
   - Acceptance: a CDP scenario reads geometry through a debug accessor. At 3× a known crest's height above the ground
     is 3× its value at 1× (within 1%). The car's Y equals the ribbon's Y at its station at 3×. Switching to chase gives
@@ -413,7 +434,9 @@ fields.
 - [ ] **3.6 — Overlay parity with the 2D map (R6)**
   - Scope: corner labels and map tags (`tagText`) become DOM elements positioned by projecting 3D points each frame.
     They are hidden when behind the camera or off-screen. Add a dynamic-check failure marker at `fail.at` while the
-    result is current (`!S.dynStale`). Road height colours on hilly circuits are on (as 2D shows them).
+    result is current (`!S.dynStale`). Road height colours on hilly circuits are on (as 2D shows them). The 1.7 scene
+    doesn't expose its camera (only `_debug`, which is for tests), so add a scene method, e.g.
+    `project([X, Y, Z]) → {x, y, visible}` in CSS px, using the camera from the last `frame()`.
   - Depends on: 1.8
   - Acceptance: a CDP scenario checks that the label count equals the number of corners; that a corner behind the
     chase camera has its label hidden; that the tag text equals 2D's for the same pose; and that after a dynamic check
