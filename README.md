@@ -11,7 +11,6 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 ```
 
 - **Requirements:** Node.js to serve the files, and a current browser with module Web Workers. Developed with Node v26.12.1 and tested in Chrome.
-- **Use `serve.mjs`, not `file://`:** browsers won't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
 - **No install step.** The only external resource is Google Fonts.
 
 ## What you can do
@@ -126,10 +125,7 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 5. ~save/load car config + simmed line~
 6. support comparison of cars/simmed lines between apex lab versions
 7. improved tyre physics (maybe not full temperatures, but some sort of deg is needed)
-8. weather?
+8. weather
 9. ~add "simple" controls that map to the full configurables~
-
-### idea
-after finding ideal line, make 'driver' repeat laps with realistic deg, and it needs to try to maintain the line / compensate for the loss of grip.  this would provide another layer of 'competition' as we try to improve the driving algorithms and see if we can beat prior 'race times'
 
 Progress ([docs/race-mode.md](docs/race-mode.md) §9): phase 1 (plant/driver split) and phase 2 (race loop and judge at constant grip, Node only) are done. Next: per-axle grip scales, then tyre wear.
