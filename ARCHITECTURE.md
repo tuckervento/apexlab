@@ -110,7 +110,9 @@ On the app side, `main.js` imports the entry on the first 3D open and owns `S.sc
 - **Failures.** A failure returns to 2D with a persistent `S.view3dMsg` ("3D off: …" in the status chip). A lost
   context disposes the scene and replaces its canvas.
 - **The inset.** In 3D the 2D map is a corner inset, drawn with `S.camMini` and `drawMap` with `scaleBar:false`;
-  with 3D off the full 2D map is unchanged, pixel for pixel.
+  with 3D off the full 2D map is unchanged, pixel for pixel. The MAP button (`#miniToggle`) collapses it
+  (`S.miniOpen`): the inset is then neither sized nor drawn, and the layout change resizes it on the next frame
+  after it is restored.
 
 Like the 2D map, the 3D view gets everything physical from worker events: `S.T`, `S.disp`, `S.info` and the dynamic
 check's trace (`trace3d.js`).
@@ -571,9 +573,9 @@ Each step keeps behaviour identical and is checked against §8.
 6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences were the stale HUD gear digit (since fixed, `0f3d61f`) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
 7. ✅ **Add `playback.pose()`**; the 2D car marker and ghost use it. Both sources supported (§10.2). `dynLap`'s trace records the car's state (+0.2 ms on the one traced lap per check). Replay-off rendering is identical to step 6, and the lap pose equals the old `carState` bit for bit.
 8. ✅ **Elevation** (grade, crests and compressions; no banking): heights in the track model, grip tables on a load-factor axis, gravity and load in the lap model and its adjoint, the same in the bicycle model, the solver building load tables for hilly circuits, run files v2 (the first explicit migration), and the app's Hills slider, height editing, elevation chart, height tint and telemetry. Flat circuits are bit-identical (goldens, parity, the pre-elevation run file); six hilly combos added to the goldens. §4.7.
-9. ✅ **3D view** as a second client of the protocol and pose contract (`PLAN.md`, 33 tasks; record in `STATUS.md`; design in `docs/3d-view.md`). What shipped:
+9. ✅ **3D view** as a second client of the protocol and pose contract (`docs/plans/3d/PLAN.md`, 33 tasks; record in `docs/plans/3d/STATUS.md`; design in `docs/3d-view.md`). What shipped:
    - a lazy WebGL view on vendored three.js 0.186.1, filling `#stage` with the 2D map as a corner inset;
-   - eight cameras: overview, chase, bonnet, free, heli, pair, Map (tilted orthographic, meant to supersede deferred A1, pending Q) and TV;
+   - eight cameras: overview, chase, bonnet, free, heli, pair, Map (tilted orthographic, superseding deferred A1, now closed) and TV;
    - road, kerbs, line ribbon, ground, start band, gantry, corner boards and signs, HTML corner labels and map tags;
    - height exaggeration in the overview and Map cameras;
    - cosmetic attitude and wheel spin, with spoked wheels that turn into a blurred disc past the per-frame Nyquist limit;

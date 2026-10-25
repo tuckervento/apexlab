@@ -252,7 +252,7 @@ the loop. On G2, the 3D view reads `S.T` and derives its frames with `stationFra
 
 - **G1.** `S.cam` is a map2d `Camera` held in app state (`src/app/state.js:6,19`), so `S` depends on one view. A second view
   needs it out of `S`, and a frame loop that isn't tied to map2d (`main.js` mixes map input, the loop and the lap readout).
-  [`deferred.md` A1](deferred.md#a1-25d-tilted-map) (2.5D map) is a stepping stone and will hit this first.
+  [`deferred.md` A1](deferred.md#a1-25d-tilted-map--closed-superseded) (2.5D map) is a stepping stone and will hit this first.
 - **G2.** The track exists in three shapes: core `Track`, the `track` event, and `S.T`. Elevation added `z`, `dz`, `cth`,
   `kv` and `flat` to the first; check what the event and `S.T` carry before adding more. §10.3's station record would be the
   one canonical shape. Not re-checked after elevation.

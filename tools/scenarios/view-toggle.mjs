@@ -1,4 +1,4 @@
-// Stage layout (PLAN.md 1.6): the 2D/3D toggle puts #view3d over the whole stage and shrinks the 2D map to a corner
+// Stage layout (docs/plans/3d/PLAN.md 1.6): the 2D/3D toggle puts #view3d over the whole stage and shrinks the 2D map to a corner
 // inset drawn with S.camMini; S.cam comes back untouched; Edit forces 2D; at 390 px the inset clears the zoom buttons and
 // the lap readout. Every check should be true.
 //

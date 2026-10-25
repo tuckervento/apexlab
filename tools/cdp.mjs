@@ -8,7 +8,7 @@
 // returns its value; the page's own modules are reachable with import('/src/app/state.js') and the like, the same
 // instances the app uses. The result is printed with the page's console errors.
 //
-// WebGL2 (task 0.5 of PLAN.md). --disable-gpu, the default, gives no WebGL2 at all (getContext('webgl2') is null). With
+// WebGL2 (task 0.5 of docs/plans/3d/PLAN.md). --disable-gpu, the default, gives no WebGL2 at all (getContext('webgl2') is null). With
 // `--use-angle=swiftshader --enable-unsafe-swiftshader` (GL_FLAGS below; `--use-angle=swiftshader` alone also worked here, the
 // second flag is for Chrome versions that no longer fall back to SwiftShader without it) the page gets WebGL 2.0 (OpenGL ES 3.0
 // Chromium) on "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)", and

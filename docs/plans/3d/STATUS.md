@@ -455,12 +455,22 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 
 ## Next Up
 
-Nothing: every PLAN.md task is done. Left for Q, outside the plan (also in `docs/deferred.md` "Elsewhere"):
-- **A1:** close it as superseded by the Map camera (§13 Q2, a default Q never confirmed)?
-- **Wheel blur at 1×:** the disc shows from ~56 km/h on the GT racer. Keep it?
-- **Cosmetic:**
-  - the camera select widens under reduced motion;
-  - Streaks isn't offered in Bonnet;
-  - pair framing ignores the inset.
-- **Checks:** a direct check of the 3.6 label positions.
-- **Cleanup:** removing the 20 finished worktrees in `../apexlab-wt/` (needs Q's permission).
+Nothing: every PLAN.md task is done. This plan is archived here, at `docs/plans/3d/`, and the repository root's
+`PLAN.md` is now the test-contract plan.
+
+Follow-ups resolved with Q on 2026-10-25, after the close:
+- **A1:** closed, superseded by the Map camera.
+- **Wheel blur at 1×** (the disc from ~56 km/h on the GT racer): kept.
+- **Cosmetic issues, all fixed:**
+  - Bonnet keeps its short label, with the reduced-motion reason in a tooltip. The long label had widened the select
+    to ~235 px, as `effects3d`'s old reference shows.
+  - Streaks are offered in Bonnet.
+  - Pair framing under the inset: Q chose a **collapsible inset** (the MAP button, `S.miniOpen`) over a framing
+    change.
+
+  The new `ui3d.mjs` scenario covers all three, and each of its mutations fails its targeted check. `bonnet3d`'s
+  reduced-motion check now reads the tooltip.
+- **Cleanup:** the 16 worktrees in `../apexlab-wt/` were removed (all merged; only branch-side reference PNGs were
+  uncommitted). The `3d/*` branches are kept.
+
+Still open: a direct check of the 3.6 label positions.

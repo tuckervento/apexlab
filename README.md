@@ -50,7 +50,7 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 - **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart. The readouts gain ghost and Δ columns, compared at the same race time or the same place on track, or as each lap's maxima (left and right turns, drive and braking apart). Each map tag adds a Δ against the other car at that same spot.
 
 **See it in 3D**
-- The **3D** button beside the zoom controls turns the stage into a 3D scene, with the 2D map as a corner inset. It loads only when first opened, and the 2D map is unchanged when it's off. Editing the circuit switches back to 2D.
+- The **3D** button beside the zoom controls turns the stage into a 3D scene, with the 2D map as a corner inset (*MAP* collapses and restores it; a click on the inset goes back to 2D). It loads only when first opened, and the 2D map is unchanged when it's off. Editing the circuit switches back to 2D.
 - The scene has the road with its hills, kerbs, the racing line coloured as on the map, the start band and gantry, braking boards and signs, corner labels, and the map tags.
 - Eight cameras:
   - **Overview:** drag to orbit; right-drag or Shift-drag to pan; wheel or pinch to zoom; *Fit* to reset.
@@ -143,7 +143,7 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): conventions, physics, optimiser, data shapes, the worker protocol, the pose contract, and the migration plan with its status.
 - [CLAUDE.md](CLAUDE.md): a short guide for working on the code, including the things that bite.
-- [docs/3d-view.md](docs/3d-view.md): the 3D view's requirements and design options (the plan it came from is `PLAN.md`, its record `STATUS.md`).
+- [docs/3d-view.md](docs/3d-view.md): the 3D view's requirements and design options (the plan it came from is `docs/plans/3d/PLAN.md`, its record `docs/plans/3d/STATUS.md`).
 - [docs/deferred.md](docs/deferred.md): work set aside on purpose, with the context to pick it up.
 
 ## TODO

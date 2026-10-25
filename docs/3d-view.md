@@ -1,7 +1,7 @@
 # 3D view: requirements and options
 
 > **Status (2026-10-25): implemented.** Step 9 is done; `ARCHITECTURE.md` §3 (the scene API and app wiring) and §11
-> describe what shipped, `PLAN.md` holds the task breakdown and `STATUS.md` the record, including where the build
+> describe what shipped, `docs/plans/3d/PLAN.md` holds the task breakdown and `docs/plans/3d/STATUS.md` the record, including where the build
 > departed from this document. Read this file for the reasoning behind the choices; it is not kept current.
 
 Research and planning notes for migration step 9 (`ARCHITECTURE.md` §11): what a 3D view needs, how the existing
