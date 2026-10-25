@@ -61,17 +61,41 @@ measurement works end to end; the verdict rests on Q's hardware numbers below.
    long tasks during search coincide with missed frames. Counts alone cannot establish causation. Record
    rebuild/edit-drag behaviour separately if assessing R10's track rebuild target; this scenario measures search/playback.
 
-Machine / GPU / OS / browser / DPR / power mode: pending Q.
+Q ran it on 2026-10-25: a MacBook Air, Chrome. GPU, OS version, Chrome version and DPR weren't recorded. Each row is
+one 10 s window as logged (two per mode, plus TV, which 2.1 added before the run).
+
+**Run 1, on battery (a 30 Hz cap; not used for the verdict).** Every window, 2D included, had running p50 = 33.3 ms
+and p95 = 34.0–34.3 ms, with zero long tasks, running or idle. A constant 33.3 ms in every mode, with no long tasks,
+is a frame-rate cap (Chrome's Energy Saver or macOS Low Power Mode), not load. It hides any headroom, so it can't
+answer R10.
+
+**Run 2, on mains power, Low Power Mode off:**
 
 | Mode | Running p50 ms | Running p95 ms | Running long tasks | Running long-task ms | Running frames | Idle frames / p50 / p95 ms |
 |---|---|---|---|---|---|---|
-| 2D | | | | | | |
-| 3D overview | | | | | | |
-| 3D chase | | | | | | |
+| 2D | 16.7 | 17.5 | 0 | 0 | 162 | 438 / 16.7 / 17.5 |
+| 2D | 16.7 | 17.5 | 0 | 0 | 316 | 284 / 16.7 / 17.6 |
+| 3D overview | 16.7 | 17.6 | 0 | 0 | 397 | 199 / 16.7 / 17.5 (1 idle long task, 54 ms) |
+| 3D overview | 16.7 | 17.6 | 0 | 0 | 91 | 508 / 16.7 / 17.6 |
+| 3D chase | 16.7 | 17.6 | 0 | 0 | 457 | 143 / 16.7 / 17.6 |
+| 3D chase | 16.7 | 17.6 | 0 | 0 | 36 | 564 / 16.7 / 17.6 |
+| 3D TV | 16.7 | 17.5 | 0 | 0 | 318 | 282 / 16.7 / 17.5 |
+| 3D TV | 16.7 | 17.4 | 0 | 0 | 175 | 425 / 16.7 / 17.6 |
+
+Reading it: p50 sits on the 60 Hz frame (16.7 ms) in every mode. p95 is 17.4–17.6 ms; a dropped frame would show as
+~33 ms, so this is timestamp jitter, and fewer than 5% of frames can have been dropped (otherwise p95 would be ~33 ms).
+The log lines don't carry the maximum, so they don't show that no frame was dropped. There were no long tasks during
+a search in any mode. The one 54 ms long task was outside a search, in the 3D overview window, and is probably the
+view being created or rebuilt (not traced). 3D (overview, chase, TV) is indistinguishable from 2D.
 
 ## Verdict rule
 
 If 3D's **running-frame p95** exceeds 16.7 ms **because of main-thread long tasks**, trigger P6 (render worker) and tell Q;
 otherwise P6 is not triggered. Unsupported long-task observation needs trace evidence before attributing a cause.
 
-**Verdict: pending Q's numbers.**
+**Verdict (2026-10-25, Q's run 2): P6 is not triggered.** 3D's running-frame p95 is 17.4–17.6 ms, which is vsync jitter
+on a 60 Hz frame, not missed frames, and there are no main-thread long tasks during a search in any mode. **R10 (60 fps
+while the optimiser searches) is met on this machine**: p50 16.7 ms everywhere, and fewer than 5% of frames dropped
+at most. The main thread (T1) stays. Two things stay open, should they matter later:
+- R10's other target, a track mesh rebuild within one frame during an edit drag, isn't measured here (editing is 2D).
+- Measure with the browser's energy saver off: run 1 shows that a 30 Hz cap hides everything.

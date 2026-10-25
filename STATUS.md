@@ -4,8 +4,8 @@ _Last updated: 2026-10-25 (Wave F batch 1)_
 
 ## Snapshot
 
-23 of 33 tasks done (Waves A–E, plus 2.1, 3.6, 5.3), all merged to `main`; 1.9 is merged but blocked on Q's hardware
-numbers. On `main`, 382/382 tests pass and all 17 scenarios exit 0 (every reference compares at fraction 0;
+24 of 33 tasks done (Waves A–E, plus Wave F's 1.9, 2.1, 3.6, 5.3), all merged to `main`. 1.9's verdict: P6 (render
+worker) is not triggered, and R10's 60 fps is met on Q's MacBook Air. On `main`, 382/382 tests pass and all 17 scenarios exit 0 (every reference compares at fraction 0;
 `view-toggle` is byte-identical to pre-Wave-E `main` in 2D). The 3D view now has overview, chase and TV cameras, corner
 labels and map tags, the dynamic-check failure marker and a trace car. Next: the rest of Wave F.
 
@@ -104,18 +104,18 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 - Wave F batch 1 on merged `main` (merges `ab28c03`, `5e31dc7`, `2e0215a`, `489711f`; references `d3ee86d`): suite
   382/382; all 17 scenarios exit 0, every reference at fraction 0, all 15 changed or new images reviewed;
   `git diff e9df824 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
+- [x] 1.9 frame-time measurement (Codex, one follow-up; Q's hardware run) — done 2026-10-25 — `3d/1.9` `41af8ae`,
+  headless numbers `0d1bbe8` — verified:
+  - suite 374/374 on the branch; `perf3d.mjs` 9/9 true on the branch and on merged `main`; coordinator's teeth (running
+    and idle buckets swapped) fail the window test;
+  - Q's run on a MacBook Air, Chrome, mains power: running p50 16.7 ms and p95 17.4–17.6 ms in 2D, 3D overview, chase
+    and TV, with 0 long tasks during a search. **P6 is not triggered; R10's 60 fps is met** (fewer than 5% of frames
+    dropped at most). Recorded with the verdict in `investigations/3d-perf.md`.
 
 ## In Progress
 
 ## Blocked
 
-- 1.9 frame-time measurement (Codex, one follow-up) — merged (`3d/1.9` `41af8ae`, headless numbers `0d1bbe8`) — blocked
-  on **Q's manual run on Q's hardware** (`investigations/3d-perf.md`, "Q's hardware procedure": `node serve.mjs`,
-  `/?perf`, Restart from centreline in each of 2D, 3D overview and 3D chase, copy the running-frame console lines and
-  the machine details). Everything else is done and verified: suite 374/374 on the branch; `perf3d.mjs` 9/9 true on the
-  branch and on merged `main` (≥ 30 running frames per mode, mode matches, no frame error); coordinator's teeth
-  (running and idle buckets swapped) fail the window test. When the numbers arrive: fill the table, write the verdict
-  (P6 triggered only if 3D's running-frame p95 > 16.7 ms because of main-thread long tasks), and move 1.9 to Completed.
 
 ## Deviations & Decisions
 
@@ -300,6 +300,13 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   - **Board backs show mirrored digits** (double-sided label planes), in most TV shots (`tv3d-0`, `-1`, `-3`). A small
     3.2 follow-up: a blank back face, or single-sided panels with a plain back.
   - In "Dynamic check" mode the map tag still sits at the hidden lap car's pose.
+- 1.9 verdict (2026-10-25):
+  - Q's first run, on battery, showed a 30 Hz cap: 33.3 ms in every mode, 2D included, with no long tasks. That was
+    Chrome's Energy Saver or macOS Low Power Mode, so it isn't used. The second run, on mains, decided it.
+  - p95 17.4–17.6 ms counts as 60 fps: it's jitter, since a dropped frame reads ~33 ms. The logs carry no maximum, so
+    "no frame dropped at all" isn't shown, only "fewer than 5%".
+  - R10's edit-drag rebuild target isn't measured: editing is in 2D. P6 stays not triggered unless later
+    measurements change that.
 
 ## Next Up
 
