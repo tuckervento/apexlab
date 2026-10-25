@@ -41,11 +41,19 @@ export default async ctx=>{
     const beforeTheme=api._debug.scene.children.filter(o=>o.geometry).map(o=>o.geometry);
     api.setTheme(pal);api.frame(input);
     const themeStable=api._debug.scene.children.filter(o=>o.geometry).every((o,i)=>o.geometry===beforeTheme[i]);
+    // Ground past the shadow camera's far plane renders as shadowed: follow the light from each corner of the shadow box
+    // down to the ground plane (an oblique sun makes flat ground deeper across the box) and compare with far.
+    const shadowBox=sc=>{const sun=sc.children.find(o=>o.isDirectionalLight),cam=sun.shadow.camera,e=cam.matrixWorld.elements,
+      gy=sc.getObjectByName('ground').geometry.attributes.position.array[1],p=sun.position,t=sun.target.position,
+      uy=(t.y-p.y)/Math.hypot(t.x-p.x,t.y-p.y,t.z-p.z),depths=[];
+      for(const x of [cam.left,cam.right])for(const y of [cam.bottom,cam.top])depths.push((gy-(e[1]*x+e[5]*y+e[13]))/uy);
+      return {far:cam.far,deepest:Math.max(...depths)};};
+    const shadow=shadowBox(api._debug.scene);
     const logCanvas=document.createElement('canvas'),log=createScene3d(logCanvas,pal,{forceLogDepth:true});
     log.resize({width:100,height:100},1);log.setTrack(S.T);log.frame(input);
     const fallback=log.info();log.dispose();
     window.sceneCheck={api,input,events};
-    return {expected,first,afterFrames,rebuilds,themeStable,fallback,frozen:!S.running&&S.replay===0};
+    return {expected,first,afterFrames,rebuilds,themeStable,fallback,shadow,frozen:!S.running&&S.replay===0};
   })()`);
   // Capture immediately after a render so the default non-preserved drawing buffer is populated.
   await run('sceneCheck.api.frame(sceneCheck.input)');
@@ -62,6 +70,7 @@ export default async ctx=>{
   const checks={frozen:seen.frozen,reference:reference.ok,triangles:Math.abs(seen.first.triangles-seen.expected)<=seen.expected*0.05,
     depth:['reversed','log'].includes(seen.first.depth),logFallback:seen.fallback.depth==='log'&&seen.fallback.triangles>0,
     framesStable:seen.first.geometries===seen.afterFrames.geometries,
-    rebuildsStable:seen.rebuilds.every(n=>n===seen.first.geometries),themeStable:seen.themeStable,contextLost:context.lost,contextRestored:context.restored};
+    rebuildsStable:seen.rebuilds.every(n=>n===seen.first.geometries),themeStable:seen.themeStable,
+    shadowCoversGround:seen.shadow.deepest<=seen.shadow.far,contextLost:context.lost,contextRestored:context.restored};
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,reference,context};
 };

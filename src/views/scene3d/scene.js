@@ -26,11 +26,13 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   const shadow=sun.shadow;shadow.mapSize.set(512,512);
   Object.assign(shadow.camera,{left:-12,right:12,top:12,bottom:-12,near:1,far:80});
   shadow.camera.updateProjectionMatrix();shadow.normalBias=0.03;
-  // Ground past the shadow camera's far plane renders as shadowed (the box prints a dark square), and on hills the ground
-  // plane can lie ~40 m under the car: reach from the highest station down to it, plus 2 m.
+  // Ground past the shadow camera's far plane renders as shadowed (the box prints a dark patch). Reach from the highest
+  // station down to the ground plane (~40 m on hills), plus 2 m, plus the box term: with an oblique sun the ground is
+  // deeper toward the box's far side, by at most its half-diagonal · tan(sun's zenith angle).
   function fitShadow(){
     let top=-Infinity;for(const z of T.z)top=Math.max(top,z);
-    const d=sunOffset.length();shadow.camera.far=d+(top-groundHeight(T)+2)*d/sunOffset.y;shadow.camera.updateProjectionMatrix();
+    const d=sunOffset.length(),c=sunOffset.y/d,box=Math.hypot(shadow.camera.right,shadow.camera.top)*Math.sqrt(1-c*c)/c;
+    shadow.camera.far=d+(top-groundHeight(T)+2)/c+box;shadow.camera.updateProjectionMatrix();
   }
   let track=null,line=null,ghostLine=null,car=null,ghostCar=null,T=null,disp=null,g=null,mode='speed';
   function geometry(data){
