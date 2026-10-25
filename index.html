@@ -33,6 +33,10 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 .stage{position:relative;min-width:0;background:var(--paper);border-right:1px solid var(--rule);overflow:hidden}
 #view{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;cursor:grab}
 #view.editing{cursor:crosshair}
+/* 3D showing (S.view '3d'): #view3d fills the stage and the 2D map becomes a corner inset; a click on it goes back to 2D */
+#view3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.stage.v3d #view{inset:auto;right:max(16px,env(safe-area-inset-right,0px));bottom:16px;width:min(300px,36%);height:auto;aspect-ratio:4/3;
+  outline:1px solid var(--rule);border-radius:4px;cursor:pointer} /* outline, not border: the canvas box stays the drawing's size */
 .panel{overflow-y:auto;background:var(--panel);padding-block:20px 32px;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
 
 /* Lap block and status chip (Telemetry and Optimiser sections) */
@@ -55,6 +59,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 .zoom button:hover{border-color:var(--ink)}
 .zoom button.follow{font-size:10.5px;letter-spacing:.04em}
 .zoom button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.zoom button:disabled{opacity:.45;cursor:default}
 .legend{position:absolute;left:max(16px,env(safe-area-inset-left,0px));bottom:16px;display:flex;flex-direction:column;gap:4px;pointer-events:none;
   background:color-mix(in srgb,var(--paper) 82%,transparent);padding:8px 10px;border:1px solid var(--rule);border-radius:4px}
 .legend .bar{width:160px;height:6px;border-radius:1px;background:linear-gradient(90deg,var(--s0),var(--s1),var(--s2))}
@@ -126,12 +131,14 @@ details p{margin:6px 0 0}
 
 <div class="app">
   <main class="stage" id="stage">
+    <canvas id="view3d" aria-label="3D view of the circuit" hidden></canvas>
     <canvas id="view" aria-label="Circuit map with the optimised racing line"></canvas>
     <div class="zoom">
       <button id="zIn" aria-label="Zoom in">+</button>
       <button id="zOut" aria-label="Zoom out">−</button>
       <button id="zFit" aria-label="Fit track" style="font-size:11px">FIT</button>
       <button id="zFollow" aria-label="Follow the car" aria-pressed="false" class="follow">CAR</button>
+      <button id="zView" aria-label="3D view" aria-pressed="false" class="follow">3D</button>
     </div>
     <div class="warn" id="warn" hidden></div>
     <div class="legend" id="legend">
