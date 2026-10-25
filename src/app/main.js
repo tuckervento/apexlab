@@ -2,6 +2,7 @@
 // editing), the requestAnimationFrame loop, the lap readout and live telemetry; everything it draws comes from S
 // (src/app/state.js).
 import { S, $ } from './state.js';
+import { perfWindow } from './perf.js';
 import { send, sendState, connect, settled } from './client.js';
 import { bindButtons, bindRun, buildCarUI, buildTrackUI, carView, dynLap, fit, loaded, loadFailed, rebuildTrack, refused, renderDerived, renderDyn,
   runLabel, selectHandle, setFollow, setView, showError, trackArrived, updGhostUI, updHillsUI } from './controls.js';
@@ -177,6 +178,28 @@ function showWarn(T,w){
   const el=$('#warn'),txt=parts.join(' · ');if(el.textContent!==txt)el.textContent=txt;el.hidden=!txt;
 }
 
+// ---------- opt-in frame measurement
+const perfEnabled=new URLSearchParams(location.search).has('perf');
+let perfSample;
+if(perfEnabled){
+  let start=performance.now(),win=perfWindow(start),tasks=[],serial=0,observer=null;
+  if(globalThis.PerformanceObserver?.supportedEntryTypes?.includes('longtask')){
+    observer=new PerformanceObserver(list=>tasks.push(...list.getEntries()));observer.observe({type:'longtask'});
+  }
+  const flush=()=>{
+    const end=performance.now();if(observer)tasks.push(...observer.takeRecords());
+    const result={...win.close(end,tasks),serial:++serial,longTaskSupported:!!observer,flush};
+    window.__perf=result;
+    console.log(`[perf] running p50=${result.p50?.toFixed(2)}ms p95=${result.p95?.toFixed(2)}ms longTasks=${result.longTasks} longTaskMs=${result.longTaskMs.toFixed(2)} runningFrames=${result.runningFrames} idleFrames=${result.idleFrames} idleP50=${result.idleP50?.toFixed(2)}ms idleP95=${result.idleP95?.toFixed(2)}ms idleLongTasks=${result.idleLongTasks} idleLongTaskMs=${result.idleLongTaskMs.toFixed(2)} mode=${result.mode}`);
+    start=end;win=perfWindow(start);tasks=[];return result;
+  };
+  window.__perf={flush};
+  perfSample=ts=>{
+    win.sample(ts,S.view==='3d'?`3d ${S.cam3d.mode}`:S.view,S.running);
+    if(ts-start>=10000)flush();
+  };
+}
+
 // ---------- loop
 let lastTs=0,frameN=0,shownView='2d'; // shownView: the view the map canvas is sized for
 // The loop always re-schedules itself; an error pauses the search and shows on the page instead of freezing it.
@@ -189,6 +212,7 @@ function frame(ts){
   requestAnimationFrame(frame);
 }
 function frameBody(ts){
+  if(perfEnabled)perfSample(ts);
   if(S.frameErr&&S.running)S.frameErr=null;
   const dt=Math.min(0.1,(ts-lastTs)/1000||0);lastTs=ts;frameN++;
   if(S.view!==shownView){shownView=S.view;resize();} // setView changed the layout: inset or full stage
