@@ -67,6 +67,9 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 
 .camera3d{position:absolute;left:16px;bottom:110px;background:var(--panel)}
 .camera3d[hidden]{display:none}
+.orthoControls{position:absolute;left:16px;bottom:184px;display:flex;align-items:center;gap:8px;background:var(--panel);padding:4px 8px;font:11px var(--mono)}
+.orthoControls[hidden]{display:none}
+.orthoControls input{width:120px}
 .trace3d{position:absolute;left:16px;bottom:146px;background:var(--panel)}
 .trace3d[hidden]{display:none}
 .zoom{position:absolute;top:16px;right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:6px}
@@ -150,8 +153,10 @@ details p{margin:6px 0 0}
     <div id="overlay3d" aria-label="Circuit labels"></div>
     <canvas id="view" aria-label="Circuit map with the optimised racing line"></canvas>
     <div class="seg camera3d" id="camera3d" aria-label="3D camera" hidden><button data-v="overview" aria-pressed="true">Overview</button><button data-v="chase" aria-pressed="false">Chase</button>
+      <button data-v="ortho" aria-pressed="false">Map</button>
       <button data-v="tv" aria-pressed="false">TV</button></div>
     <div class="seg trace3d" id="trace3d" aria-label="3D cars" hidden><button data-v="lap" aria-pressed="true">Lap model</button><button data-v="dynamic" aria-pressed="false">Dynamic check</button><button data-v="both" aria-pressed="false">Both</button></div>
+    <label class="orthoControls" id="orthoControls" hidden>Tilt <input id="orthoTilt" type="range" min="0" max="60" step="1" value="0" aria-label="Map tilt in degrees"></label>
     <div class="zoom">
       <button id="zIn" aria-label="Zoom in">+</button>
       <button id="zOut" aria-label="Zoom out">−</button>

@@ -11,7 +11,7 @@ and delete or update it here when it lands.
 
 | # | Item | Value | Size | Risk | Changes flat goldens? |
 |---|---|---|---|---|---|
-| A1 | 2.5D tilted map | high (topology at a glance) | M–L | medium | no |
+| A1 | 2.5D tilted map — superseded by 3D Map camera, pending Q (§13 Q2) | high (topology at a glance) | M–L | medium | no |
 | A2 | Banking | high (realistic hilly corners) | L | high | no |
 | A3 | Load tables only for the reachable load range — **not workable**; Illinois GGV halved the build instead | — | — | — | no |
 | A4 | Grade and vertical curvature from the line driven | low–medium (≤ 44 ms of lap) | M | medium | no |
@@ -48,7 +48,9 @@ reshapes A4, so do A4 with or after it). A5 can ride along with A2. A7 on its ow
 
 ---
 
-## A1. 2.5D tilted map
+## A1. 2.5D tilted map — superseded (pending Q)
+
+**Status.** Superseded by the 3D Map camera (`cameras/ortho.js`, plan task 2.4), with a 0–60° tilt slider; pending Q’s confirmation of `docs/3d-view.md` §13 Q2. The Canvas 2D sketch below is historical.
 
 **Why.** The 2D cues (height tint, elevation chart, telemetry) work, but you can't *see* a crest at a glance. Q wanted
 2.5D if it wasn't a big step up; it was judged a significant one, so step 8 shipped 2D cues.
