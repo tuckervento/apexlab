@@ -22,7 +22,7 @@ export default async ctx=>{
       const rev=S.disp.lineRev;send({type:'setLine'});await until(()=>S.disp.lineRev!==rev);
       S.animT=3;S.hist=[];S.prog.evals=0;
       if(S.view!=='3d')q('#zView').click();
-      q('#camera3d [data-v="tv"]').click();await settle();
+      {const select=q('#camera3d');select.value='tv';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
       const tv=await import('/src/views/scene3d/cameras/tv.js'),core=await import('/vendor/three-0.186.1/build/three.core.js');
       const {smoothPose}=await import('/src/playback/pose.js'),{dataToThree}=await import('/src/views/scene3d/frame.js');
       const v=tv.view(S.cam3d.state),c=new core.PerspectiveCamera(v.fovDeg,q('#view3d').clientWidth/q('#view3d').clientHeight,v.near,v.far);
@@ -30,7 +30,7 @@ export default async ctx=>{
       const p=smoothPose(S.disp,S.animT),ndc=new core.Vector3(...dataToThree(p.x,p.y,p.z)).project(c);
       return {inside:[ndc.x,ndc.y,ndc.z].every(x=>Number.isFinite(x)&&Math.abs(x)<=1),ndc:ndc.toArray(),
         zoomDisabled:['#zIn','#zOut','#zFit','#zFollow'].every(s=>q(s).disabled),
-        selected:q('#camera3d [data-v="tv"]').getAttribute('aria-pressed')==='true',frozen:!S.running&&S.replay===0&&!S.frameErr};
+        selected:q('#camera3d').value==='tv',frozen:!S.running&&S.replay===0&&!S.frameErr};
     })()`);
     seen.push(shot);for(const k of ['inside','zoomDisabled','selected','frozen'])checks[i+' '+k]=shot[k];
     references[i]=await compareToReference(ctx,(await screenshot(ctx)).png,fileURLToPath(new URL(`./ref/tv3d-${i}.png`,import.meta.url)));

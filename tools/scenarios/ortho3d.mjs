@@ -18,7 +18,7 @@ export default async ctx=>{
     q('#replaySeg [data-v="0"]').click();S.animT=3;S.hist=[];S.prog.evals=0;await document.fonts.ready;
     const hidden2d=q('#orthoControls').hidden;q('#zView').click();await until(()=>!!S.scene3d);await settle();
     const hiddenOverview=q('#orthoControls').hidden;
-    q('#camera3d [data-v="ortho"]').click();await settle();
+    {const select=q('#camera3d');select.value='ortho';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     window.orthoCheck={S,q,until,settle};
     return {frozen:!S.running&&S.replay===0,hidden2d,hiddenOverview,shownMap:!q('#orthoControls').hidden,zoomEnabled:['#zIn','#zOut','#zFit'].every(s=>!q(s).disabled)};
   })()`));
@@ -41,16 +41,17 @@ export default async ctx=>{
     q('#zIn').click();await settle();const zoomIn=S.cam3d.state.halfHeight<h&&JSON.stringify(S.cam3d.state.target)===target;
     q('#zOut').click();await settle();const zoomOut=Math.abs(S.cam3d.state.halfHeight-h)<1e-8;
     q('#zIn').click();q('#zFit').click();await settle();const fitRestores=Math.abs(S.cam3d.state.halfHeight-h)<1e-8;
-    q('#camera3d [data-v="chase"]').click();await settle();const hiddenChase=q('#orthoControls').hidden;
-    q('#camera3d [data-v="ortho"]').click();await settle();
+    {const select=q('#camera3d');select.value='chase';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();const hiddenChase=q('#orthoControls').hidden;
+    {const select=q('#camera3d');select.value='ortho';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     return {projectionMatches,zoomIn,zoomOut,fitRestores,hiddenChase};
   })()`));
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
   Object.assign(checks,await run(`(async()=>{
-    const {q,until,settle}=orthoCheck;await until(()=>{const s=q('#stage').getBoundingClientRect();return s.width<400&&Math.abs(q('#view3d').clientWidth-s.width)<1;}); // the stage, not the viewport: the page has marginsq('#zFit').click();await settle();
+    const {q,until,settle}=orthoCheck;await until(()=>{const s=q('#stage').getBoundingClientRect();return s.width<400&&Math.abs(q('#view3d').clientWidth-s.width)<1;}); // The stage, not the viewport: the page has margins.
+    q('#zFit').click();await settle();
     const a=q('#orthoControls').getBoundingClientRect(),stage=q('#stage').getBoundingClientRect();
     const hit=b=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom;
-    return {phoneClear:['#view','.zoom','.lapblock','#camera3d','#trace3d'].every(s=>q(s).hidden||!hit(q(s).getBoundingClientRect())),phoneInStage:a.left>=stage.left&&a.right<=stage.right&&a.top>=stage.top&&a.bottom<=stage.bottom};
+    return {phoneClear:['#view','.zoom','.lapblock','#camera3d','#trace3d','#height3d','#legend'].every(s=>q(s).hidden||!hit(q(s).getBoundingClientRect())),phoneInStage:a.left>=stage.left&&a.right<=stage.right&&a.top>=stage.top&&a.bottom<=stage.bottom};
   })()`));
   return {allTrue:Object.values(checks).every(Boolean),checks,references};
 };

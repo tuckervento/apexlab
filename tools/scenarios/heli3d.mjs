@@ -26,13 +26,13 @@ export default async ctx=>{
   })()`);
   for(const mode of ['heli','pair']){
     seen[mode]=await run(`(async()=>{
-      const {S,q,settle}=hpcheck;q('#camera3d [data-v="${mode}"]').click();await settle();
+      const {S,q,settle}=hpcheck;{const select=q('#camera3d');select.value='${mode}';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
       const cam=await import('/src/views/scene3d/cameras/${mode}.js'),core=await import('/vendor/three-0.186.1/build/three.core.js');
       const v=cam.view(S.cam3d.state),c=new core.PerspectiveCamera(v.fovDeg,q('#view3d').clientWidth/q('#view3d').clientHeight,v.near,v.far);
       c.position.fromArray(v.position);c.up.fromArray(v.up);c.lookAt(new core.Vector3(...v.target));c.updateMatrixWorld();
       const cars=['lapCar','ghostCar'].map(name=>S.scene3d._debug.scene.getObjectByName(name));
       const ndc=cars.map(o=>o.position.clone().project(c).toArray());
-      return {selected:S.cam3d.mode==='${mode}'&&q('#camera3d [data-v="${mode}"]').getAttribute('aria-pressed')==='true',
+      return {selected:S.cam3d.mode==='${mode}'&&q('#camera3d').value==='${mode}',
         zoomDisabled:['#zIn','#zOut','#zFit','#zFollow'].every(s=>q(s).disabled),
         frozen:!S.running&&S.replay===0&&!S.frameErr,distinct:Math.abs(S.disp.t-S.ghost.t)>0.2,
         inside:cars.every(o=>o.visible)&&ndc.every(p=>p.every(Number.isFinite)&&Math.abs(p[0])<=0.9&&Math.abs(p[1])<=0.9&&Math.abs(p[2])<=1),ndc};

@@ -74,7 +74,7 @@ export default async ctx=>{
     q('#trace3d [data-v="dynamic"]').click();await settle();
 
     const chase=await import('/src/views/scene3d/cameras/chase.js');
-    q('#camera3d [data-v="chase"]').click();await settle();
+    {const select=q('#camera3d');select.value='chase';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     const expected=chase.view(chase.init({T:S.T,car:last.trace})),actual=chase.view(S.cam3d.state);
     const chaseFollowsTrace=expected.position.every((v,i)=>Math.abs(v-actual.position[i])<1e-6);
     q('#trace3d [data-v="both"]').click();await seek(d.tc[dyn.start]+Math.min(tr.t.at(-1),tr.t[0]+0.8));

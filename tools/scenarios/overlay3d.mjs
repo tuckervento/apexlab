@@ -18,7 +18,7 @@ export default async ctx=>{
     return {labelCount:q('#overlay3d').querySelectorAll('.corner3d').length===S.corners.length};
   })()`));
   for(const mode of ['overview','chase']){
-    await run(`(async()=>{const {q,settle}=ov3;q('#camera3d [data-v="${mode}"]').click();await settle();})()`);
+    await run(`(async()=>{const {q,settle}=ov3;{const select=q('#camera3d');select.value='${mode}';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();})()`);
     references[mode]=await compareToReference(ctx,(await screenshot(ctx)).png,fileURLToPath(new URL('./ref/overlay3d-'+mode+'.png',import.meta.url)));
     checks[mode+'Reference']=references[mode].ok;
   }
@@ -40,7 +40,7 @@ export default async ctx=>{
     const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],S.animT),cs=pose(d,rt,S.info),text=tagText(S.tagMode,cs,g?stationPose(g,cs.station,cs.frac):null);
     const tagMatches=q('.car3d').textContent===text.main+(text.delta?'\\n'+text.delta:'');
     q('#tagSeg [data-v="off"]').click();await frames();const tagsOff=q('.car3d').hidden&&q('.ghost3d').hidden;
-    q('#camera3d [data-v="overview"]').click();await settle();
+    {const select=q('#camera3d');select.value='overview';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     const el=[...q('#overlay3d').querySelectorAll('.corner3d')].find(e=>!e.hidden),r=el?.getBoundingClientRect();
     ov3.drag=r?{x:r.x+r.width/2,y:r.y+r.height/2}:null;ov3.before=JSON.stringify(S.cam3d.state);
     return {behindHidden:behind,inViewShown:shown,tagMatches,tagsOff,pointerTransparent:getComputedStyle(q('#overlay3d')).pointerEvents==='none',dragAnchor:!!r};

@@ -29,16 +29,16 @@ export default async ctx=>{
     return {lazyBefore,missingWebgl,mapAlive,lazyAfter:performance.getEntriesByType('resource').some(e=>e.name.includes('/vendor/three')),opensAfterFailure:!!S.scene3d&&S.view3dMsg===null};
   })()`));
   for(const mode of ['overview','chase']){
-    await run(`(async()=>{const {q,settle}=v3check;q('#camera3d [data-v="${mode}"]').click();await settle();})()`);
+    await run(`(async()=>{const {q,settle}=v3check;{const select=q('#camera3d');select.value='${mode}';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();})()`);
     const {png}=await screenshot(ctx);
     references[mode]=await compareToReference(ctx,png,fileURLToPath(new URL(`./ref/view3d-${mode}.png`,import.meta.url)));
     checks[mode+'Reference']=references[mode].ok;
   }
-  await run(`(async()=>{const {S,q,settle}=v3check;q('#camera3d [data-v="overview"]').click();await settle();v3check.fitBefore=JSON.stringify(S.cam3d.state);})()`);
+  await run(`(async()=>{const {S,q,settle}=v3check;{const select=q('#camera3d');select.value='overview';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();v3check.fitBefore=JSON.stringify(S.cam3d.state);})()`);
   await call('Input.dispatchMouseEvent',{type:'mousePressed',x:300,y:200,button:'left',clickCount:1});
   await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:360,y:230,button:'left',buttons:1});
   await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:360,y:230,button:'left',clickCount:1});
-  await run(`(async()=>{const {S,q,wait,settle,fitBefore}=v3check;const moved=JSON.stringify(S.cam3d.state)!==fitBefore;q('#zFit').click();await wait(50);v3check.fitRestores=moved&&JSON.stringify(S.cam3d.state)===fitBefore;q('#camera3d [data-v="chase"]').click();await settle();})()`);
+  await run(`(async()=>{const {S,q,wait,settle,fitBefore}=v3check;const moved=JSON.stringify(S.cam3d.state)!==fitBefore;q('#zFit').click();await wait(50);v3check.fitRestores=moved&&JSON.stringify(S.cam3d.state)===fitBefore;{const select=q('#camera3d');select.value='chase';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();})()`);
   Object.assign(checks,await run(`(async()=>{
     const {S,q,wait,settle}=v3check;
     const core=await import('/vendor/three-0.186.1/build/three.core.js');
@@ -56,7 +56,7 @@ export default async ctx=>{
     const oldSize=size(),oldInfo=S.info;q('#carPreset').value='Kart';q('#carPreset').dispatchEvent(new Event('change'));
     for(let i=0;i<100&&S.info===oldInfo;i++)await wait(50);await wait(100);
     const kartSmaller=size()<oldSize;
-    q('#camera3d [data-v="overview"]').click();await settle();
+    {const select=q('#camera3d');select.value='overview';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     const overviewEnabled=buttons([false,false,false,true]);
     const canvas=q('#view3d'),fitRestores=v3check.fitRestores;
     orbit.orbit(S.cam3d.state,0.6,0.1);const oldTrack=S.T,oldState=S.cam3d.state;
@@ -79,12 +79,29 @@ export default async ctx=>{
     for(let i=0;i<100&&!S.scene3d;i++)await wait(50);await wait(100);
     return {chaseDisabled,chaseMoves,kartSmaller,overviewEnabled,fitRestores,trackRefits,pausedSkips,contextFallback,twoDEnabled,reopensAfterLoss:S.view==='3d'&&!!S.scene3d&&S.view3dMsg===null};
   })()`));
-  await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await sleep(200);
-  seen.phone=await run(`(()=>{
-    const q=s=>document.querySelector(s),r=s=>q(s).getBoundingClientRect(),selector=r('#camera3d');
-    const hit=b=>selector.left<b.right&&b.left<selector.right&&selector.top<b.bottom&&b.top<selector.bottom;
-    return {visible:!q('#camera3d').hidden,clear:['#view','.zoom','.lapblock'].every(s=>!hit(r(s))),inStage:selector.left>=r('#stage').left&&selector.right<=r('#stage').right&&selector.top>=r('#stage').top&&selector.bottom<=r('#stage').bottom};
+  await run(`(async()=>{
+    const {S,q,wait,settle}=v3check;
+    const until=async(f,label)=>{const end=performance.now()+120000;while(!f()){if(performance.now()>end)throw new Error(label);await wait(25);}};
+    const {currentTrace}=await import('/src/app/trace3d.js');
+    q('#dynBtn').click();await until(()=>S.dynRes&&!S.dynRunning,'dynamic check');
+    if(!currentTrace(S.dynRes,S.dynStale))throw new Error('No current passing trace for layout');
+    const select=q('#camera3d');select.value='ortho';select.dispatchEvent(new Event('change',{bubbles:true}));await settle();
+    v3check.until=until;
   })()`);
-  checks.phoneSelector=seen.phone.visible&&seen.phone.clear&&seen.phone.inStage;
+  for(const [name,width,height] of [['desktop',1280,800],['phone',390,844]]){
+    await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+    seen[name]=await run(`(async()=>{
+      const {q,until,settle}=v3check;
+      await until(()=>innerWidth===${width}&&innerHeight===${height}&&Math.abs(q('#view3d').clientWidth-q('#stage').clientWidth)<1,'layout resize');await settle();
+      const ids=['#camera3d','#trace3d','#height3d','#orthoControls'],obstacles=['#view','.zoom','.lapblock','#legend'];
+      const rect=s=>{const r=q(s).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+      const rectangles=Object.fromEntries([...ids,...obstacles,'#stage'].map(s=>[s,rect(s)])),stage=rectangles['#stage'];
+      const hit=(a,b)=>a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom;
+      return {rectangles,visible:ids.every(s=>!q(s).hidden&&rectangles[s].width>0&&rectangles[s].height>0),
+        clear:ids.every((s,i)=>[...ids.slice(i+1),...obstacles].every(t=>!hit(rectangles[s],rectangles[t]))),
+        inStage:ids.every(s=>{const r=rectangles[s];return r.left>=stage.left&&r.right<=stage.right&&r.top>=stage.top&&r.bottom<=stage.bottom;})};
+    })()`);
+    checks[name+'Selector']=seen[name].visible&&seen[name].clear&&seen[name].inStage;
+  }
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,references,projection:'Reconstruct PerspectiveCamera from active public view(); project the live car group world position.'};
 };
