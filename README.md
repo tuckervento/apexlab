@@ -77,12 +77,15 @@ index.html ─ src/app/                 state, worker client, controls, frame lo
 
              src/views/map2d/      map and charts, drawn from explicit inputs
              src/playback/         pose(t) along a lap or a dynamic trace; race clock for ghosts
+             src/race/             multi-lap race loop and judge (Node only so far), driving src/drivers/
 ```
 
 | Directory | What it holds |
 |---|---|
 | `src/core/` | Units boundary (`carSpec`), track generation and spline, car limit tables, the quasi-steady-state lap model `lapEval` with its hand-written adjoint gradient, the staged spline L-BFGS optimiser, and `describeCar` (chart and readout data). No DOM. |
 | `src/dynamics/` | The time-stepped bicycle model (`dynLap`), inverse dynamics (`dynNominal`) and the dynamic check (`DynCheck`). No DOM. |
+| `src/drivers/` | Driver models behind an observation → action interface. Today only the reference driver, the dynamic check's controller. |
+| `src/race/` | A race of several laps at constant grip: continuous state, interpolated lap timing, and a judge that reads only the car's physical state (track limits; off or spin → reset with a penalty, or DNF). Not in the app yet. |
 | `src/solver/` | `Solver` behind a message protocol (commands in, events out), and the Web Worker that runs it. The main thread never runs physics. |
 | `src/playback/` | `pose()` (position, heading, speed, accelerations, gear; plus steering and slip for dynamic traces) and the race clock. |
 | `src/views/map2d/` | Camera, palette, map drawing and side-panel charts: pure functions of what they're given. |
@@ -104,6 +107,7 @@ node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
 - **Solver protocol, `describeCar` and playback.**
 - **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, the committed physics hash, and a run file recorded before elevation that must still reload exactly.
 - **Elevation:** flat circuits unchanged bit for bit; the gradient on hills; closed forms (crest and compression corner speeds, terminal speed up a ramp); the dynamic check on hills.
+- **Race:** steady laps, lap times that add up, resets (including across the finish line), and the judge's thresholds. `node tests/check-race-mutations.mjs` (run separately) checks that each of these tests fails on deliberately broken code.
 
 Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`. Run the same command after driver edits; it regenerates independent physics and driver identities.
 
@@ -127,3 +131,5 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 
 ### idea
 after finding ideal line, make 'driver' repeat laps with realistic deg, and it needs to try to maintain the line / compensate for the loss of grip.  this would provide another layer of 'competition' as we try to improve the driving algorithms and see if we can beat prior 'race times'
+
+Progress ([docs/race-mode.md](docs/race-mode.md) §9): phase 1 (plant/driver split) and phase 2 (race loop and judge at constant grip, Node only) are done. Next: per-axle grip scales, then tyre wear.
