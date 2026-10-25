@@ -68,6 +68,13 @@ result requires both identities and the same runtime. Saved runs carry optional 
 older files remain readable but cannot identify their driver separately. Existing snapshot ghosts still
 replay their stored samples. Race result files and replay compatibility gating remain future work.
 
+`src/views/scene3d/index.js` lazily exposes `createScene3d(canvas, pal, {onLost, forceLogDepth}?)`.
+The returned view owns GPU resources: `setTrack(T)`, `setLine(disp, mode, pal)`, `setGhost(snapshot|null)`,
+`setCars({car, ghost})`, `setTheme(pal)`, `resize(rect, dpr)`, `frame({car, ghost, view})`,
+`info()` and `dispose()`. Setters rebuild/dispose resources; frame applies poses and a perspective view.
+`info()` reports depth strategy, triangles, geometries and programs; `forceLogDepth` tests the fallback.
+Context lost/restored events reach `onLost(event)`; `_debug.{renderer,scene}` supports browser checks.
+
 ### 3.1 Core
 
 | Function | Purpose | Notes |
@@ -419,7 +426,7 @@ src/
   playback/      pose(t) from a lap snapshot or a dynamic trace; race clock for ghosts (step 7)
   views/
     map2d/       current canvas map + charts, drawn from explicit inputs (step 6)
-    scene3d/     future
+    scene3d/     lazy WebGL renderer, pure mesh/frame/camera helpers; explicit inputs, no app state
   app/           state object, protocol client, controls, wiring (step 6)
 tests/
 ```
@@ -500,7 +507,8 @@ station: { s, x, y, z, tangent, lateral /* banked */, up, widthL, widthR, grade,
 - **Vertical curvature** ✅: normal load `g·cos + v²·kV` through a load-factor axis on the grip tables (§4.7).
 - **Bank**: adds a gravity component to lateral grip, and makes height vary across the track (so grade and load would depend on the line). Not done.
 
-Pick the world frame for 3D explicitly. Recommended: right-handed, z-up. Converting from the prototype's y-down numbers flips handedness, so curvature signs and the meaning of positive offset must be converted at import, not patched in views.
+The 3D boundary uses `scene3d/frame.js`: three `(X,Y,Z) = data (x,z,y)` and yaw is negative heading.
+No other sign changes are needed; curvature and positive offset retain their data meaning.
 
 ---
 
