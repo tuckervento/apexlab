@@ -7,6 +7,7 @@
 // A scenario module's default export gets {run, sleep, call} (call: the raw DevTools protocol, e.g. for screenshots): run(expr) evaluates expr in the page (a promise is awaited) and
 // returns its value; the page's own modules are reachable with import('/src/app/state.js') and the like, the same
 // instances the app uses. The result is printed with the page's console errors.
+// References render with prefers-color-scheme: light unless a scenario explicitly chooses another scheme.
 //
 // WebGL2 (task 0.5 of docs/plans/3d/PLAN.md). --disable-gpu, the default, gives no WebGL2 at all (getContext('webgl2') is null). With
 // `--use-angle=swiftshader --enable-unsafe-swiftshader` (GL_FLAGS below; `--use-angle=swiftshader` alone also worked here, the
@@ -15,8 +16,11 @@
 // EXT_clip_control is available. tools/scenarios/webgl2.mjs checks this. tools/shot.mjs has the screenshot compare (tolerant: a
 // software rasteriser differs from a GPU). Ports: APEX_PORT / APEX_DEBUG_PORT override the defaults (8765 / 9333) per run.
 //
-// Exit codes: 0 pass; 1 the scenario failed (a page exception, an exception from the scenario, or a result of the form
-// {allTrue: false, checks}); 2 the driver couldn't run it (Chrome or serve.mjs didn't start, the page didn't load, the
+// Verification returns nonempty boolean checks, with optional allTrue agreeing with them. Capture-only modes return
+// diagnostic:true (reported as not verified). options.expectedConsoleErrors lists regexes: each must occur, and every
+// console error must match one. Diagnostics still fail on exceptions and console-error mismatches.
+// Exit codes: 0 pass (or explicit diagnostic); 1 failed checks, malformed results, page/scenario exceptions, or unexpected
+// or missing expected console errors; 2 the driver couldn't run it (Chrome or serve.mjs didn't start, the page didn't load, the
 // DevTools socket failed: a DriverError, with its reason printed). Errors are always printed, never swallowed.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -28,6 +32,36 @@ const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // The harness failed, not the app: Chrome, serve.mjs, the page load or the DevTools socket (exit 2).
 export class DriverError extends Error {}
+
+export function mediaParams(method, params = {}) {
+  if (method !== 'Emulation.setEmulatedMedia' || params.features?.some(f => f.name === 'prefers-color-scheme')) return params;
+  return {...params, features: [...(params.features || []), {name: 'prefers-color-scheme', value: 'light'}]};
+}
+
+export function classify({result, exceptions = [], consoleErrors = [], options = {}} = {}) {
+  const reasons = [], object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const diagnostic = object(result) && result.diagnostic === true;
+  if (!object(result)) reasons.push('result must be an object');
+  else if (!diagnostic || 'checks' in result || 'allTrue' in result) {
+    if (!object(result.checks)) reasons.push('checks must be a nonempty object of booleans');
+    else {
+      const entries = Object.entries(result.checks);
+      if (!entries.length) reasons.push('checks must not be empty');
+      for (const [name, value] of entries) {
+        if (typeof value !== 'boolean') reasons.push(`check ${name} must be boolean`);
+        else if (!value) reasons.push(`check ${name} is false`);
+      }
+      if ('allTrue' in result && result.allTrue !== entries.every(([, v]) => v === true)) reasons.push('allTrue disagrees with checks');
+    }
+  }
+  for (const e of exceptions) reasons.push('page exception: ' + e);
+  // Fresh regexes keep global/sticky declarations deterministic without changing their lastIndex.
+  const expected = (options.expectedConsoleErrors || []).map(r => new RegExp(r.source, r.flags));
+  const matches = (r, e) => { r.lastIndex = 0; return r.test(e); };
+  for (const e of consoleErrors) if (!expected.some(r => matches(r, e))) reasons.push('unexpected console error: ' + e);
+  for (const r of expected) if (!consoleErrors.some(e => matches(r, e))) reasons.push('missing expected console error: ' + r);
+  return {ok: reasons.length === 0, reasons, diagnostic};
+}
 
 // WebGL2 is opt-in (webgl:true, or APEX_WEBGL=1, or a scenario module's `export const options = {webgl: true}`, which the CLI
 // passes to withApp); every other scenario keeps --disable-gpu. These flags are what worked, on Chrome 155.0.8059.85, macOS:
@@ -66,7 +100,7 @@ export async function withApp(fn, { port = +process.env.APEX_PORT || 8765, debug
     // every DevTools call has a time limit (callMs, well above the slowest scenario), so a page that never answers can't hang the driver
     const call = (method, params = {}) => new Promise((r, fail) => {
       const i = ++id, timer = setTimeout(() => { waiting.delete(i); fail(new DriverError(`DevTools ${method} got no answer in ${callMs / 1000} s`)); }, callMs);
-      waiting.set(i, m => { clearTimeout(timer); r(m); }); ws.send(JSON.stringify({ id: i, method, params }));
+      waiting.set(i, m => { clearTimeout(timer); r(m); }); ws.send(JSON.stringify({ id: i, method, params: mediaParams(method, params) }));
     });
     const run = async expr => {
       const r = await call('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
@@ -75,6 +109,8 @@ export async function withApp(fn, { port = +process.env.APEX_PORT || 8765, debug
       return r.result.result.value;
     };
     await call('Runtime.enable');
+    const media = await call('Emulation.setEmulatedMedia');
+    if (media.error) throw new DriverError('could not pin colour scheme: ' + media.error.message);
     // our own server must be the one answering on the port: another process there would hang the load or serve another page
     // (127.0.0.1, the address serve.mjs binds: localhost can resolve to ::1 first, where another process may be listening)
     const url = `http://127.0.0.1:${port}/`, until = Date.now() + 6000;
@@ -102,11 +138,11 @@ export async function withApp(fn, { port = +process.env.APEX_PORT || 8765, debug
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const file = process.argv[2];
   if (!file) { console.error('usage: node tools/cdp.mjs <scenario.mjs>'); process.exit(2); }
-  let out;
-  try { const mod = await import(pathToFileURL(resolve(file)).href); out = await withApp(mod.default, mod.options); }
+  let out, options;
+  try { const mod = await import(pathToFileURL(resolve(file)).href); options = mod.options; out = await withApp(mod.default, options); }
   catch (e) {
     if (e instanceof DriverError) { console.error('DRIVER ERROR (exit 2): ' + e.message); process.exit(2); }
     console.error('SCENARIO FAILED (exit 1): ' + (e?.stack || e)); process.exit(1);
@@ -114,6 +150,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { result, exceptions, errors } = out;
   console.log(JSON.stringify(result, null, 1));
   if (errors.length) console.log('console errors:\n  ' + errors.join('\n  '));
-  if (exceptions.length) { console.log('PAGE EXCEPTIONS:\n  ' + exceptions.join('\n  ')); process.exit(1); }
-  if (result && result.allTrue === false) { console.log('FAILED: a check is false'); process.exit(1); } // scenarios that report {allTrue, checks}
+  const verdict = classify({result, exceptions, consoleErrors: errors, options});
+  if (verdict.diagnostic) console.log('DIAGNOSTIC: not verified');
+  if (!verdict.ok) { console.log('FAILED:\n  ' + verdict.reasons.join('\n  ')); process.exit(1); }
 }

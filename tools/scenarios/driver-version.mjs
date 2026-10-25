@@ -1,5 +1,4 @@
 // Check actual browser exports, live hashes and old-file compatibility through the UI.
-import assert from 'node:assert/strict';
 export default async ({run})=>{
   const result=await run(`(async()=>{
     const c=await import('/src/app/controls.js');
@@ -22,10 +21,8 @@ export default async ({run})=>{
     return {physicsMatches:file.physics.sha256===PHYSICS.sha256&&file.physics.live===PHYSICS.sha256,
       driverMatches:file.driver.sha256===DRIVER.sha256&&file.driver.live===DRIVER.sha256,current,changed,legacy};
   })()`);
-  assert.equal(result.physicsMatches,true);
-  assert.equal(result.driverMatches,true);
-  assert.match(result.current,/Driver source matches/);
-  assert.match(result.changed,/Driver source differs/);
-  assert.match(result.legacy,/no separate driver identity/);
-  return result;
+  const checks={physicsMatches:result.physicsMatches===true,driverMatches:result.driverMatches===true,
+    currentMatches:/Driver source matches/.test(result.current),changedDiffers:/Driver source differs/.test(result.changed),
+    legacyNoIdentity:/no separate driver identity/.test(result.legacy)};
+  return {allTrue:Object.values(checks).every(Boolean),checks,seen:result};
 };

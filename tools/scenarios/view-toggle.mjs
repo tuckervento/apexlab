@@ -48,7 +48,7 @@ export default async ({ run, sleep, call }) => {
   await run(`(() => { const b = document.querySelector('#zView'); if (b) b.style.visibility = ''; })()`);
   await metrics(1280, 800); await sleep(300); await run(`document.querySelector('#zFit').click()`);
   const SAVE = process.env.VIEW_TOGGLE_SAVE, BASE = process.env.VIEW_TOGGLE_BASELINE; // path prefixes
-  if (SAVE) { for (const w in shots) writeFileSync(`${SAVE}-${w}.png`, shots[w]); return { saved: SAVE, bytes: Object.fromEntries(Object.entries(shots).map(([w, b]) => [w, b.length])), seen }; }
+  if (SAVE) { for (const w in shots) writeFileSync(`${SAVE}-${w}.png`, shots[w]); return { diagnostic: true, saved: SAVE, bytes: Object.fromEntries(Object.entries(shots).map(([w, b]) => [w, b.length])), seen }; }
   checks.frozen = !seen.freeze.running;
   if (BASE) for (const w in shots) {
     const base = readFileSync(`${BASE}-${w}.png`);

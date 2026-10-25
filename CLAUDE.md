@@ -10,7 +10,7 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
 
 - **Run:** `node serve.mjs`, then open `http://localhost:8000` (`PORT=` to change). `file://` no longer works: browsers block ES modules (and Workers) there. Only external resource is Google Fonts.
 - **Test:** `node --test tests/` (Node's built-in runner, zero deps; ~25 s). `tests/load-core.mjs` imports `src/` as one namespace (`APEX_SRC=<dir>` loads a modified copy, for checking that tests fail on broken code). Modules are cached per process, so module-level state is shared within a test file.
-- **Browser:** `node tools/cdp.mjs <scenario.mjs>` drives the real app in headless Chrome over the DevTools protocol (no deps; Node's `WebSocket`, `CHROME=<path>` if not at the macOS default), for what Node can't run: `controls.js`, `main.js`, the panel, the frame loop. A scenario gets `run(expr)` in the page, where `import('/src/app/state.js')` etc. are the app's own module instances. Exit 0 pass, 1 the scenario failed (page exception, its own exception, `{allTrue: false}`), 2 the driver couldn't run it (Chrome, `serve.mjs`, port, DevTools; the reason is printed). Examples in `tools/scenarios/`.
+- **Browser:** `node tools/cdp.mjs <scenario.mjs>` drives the real app in headless Chrome over the DevTools protocol (no deps; Node's `WebSocket`, `CHROME=<path>` if not at the macOS default), for what Node can't run: `controls.js`, `main.js`, the panel, the frame loop. A scenario gets `run(expr)` in the page, where `import('/src/app/state.js')` etc. are the app's own module instances. Exit 0 pass (or explicit `diagnostic: true`, reported as not verified), 1 the scenario failed (false checks, malformed results, page/scenario exceptions, unexpected or missing expected console errors), 2 the driver couldn't run it (Chrome, `serve.mjs`, port, DevTools; the reason is printed). Examples in `tools/scenarios/`.
   - **WebGL.** The 3D scenarios set `export const options = {webgl: true}` (or `APEX_WEBGL=1`): Chrome runs WebGL2 on
     SwiftShader. Without it, `getContext('webgl2')` is null.
   - **Paths and ports.** `cdp.mjs` serves the tree it is started in. `APEX_PORT`/`APEX_DEBUG_PORT` let several runs
@@ -19,6 +19,7 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
     (`compareToReference`, `diffPng`). Missing references fail. `APEX_UPDATE_REFS=1` writes them and the run exits
     non-zero with "UPDATED reference (review)". Review every written image, then run the scenario twice without
     update mode: each reference must compare at fraction 0. `webgl2.mjs` tests both modes explicitly in a temp directory.
+    References render with `prefers-color-scheme: light` unless a scenario explicitly chooses another scheme.
     - `view-toggle.mjs` checks that 2D is byte-identical with 3D unopened, against PNGs saved on `main`
       (`VIEW_TOGGLE_SAVE`/`VIEW_TOGGLE_BASELINE`; see its header). Without the baseline it skips that check.
 - `tests/parity.test.mjs` compares `src/` against the frozen prototype bit for bit (via `tests/load-prototype.mjs`, which extracts the prototype's `CORE`/`DYN` blocks into a `vm` context). Elevation (step 8) left flat circuits bit-identical, so it still passes; delete it after the first intended change to *flat* physics.

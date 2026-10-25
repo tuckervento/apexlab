@@ -1,5 +1,8 @@
 // A car and a circuit the worker refuses (review L4): the panel goes back to what the worker holds, a note says why,
 // and the search keeps running. Expect the two refusals among the console errors ("solver: …"), nothing else.
+export const options = {expectedConsoleErrors: [/^solver: carSpec: mass must be > 0, got 0$/,
+  /^solver: buildTrack: the circuit is shorter than the track is wide \(\d+(?:\.\d+)?(?:e[+-]?\d+)? m < 12 m\): are the control points all in one place\?$/]};
+
 export default async ({ run }) => run(`(async () => {
   const { S } = await import('/src/app/state.js'), c = await import('/src/app/controls.js'), { send, settled } = await import('/src/app/client.js');
   const q = s => document.querySelector(s), until = performance.now() + 60000;

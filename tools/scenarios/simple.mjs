@@ -2,6 +2,8 @@
 // that presets come back exactly, that a knob moves the sliders under it, that slider edits grey the knobs they take
 // over and ↺ gives them back, the EV gearbox, a refused car bringing back the knobs, Reset, and a loaded run becoming
 // the base. Every check should be true; expect one "solver: carSpec: mass …" console error from the refusal.
+export const options = {expectedConsoleErrors: [/^solver: carSpec: mass must be > 0, got 0$/]};
+
 export default async ({ run }) => run(`(async () => {
   const { S } = await import('/src/app/state.js'), c = await import('/src/app/controls.js'), { CARS } = await import('/src/app/presets.js');
   const { settled } = await import('/src/app/client.js');

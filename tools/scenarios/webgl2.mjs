@@ -60,8 +60,10 @@ export default async ctx => {
   console.log('screenshot of the page saved: ' + path + ' (' + shot.length + ' bytes), diffPng against itself: ' + self);
 
   const px = gl.centre, bg = gl.topLeft;
-  return { seen: { gl, same, shifted, self, missing, wrote, okRef, badRef, empty, nonPng },
-    allTrue: gl.webgl2 && gl.error === 0 && px[0] > 250 && px[1] === 0 && px[2] === 0 && bg[2] > 250 && bg[0] === 0 && same === 0 && shifted > 0 && self === 0
-      && Object.values(checks).every(Boolean),
-    checks: { triangle: px, background: bg, ...checks } };
+  Object.assign(checks, { webgl2: gl.webgl2, noGlError: gl.error === 0,
+    trianglePixel: !!px && px[0] > 250 && px[1] === 0 && px[2] === 0,
+    backgroundPixel: !!bg && bg[2] > 250 && bg[0] === 0,
+    identicalImages: same === 0, shiftedImages: shifted > 0, screenshotSelf: self === 0 });
+  return { seen: { gl, triangle: px, background: bg, same, shifted, self, missing, wrote, okRef, badRef, empty, nonPng },
+    allTrue: Object.values(checks).every(Boolean), checks };
 };

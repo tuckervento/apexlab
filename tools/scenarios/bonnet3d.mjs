@@ -3,7 +3,7 @@ import { compareToReference, screenshot } from '../shot.mjs';
 export const options = {webgl:true};
 
 export default async ctx=>{
-  const {run,call}=ctx,checks={},references={};
+  const {run,call}=ctx,checks={},seen={},references={};
   await call('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});
   Object.assign(checks,await run(`(async()=>{
     const {S}=await import('/src/app/state.js'),{send}=await import('/src/app/client.js');
@@ -32,7 +32,8 @@ export default async ctx=>{
   }
   Object.assign(checks,await run(`(async()=>{const {S,free,settle}=b3;await settle();const expected=structuredClone(b3.before);free.look(expected,40,-20);free.move(expected,1);free.move(expected,0,1);free.move(expected,0,0,1);return {freeEvents:Math.abs(S.cam3d.state.yaw-expected.yaw)<1e-10&&Math.abs(S.cam3d.state.pitch-expected.pitch)<1e-10&&S.cam3d.state.position.every((v,i)=>Math.abs(v-expected.position[i])<1e-9),freeMoved:Math.hypot(...S.cam3d.state.position.map((v,i)=>v-b3.before.position[i]))>1,noFrameError:S.view==='3d'&&!S.frameErr};})()`));
   // After the drag and the key presses the canvas has keyboard focus (:focus-visible): a quiet 1 px accent inset, not the browser's ring.
-  Object.assign(checks,await run(`(()=>{const c=document.querySelector('#view3d');const cs=getComputedStyle(c),accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),probe=document.createElement('i');probe.style.color=accent;document.body.append(probe);const rgb=getComputedStyle(probe).color;probe.remove();return {keyboardFocused:document.activeElement===c&&c.matches(':focus-visible'),quietRing:cs.outlineStyle==='solid'&&cs.outlineWidth==='1px'&&cs.outlineColor===rgb,ring:{style:cs.outlineStyle,width:cs.outlineWidth,color:cs.outlineColor,accent:rgb}};})()`));
+  const focus=await run(`(()=>{const c=document.querySelector('#view3d');const cs=getComputedStyle(c),accent=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),probe=document.createElement('i');probe.style.color=accent;document.body.append(probe);const rgb=getComputedStyle(probe).color;probe.remove();return {keyboardFocused:document.activeElement===c&&c.matches(':focus-visible'),quietRing:cs.outlineStyle==='solid'&&cs.outlineWidth==='1px'&&cs.outlineColor===rgb,ring:{style:cs.outlineStyle,width:cs.outlineWidth,color:cs.outlineColor,accent:rgb}};})()`);
+  const {ring,...focusChecks}=focus;seen.ring=ring;Object.assign(checks,focusChecks);
   for(const mode of ['bonnet','free']){
     await run(`(async()=>{
       const {S,select,smoothPose,bonnet,free,q}=b3;await select('${mode}');
@@ -46,5 +47,5 @@ export default async ctx=>{
     references[mode]=await compareToReference(ctx,png,fileURLToPath(new URL(`./ref/bonnet3d-${mode}.png`,import.meta.url)));
     checks[mode+'Reference']=references[mode].ok;
   }
-  return {allTrue:Object.values(checks).every(Boolean),checks,references};
+  return {allTrue:Object.values(checks).every(Boolean),checks,seen,references};
 };
