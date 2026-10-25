@@ -29,7 +29,16 @@ export default async ctx=>{
     const scene=api._debug.scene,ground=scene.getObjectByName('ground'),road=scene.children.find(o=>o.geometry?.attributes.color);
     const minY=m=>{const p=m.geometry.attributes.position.array;let y=Infinity;for(let j=1;j<p.length;j+=3)y=Math.min(y,p[j]);return y;};
     window.worldCheck={api,input,readColors};
+    // The ground plane can lie ~33 m under the car here: past the shadow camera's far plane it rendered as shadowed, a dark
+    // 24 m square under the car. Geometric: the sun-to-ground distance along the light at the car is within far. Pixel (this
+    // frozen scene only, like the reference): the ground at (295,455), where the square was, matches nearby ground.
+    const sun=scene.children.find(o=>o.isDirectionalLight),car=scene.children.find(o=>o.isGroup&&o.children.some(c=>c.name==='body'));
+    const off=sun.position.clone().sub(sun.target.position),reach=off.length()*(1+(car.position.y-minY(ground))/off.y);
+    const gl=api._debug.renderer.getContext(),px=(x,y)=>{const b=new Uint8Array(4);gl.readPixels(x,600-y,1,1,gl.RGBA,gl.UNSIGNED_BYTE,b);return b;};
+    api.frame(input);const a=px(295,455),b=px(260,500);
     return {belowRoad:!!ground&&!!road&&minY(ground)+ground.position.y<minY(road)+road.position.y,
+      shadowReachesGround:reach<=sun.shadow.camera.far,noShadowBox:[0,1,2].every(k=>Math.abs(a[k]-b[k])<=8),
+      shadow:{reach,far:sun.shadow.camera.far,patch:[...a.slice(0,3)],ground:[...b.slice(0,3)]},
       geometries:api.info().geometries,frozen:!S.running&&S.replay===0};
   })()`);
   await run('worldCheck.api.frame(worldCheck.input)');
@@ -42,7 +51,7 @@ export default async ctx=>{
   await run('worldCheck.api.frame(worldCheck.input)');
   const dark=await compareToReference(ctx,(await screenshot(ctx)).png,fileURLToPath(new URL('./ref/world-dark.png',import.meta.url)));
   await run('worldCheck.api.dispose()');
-  const checks={belowRoad:seen.belowRoad,frozen:seen.frozen,themeStable:seen.geometries===darkSeen.geometries,
+  const checks={belowRoad:seen.belowRoad,shadowReachesGround:seen.shadowReachesGround,noShadowBox:seen.noShadowBox,frozen:seen.frozen,themeStable:seen.geometries===darkSeen.geometries,
     fogMatches:darkSeen.fogMatches,light:light.ok,dark:dark.ok};
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,darkSeen,light,dark};
 };

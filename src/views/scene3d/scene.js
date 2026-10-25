@@ -2,7 +2,7 @@ import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
 import { findCorners } from '../map2d/map.js';
 import { startBand, gantry, boardPlacements, signPlacements, labelPlanes, labelAtlas, markerPosts } from './markings.js';
 import { stationFrames } from './frame.js';
-import { trackRibbon, groundPlane, skirts } from './meshes.js';
+import { trackRibbon, groundPlane, skirts, groundHeight } from './meshes.js';
 import { fogRange, worldSize } from './fog.js';
 import { kerbs, kerbColors } from './kerbs.js';
 import { lineRibbon, lineColors } from './line.js';
@@ -26,6 +26,12 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   const shadow=sun.shadow;shadow.mapSize.set(512,512);
   Object.assign(shadow.camera,{left:-12,right:12,top:12,bottom:-12,near:1,far:80});
   shadow.camera.updateProjectionMatrix();shadow.normalBias=0.03;
+  // Ground past the shadow camera's far plane renders as shadowed (the box prints a dark square), and on hills the ground
+  // plane can lie ~40 m under the car: reach from the highest station down to it, plus 2 m.
+  function fitShadow(){
+    let top=-Infinity;for(const z of T.z)top=Math.max(top,z);
+    const d=sunOffset.length();shadow.camera.far=d+(top-groundHeight(T)+2)*d/sunOffset.y;shadow.camera.updateProjectionMatrix();
+  }
   let track=null,line=null,ghostLine=null,car=null,ghostCar=null,T=null,disp=null,g=null,mode='speed';
   function geometry(data){
     const geo=new THREE.BufferGeometry();
@@ -127,6 +133,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     buildWorld();
     buildKerbs();
     buildMarkings();
+    fitShadow();
   }
   function setLine(value,colorMode=mode,palette=pal){
     disp=value;mode=colorMode;pal=palette;remove(line);line=null;
