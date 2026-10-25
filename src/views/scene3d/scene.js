@@ -1,9 +1,10 @@
 import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
+import { findCorners } from '../map2d/map.js';
+import { startBand, gantry, boardPlacements, signPlacements, labelPlanes, labelAtlas, markerPosts } from './markings.js';
 import { stationFrames } from './frame.js';
 import { trackRibbon, groundPlane, skirts } from './meshes.js';
 import { fogRange, worldSize } from './fog.js';
 import { kerbs, kerbColors } from './kerbs.js';
-import { findCorners } from '../map2d/map.js';
 import { lineRibbon, lineColors } from './line.js';
 import { buildCarModel, placeCar, disposeCar } from './car.js';
 
@@ -63,13 +64,63 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     if(!kerbMesh)return;
     const attr=kerbMesh.geometry.attributes.color;kerbColors(T,corners,attr.array,{pal});attr.needsUpdate=true;
   }
+  let markings=null;
+  function disposeMarkings(){
+    if(!markings)return;
+    markings.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){o.material.map?.dispose();o.material.dispose();}});
+    scene.remove(markings);markings=null;
+  }
+  function paintLabels(mesh){
+    const {canvas,labels,tiles}=mesh.userData,g=canvas.getContext('2d');
+    g.fillStyle=pal.colors.paper;g.fillRect(0,0,canvas.width,canvas.height);
+    g.textAlign='center';g.textBaseline='middle';
+    labels.forEach((label,i)=>{
+      const {x,y,size}=tiles[i];g.fillStyle=pal.colors.ink;g.fillRect(x,y,size,size);
+      g.fillStyle=pal.colors.paper;g.fillRect(x+6,y+6,size-12,size-12);
+      g.fillStyle=pal.colors.ink;g.font='bold 72px monospace';g.fillText(label,x+size/2,y+size/2,size-20);
+    });mesh.material.map.needsUpdate=true;
+  }
+  function themeMarkings(){
+    if(!markings)return;
+    markings.traverse(o=>{if(!o.isMesh)return;
+      if(o.userData.labels){paintLabels(o);return;}
+      if(o.name==='gantry'||o.name==='markerPosts'){o.material.color.setStyle(pal.colors.ink);return;}
+      const ink=new THREE.Color(pal.colors.ink),paper=new THREE.Color(pal.colors.paper),a=o.geometry.attributes.color;
+      for(let i=0;i<a.count;i++){const c=o.userData.checks[i]?paper:ink;a.setXYZ(i,c.r,c.g,c.b);}a.needsUpdate=true;
+    });
+  }
+  function buildMarkings(){
+    disposeMarkings();if(!T)return;
+    markings=new THREE.Group();scene.add(markings);
+    const corners=findCorners(T),f=stationFrames(T);
+    for(const [name,data] of [['startBand',startBand(T,f)],['gantry',gantry(T,f)]]){
+      const mesh=new THREE.Mesh(geometry(data),new THREE.MeshBasicMaterial({vertexColors:name==='startBand',side:THREE.DoubleSide}));
+      mesh.name=name;mesh.userData.checks=Array.from(data.color).filter((_,i)=>i%3===0);markings.add(mesh);
+    }
+    const boards=boardPlacements(T,corners),signs=signPlacements(T,corners);
+    const posts=new THREE.Mesh(geometry(markerPosts(T,[...boards,...signs])),new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));
+    posts.name='markerPosts';markings.add(posts);
+    for(const [name,records] of [['boards',boards],['signs',signs]]){
+      const group=new THREE.Group();group.name=name;group.userData.count=records.length;markings.add(group);if(!records.length)continue;
+      for(const page of labelAtlas(records.length).pages){
+        const subset=records.slice(page.start,page.start+page.count);
+        const data=labelPlanes(subset,{tiles:page.tiles}),geo=geometry(data);geo.setAttribute('uv',new THREE.BufferAttribute(data.uv,2));
+        const canvas=document.createElement('canvas');canvas.width=page.width;canvas.height=page.height;
+        const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+        const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));
+        mesh.userData={canvas,tiles:page.tiles,labels:subset.map(r=>String(r.distance??r.number))};group.add(mesh);
+      }
+    }
+    themeMarkings();
+  }
   function setTrack(value){
-    T=value;remove(track);track=null;if(!T){disposeWorld();disposeKerbs();return;}
+    T=value;remove(track);track=null;if(!T){disposeWorld();disposeKerbs();disposeMarkings();return;}
     const data=trackRibbon(T,stationFrames(T),{heightColors:!T.flat,pal});
     track=new THREE.Mesh(geometry(data),new THREE.MeshStandardMaterial({color:data.color?0xffffff:pal.colors.track,
       vertexColors:!!data.color,flatShading:true,side:THREE.DoubleSide}));scene.add(track);
     buildWorld();
     buildKerbs();
+    buildMarkings();
   }
   function setLine(value,colorMode=mode,palette=pal){
     disp=value;mode=colorMode;pal=palette;remove(line);line=null;
@@ -97,6 +148,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     recolorKerbs();
     if(line)recolor(line,lineColors(disp,mode,pal));
     if(ghostLine)recolor(ghostLine,lineColors(g,'ghost',pal));
+    themeMarkings();
     tintCar(car,pal.colors.accent);tintCar(ghostCar,pal.colors.ghost);
   }
   function resize(rect,dpr){renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
@@ -115,6 +167,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',lost);
     disposeWorld();
     disposeKerbs();
+    disposeMarkings();
     remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);renderer.dispose();
   }
   return {setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
