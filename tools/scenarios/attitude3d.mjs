@@ -36,7 +36,19 @@ export default async ctx=>{
     for(let i=0;i<8;i++)await raf();
     checks.pausedFrozen=JSON.stringify(before)===JSON.stringify(transforms());
     checks.noFrameError=!S.frameErr&&S.view==='3d';
+    window.attitudeShot={end};
     return {checks,transforms:before,station:p.station,k:d.k[p.station],animationTime:S.animT};
+  })()`);
+  // The live run stops within a frame (~0.1 s) of \`end\`, so its image differs run to run. The screenshot instead shows
+  // a fixed pose at \`end\` from a freshly initialised chase view, with a fixed attitude (outward roll, right steer), drawn
+  // with the scene's own frame(); paused, the app doesn't render over it. The live wiring is covered by the checks above.
+  await run(`(async()=>{
+    const {S}=await import('/src/app/state.js'),{smoothPose}=await import('/src/playback/pose.js');
+    const chase=await import('/src/views/scene3d/cameras/chase.js'),raf=()=>new Promise(r=>requestAnimationFrame(r));
+    S.animT=attitudeShot.end;await raf();await raf();await raf();
+    const car=smoothPose(S.disp,attitudeShot.end,S.info),cv=document.querySelector('#view3d');
+    const view=chase.view(chase.init({T:S.T,car,ghost:null,replay:0,aspect:cv.clientWidth/cv.clientHeight}));
+    S.scene3d.frame({car,ghost:null,trace:null,view,attitude:{car:{roll:-0.05,pitch:0.01,steer:0.1,spin:1},ghost:null,trace:null}});
   })()`);
   const {png}=await screenshot(ctx);
   const reference=await compareToReference(ctx,png,fileURLToPath(new URL('./ref/attitude3d-chase.png',import.meta.url)));
