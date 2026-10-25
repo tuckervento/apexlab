@@ -6,11 +6,23 @@ import { carSpec } from './units.js';
 
 // Largest a in [0,hi] with fn(a)>=0, for fn decreasing in a.
 export function solveDec(fn,hi,n){let lo=0;if(fn(hi)>=0)return hi;for(let k=0,K=n||46;k<K;k++){const mid=(lo+hi)/2;if(fn(mid)>=0)lo=mid;else hi=mid;}return lo;}
+// The same answer by Illinois regula falsi, to a bracket narrower than tol: ~10 evaluations where bisection to the same
+// width takes 24. 0 counts as valid without being checked, as in solveDec: at the lateral limit (q = 1) fn(0) can sit a
+// rounding error below 0 while traction still rises at first (load moving onto the driven axle).
+export function solveIll(fn,hi,tol){
+  let lo=0,fl=Math.max(0,fn(0)),fh=fn(hi),side=0;if(fh>=0)return hi;
+  while(hi-lo>tol){
+    let a=(lo*fh-hi*fl)/(fh-fl);if(!(a>lo&&a<hi))a=(lo+hi)/2;const fa=fn(a);
+    if(fa>=0){lo=a;fl=fa;if(side===1)fh/=2;side=1;}else{hi=a;fh=fa;if(side===-1)fl/=2;side=-1;} // halve the stuck end
+  }
+  return lo;
+}
 
 // Every grip limit on the speed grid at load factor n: the car's static weight counts n times (n = 1 on level ground;
 // crests unload it, compressions load it), downforce and the inertial demands (m·a) are unchanged. At n = 1 this is
-// exactly the computation the flat car has always used. p: CarSpec.
-export function gripTables(p,n){
+// exactly the computation the flat car has always used. p: CarSpec. bisect: the GGV by bisection, as the flat (n = 1)
+// tables always have been (bit for bit); the other load levels use solveIll, twice as fast to the same precision.
+export function gripTables(p,n,bisect=n===1){
   const m=p.mass,wr=p.wr,wf=1-wr,aF=p.aF,rF=p.rF,bF=p.bF,awd=p.drive==='AWD',h=p.cg;
   const tireF=Fz=>{if(Fz<=0)return 0;let k=1-p.sens*(Fz/FZ0-1);if(k<0.25)k=0.25;return p.mu*k*Fz;};
   const alat=new Float64Array(NT),brk=new Float64Array(NT),trc=new Float64Array(NT),kcrit=new Float64Array(NT),limF=new Uint8Array(NT),brkF=new Uint8Array(NT);
@@ -35,17 +47,17 @@ export function gripTables(p,n){
   // GGV: for every speed and lateral load (q = ay / lateral limit), the largest braking decel and drive accel
   // that keep BOTH axles inside their own friction circles, with longitudinal load transfer, lateral transfer
   // split by roll stiffness, fixed brake bias, and drive on the driven axle(s).
-  const ggB=new Float64Array(NT*NQ),ggT=new Float64Array(NT*NQ);
+  const ggB=new Float64Array(NT*NQ),ggT=new Float64Array(NT*NQ),TOL=AMAX/2**24,solve=bisect?(f,hi)=>solveDec(f,hi,24):(f,hi)=>solveIll(f,hi,TOL);
   for(let i=0;i<NT;i++){
     const v=i*VSTEP,DF=0.5*RHO*p.cla*v*v,Wf0=m*G*n*wf+DF*aF,Wr0=m*G*n*wr+DF*(1-aF);
     for(let qi=0;qi<NQ;qi++){
       const ay=alat[i]*qi/(NQ-1),dF=m*ay*h/p.track,Fyf=m*wf*ay,Fyr=m*wr*ay;
       const cap=(W,dl)=>{if(W<=0)return 0;const d=Math.min(dl,W/2);return tireF(W/2+d)+tireF(W/2-d);};
-      ggB[i*NQ+qi]=solveDec(ax=>{const d=m*ax*h/p.wb,Wf=Wf0+d,Wr=Wr0-d;const Df=cap(Wf,dF*rF),Dr=cap(Wr,dF*(1-rF));
-        return Math.min(Df-Math.hypot(bF*m*ax,Fyf),Dr-Math.hypot((1-bF)*m*ax,Fyr));},AMAX,24);
-      ggT[i*NQ+qi]=solveDec(ax=>{const d=Math.min(m*ax*h/p.wb,Wf0),Wf=Wf0-d,Wr=Wr0+d;const Df=cap(Wf,dF*rF),Dr=cap(Wr,dF*(1-rF));
+      ggB[i*NQ+qi]=solve(ax=>{const d=m*ax*h/p.wb,Wf=Wf0+d,Wr=Wr0-d;const Df=cap(Wf,dF*rF),Dr=cap(Wr,dF*(1-rF));
+        return Math.min(Df-Math.hypot(bF*m*ax,Fyf),Dr-Math.hypot((1-bF)*m*ax,Fyr));},AMAX);
+      ggT[i*NQ+qi]=solve(ax=>{const d=Math.min(m*ax*h/p.wb,Wf0),Wf=Wf0-d,Wr=Wr0+d;const Df=cap(Wf,dF*rF),Dr=cap(Wr,dF*(1-rF));
         if(awd)return Math.min(Math.sqrt(Math.max(0,Df*Df-Fyf*Fyf))+Math.sqrt(Math.max(0,Dr*Dr-Fyr*Fyr))-m*ax,Df-Fyf,Dr-Fyr);
-        return Math.min(Dr-Math.hypot(m*ax,Fyr),Df-Fyf);},AMAX,24);
+        return Math.min(Dr-Math.hypot(m*ax,Fyr),Df-Fyf);},AMAX);
     }
   }
   for(const kc of [kcrit,kcF,kcR])for(let i=2;i<NT;i++)if(kc[i]>=kc[i-1])kc[i]=kc[i-1]*(1-1e-9);

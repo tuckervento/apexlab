@@ -446,3 +446,24 @@ test('track: hills steeper than the model is built for are a circuit issue', () 
   assert.match(core.hillIssue(T), /\(a 40 m crest or dip;/);
   assert.equal(core.hillIssue({ ...T, dz: [0, 1, 0], kv: [0, -1 / 50, 0] }), null, 'exactly at the limits is fine');
 });
+
+// The load levels' GGV is solved by Illinois regula falsi rather than bisection: about twice as fast to build, to the
+// same precision. Flat (n = 1) stays bisection, bit for bit. Checked on every preset at four load levels.
+test('car: the load levels\' GGV by Illinois matches bisection within its precision', () => {
+  const tol = 2 * 8 * core.G / 2 ** 24; // bisection's own bracket at 24 steps, twice
+  for (const [name, P] of Object.entries(core.CARS)) for (const n of [0, 0.5, 1.5, 2]) {
+    const p = core.carSpec(P), a = core.gripTables(p, n), b = core.gripTables(p, n, true);
+    for (const k of ['ggB', 'ggT']) { let d = 0; for (let i = 0; i < a[k].length; i++) d = Math.max(d, Math.abs(a[k][i] - b[k][i])); assert.ok(d <= tol, `${name} n=${n} ${k}: ${d}`); }
+    for (const k of ['alat', 'brk', 'trc', 'kcrit', 'kcF', 'kcR']) assert.deepEqual(a[k], b[k], `${name} n=${n} ${k} is not solved by Illinois`);
+  }
+});
+// At the lateral limit (q = 1) the traction margin can start a rounding error below 0 and still rise at first, as load
+// moves onto the driven axle: the answer is the far crossing, as bisection (which never checks fn(0)) gives.
+test('car: Illinois takes 0 as valid, as bisection does, where the margin first rises', () => {
+  const hump = a => (a === 0 ? -1e-12 : a * (3 - a)); // crosses at 0 and 3
+  assert.ok(Math.abs(core.solveDec(hump, 8, 24) - 3) < 1e-5);
+  assert.ok(Math.abs(core.solveIll(hump, 8, 8 / 2 ** 24) - 3) < 1e-5);
+  const p = core.carSpec(core.CARS['GT racer']), i = (57 / core.VSTEP) * core.NQ + (core.NQ - 1); // v 57 m/s, q = 1, n = 2
+  const ill = core.gripTables(p, 2).ggT[i], bis = core.gripTables(p, 2, true).ggT[i];
+  assert.ok(bis > 2 && Math.abs(ill - bis) < 1e-5, `GT racer traction at n=2, 57 m/s, q=1: ${ill} vs ${bis}`);
+});
