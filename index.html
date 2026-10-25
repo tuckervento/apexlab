@@ -40,6 +40,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 #view{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;cursor:grab}
 #view.editing{cursor:crosshair}
 /* 3D showing (S.view '3d'): #view3d fills the stage and the 2D map becomes a corner inset; a click on it goes back to 2D */
+#overlay3d{position:absolute;inset:0;pointer-events:none;overflow:hidden;display:none;font:500 11px var(--mono);color:var(--ink)}
+.stage.v3d #overlay3d{display:block}
+#overlay3d>div{position:absolute;white-space:pre;text-align:center;background:var(--paper);padding:3px 6px;transform:translate(-50%,-50%)}
+#overlay3d .tag3d{border:1px solid var(--rule);border-radius:3px;transform:translate(12px,-50%)}
+#overlay3d .ghost3d{color:var(--ghost);transform:translate(calc(-100% - 12px),-50%)}
 #view3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .stage.v3d #view{inset:auto;right:max(16px,env(safe-area-inset-right,0px));bottom:16px;width:min(300px,36%);height:auto;aspect-ratio:4/3;
   outline:1px solid var(--rule);border-radius:4px;cursor:pointer} /* outline, not border: the canvas box stays the drawing's size */
@@ -140,6 +145,7 @@ details p{margin:6px 0 0}
 <div class="app">
   <main class="stage" id="stage">
     <canvas id="view3d" aria-label="3D view of the circuit" hidden></canvas>
+    <div id="overlay3d" aria-label="Circuit labels"></div>
     <canvas id="view" aria-label="Circuit map with the optimised racing line"></canvas>
     <div class="seg camera3d" id="camera3d" aria-label="3D camera" hidden><button data-v="overview" aria-pressed="true">Overview</button><button data-v="chase" aria-pressed="false">Chase</button>
       <button data-v="tv" aria-pressed="false">TV</button></div>
