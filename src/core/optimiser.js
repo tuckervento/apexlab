@@ -20,7 +20,9 @@ export class Optimizer{
     this.S=makeScratch(N);this.go=new Float64Array(N);this.dodx=new Float64Array(N);this.raw=new Float64Array(N);
     this.iters=0;this.evals=0;this.done=false;this.polish=null;this.target=Float64Array.from(off);this.startStage(0,true);
   }
-  rescore(car,B){this.car=car;this.B=B;this.target=Float64Array.from(this.off);this.done=false;this.polish=null;this.startStage(2,false);}
+  // seed: the line to refit from, the one on screen (Solver.pub), never this.off, which during the polish holds the last
+  // candidate tried even when it was turned down (review M2)
+  rescore(car,B,seed){this.car=car;this.B=B;this.target=Float64Array.from(seed);this.done=false;this.polish=null;this.startStage(2,false);}
   // A copy to try a command on (the Solver's transactions). setup and rescore replace the state they change (c, mem, g, …),
   // so sharing it is safe; what they write in place, the working line and the scratch, the copy gets its own of. Its
   // steps from here are the original's, bit for bit.

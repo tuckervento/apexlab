@@ -77,7 +77,8 @@ export class Solver{
     this.B=makeBounds(this.T,car);
     if(c.resume)this.running=true; // the app's auto-resume rides on this command, so a separate run can't overtake it; both paths below publish a progress
     if(!this.off){this.resetLine(null);return;}
-    this.opt.rescore(car,this.B);this.computeRef();this.publish(true);
+    // re-score from the accepted line on screen; after a load, the file's exact line (review M2)
+    this.opt.rescore(car,this.B,this.pub);this.computeRef();this.publish(true);
   }
   setTrack(c){
     const T=buildTrack(c.ctrl,c.width);

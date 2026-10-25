@@ -334,3 +334,28 @@ test('solver: a command that fails part-way changes nothing and keeps the search
     assert.ok(b.last('progress').evals > e0, 'the search carries on');
   });
 });
+
+// A car change re-scores from the line on screen (review M2). During the polish, the optimiser's working line holds the
+// last candidate tried, even one it turned down, so seeding the stage-2 refit from it published a fit of a rejected line.
+test('solver: a car change mid-polish re-scores from the published line, not a rejected candidate', () => {
+  const b = boot(), s = b.s;
+  s.handle({ type: 'run' });
+  for (let k = 0; k < 2000 && !s.opt.polish; k++) s.tick(20);
+  assert.ok(s.opt.polish && !s.opt.converged, 'in the polish stage');
+  let k = 0; while (s.opt.step() && k++ < 5000); // until a candidate is turned down
+  const shown = Float64Array.from(s.pub);
+  assert.ok(s.opt.off.some((x, i) => x !== shown[i]), 'precondition: the working line is not the line on screen');
+  s.handle({ type: 'setCar', rev: 3, params: { ...core.CARS[CAR], mass: core.CARS[CAR].mass + 50 } });
+  noErrors(b.ev);
+  assert.deepEqual(s.opt.target, shown, 'the refit starts from the published line');
+});
+// After a load the published line is the file's exact line, while the optimiser's spline fit of it (what
+// opt.current() returns until convergence) is only close: a car change on a paused loaded run must refit the exact line.
+test('solver: a car change on a paused loaded run re-scores from the loaded line', () => {
+  const b = boot(), s = b.s, line = Float64Array.from({ length: s.T.N }, (_, i) => 1.5 * Math.sin(i / 7));
+  s.handle({ type: 'load', rev: 3, params: { ...core.CARS[CAR] }, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, off: line, run: false });
+  const shown = Float64Array.from(s.pub);
+  s.handle({ type: 'setCar', rev: 4, params: { ...core.CARS[CAR], mass: core.CARS[CAR].mass + 50 } });
+  noErrors(b.ev);
+  assert.deepEqual(s.opt.target, shown, 'the refit starts from the loaded line');
+});
