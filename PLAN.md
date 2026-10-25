@@ -149,6 +149,9 @@ every not-yet-started P2–P5 task name the real functions and fields.
   The scene takes `frame({..., wheelBlur: {car, ghost, trace}})`, with the flags from `syncWheels3d()` in `main.js`;
   pausing is never blurred, and the static disc stays under reduced motion. The lap car is drawn twice per frame
   (main and shadow pass), so triangle budgets count it twice.
+- **Wave G 6.1 (done). The plan is complete (2026-10-25):** all 33 tasks are done and merged. The checkboxes below
+  were never ticked; `STATUS.md` is the record. The docs describe what shipped (`ARCHITECTURE.md` §3 and §11 step 9
+  ✅).
 
 ## Non-Goals
 

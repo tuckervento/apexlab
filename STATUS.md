@@ -1,10 +1,11 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave G, 4.2)_
+_Last updated: 2026-10-25 (Wave G, plan complete)_
 
 ## Snapshot
 
-32 of 33 tasks done (Waves A–F and 4.2), all merged to `main`, along with the batch 1 follow-ups and the layout job.
+**The plan is complete:** all 33 of 33 tasks (Waves A–G) are done and merged to `main`, along with the batch 1
+follow-ups and the layout job. Step 9 is marked done in `ARCHITECTURE.md` §11.
 On `main`:
 - 430/430 tests pass;
 - all 25 scenarios exit 0 in two full runs, every reference at fraction 0;
@@ -16,7 +17,7 @@ The 3D view has:
 - speed-linked FOV, g response and shake, and speed streaks, all off under reduced motion;
 - spoked wheels that turn into a blurred disc past the per-frame Nyquist limit.
 
-Only 6.1 (documentation close-out) remains.
+The docs describe it in `ARCHITECTURE.md` §3, `CLAUDE.md`, `README.md` and `docs/deferred.md`.
 
 ## Completed
 
@@ -173,10 +174,17 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   - side views of both sides, in both states, reviewed;
   - on merged `main`: all 25 scenarios exit 0 in two full passes, every reference at fraction 0; 8 regenerated images
     reviewed; `git diff 4a2d5c4 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
+- [x] 6.1 documentation close-out (coordinator) — done 2026-10-25 — `0e26d32` — verified:
+  - Q reviewed the doc diff and approved it;
+  - every claim in it was checked against the code (four of the coordinator's own drafts were corrected first: 0.2 did
+    change the physics hash, the 2D map draws the trace as a dashed path, reduced motion doesn't touch the attitude,
+    and the pan, zoom and TV wording);
+  - suite 430/430 with the docs in place (no code changed since the post-merge scenario passes);
+  - a grep of the docs for "step 9" and 3D "later / not yet / to come" leaves only current or explicitly historical
+    mentions.
 
 ## In Progress
 
-- Wave G: 6.1 documentation close-out (coordinator), started 2026-10-25; gated by Q's review of the doc diff.
 
 ## Blocked
 
@@ -447,4 +455,12 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 
 ## Next Up
 
-- Wave G: 6.1 (documentation close-out; needs everything, so last). It stops for Q's review of the doc diff.
+Nothing: every PLAN.md task is done. Left for Q, outside the plan (also in `docs/deferred.md` "Elsewhere"):
+- **A1:** close it as superseded by the Map camera (§13 Q2, a default Q never confirmed)?
+- **Wheel blur at 1×:** the disc shows from ~56 km/h on the GT racer. Keep it?
+- **Cosmetic:**
+  - the camera select widens under reduced motion;
+  - Streaks isn't offered in Bonnet;
+  - pair framing ignores the inset.
+- **Checks:** a direct check of the 3.6 label positions.
+- **Cleanup:** removing the 20 finished worktrees in `../apexlab-wt/` (needs Q's permission).
