@@ -91,8 +91,14 @@ export async function withApp(fn, { port = +process.env.APEX_PORT || 8765, debug
     harness();
     return { result: await fn({ run, sleep, call }), exceptions, errors }; // call(method, params): raw DevTools protocol
   } finally {
-    ws?.close(); browser.kill(); server.kill();
-    await sleep(300); rmSync(profile, { recursive: true, force: true }); // our own temporary profile
+    ws?.close(); server.kill();
+    // Chrome writes its profile until it has exited (seconds while the worker is busy, e.g. building load tables), and
+    // deleting it earlier fails with ENOTEMPTY; a cleanup failure is printed, never thrown, so it can't hide the result.
+    if (browser.exitCode === null && browser.signalCode === null) {
+      const gone = new Promise(r => browser.once('exit', r)); browser.kill(); await Promise.race([gone, sleep(5000)]);
+    }
+    try { rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } // our own temporary profile
+    catch (e) { console.error(`warning: the temporary Chrome profile ${profile} wasn't deleted: ${e.message}`); }
   }
 }
 
