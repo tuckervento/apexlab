@@ -67,7 +67,7 @@ const at=(info,v)=>Math.min(info.n-1,Math.round(v/info.vstep));
 // Smooth lap geometry for 3D; timing and telemetry remain those of lapPose. Central differences are with
 // respect to line distance, scaled to this segment for Hermite's unit parameter. Wrap at the start line.
 export function smoothPose(src,t,info){
-  if(!src.tc)throw new TypeError('smoothPose requires a lap snapshot');
+  if(!src.tc)return smoothTracePose(src,t,info);
   const p=lapPose(src,t,info),N=src.px.length,i=p.station,j=(i+1)%N,f=p.frac,h=src.ds[i];
   const component=a=>{
     if(!a)return [0,0];
@@ -81,5 +81,23 @@ export function smoothPose(src,t,info){
   p.x=x;p.y=y;p.z=z;p.heading=Math.atan2(dy,dx);
   p.grade=dz/Math.hypot(dx,dy);p.pitch=Math.atan2(dz,Math.hypot(dx,dy));
   p.tangent=[dx/len,dy/len,dz/len];
+  return p;
+}
+
+// Trace Hermites use seconds: body velocities rotate into the recorded x/y frame, yaw rate differentiates psi.
+function smoothTracePose(tr,rt,info){
+  const p=tracePose(tr,rt,info),n=tr.t.length,t=Math.min(Math.max(rt,tr.t[0]),tr.t[n-1]);
+  let i=0,hi=n;while(hi-i>1){const m=(i+hi)>>1;if(tr.t[m]<=t)i=m;else hi=m;}
+  const j=Math.min(i+1,n-1),h=j>i?tr.t[j]-tr.t[i]:1,f=j>i?(t-tr.t[i])/h:0,f2=f*f,f3=f2*f;
+  const hermite=(a,b,u,v)=>[(2*f3-3*f2+1)*a+(f3-2*f2+f)*u*h+(-2*f3+3*f2)*b+(f3-f2)*v*h,
+    ((6*f2-6*f)*a+(3*f2-4*f+1)*u*h+(-6*f2+6*f)*b+(3*f2-2*f)*v*h)/h];
+  const velocity=k=>{const c=Math.cos(tr.psi[k]),s=Math.sin(tr.psi[k]);return [tr.v[k]*c-tr.vy[k]*s,tr.v[k]*s+tr.vy[k]*c];};
+  const a=velocity(i),b=velocity(j),[x,dx]=hermite(tr.x[i],tr.x[j],a[0],b[0]),[y,dy]=hermite(tr.y[i],tr.y[j],a[1],b[1]);
+  const slope=k=>{const lo=Math.max(0,k-1),hi=Math.min(n-1,k+1);return hi>lo?(tr.z[hi]-tr.z[lo])/(tr.t[hi]-tr.t[lo]):0;};
+  const [z,dz]=tr.z?hermite(tr.z[i],tr.z[j],slope(i),slope(j)):[0,0];
+  const delta=Math.atan2(Math.sin(tr.psi[j]-tr.psi[i]),Math.cos(tr.psi[j]-tr.psi[i]));
+  const [psi]=hermite(tr.psi[i],tr.psi[i]+delta,tr.r[i],tr.r[j]),len=Math.hypot(dx,dy,dz);
+  p.x=x;p.y=y;p.z=z;p.heading=Math.atan2(Math.sin(psi),Math.cos(psi));
+  p.pitch=Math.atan2(dz,Math.hypot(dx,dy));p.tangent=len?[dx/len,dy/len,dz/len]:[Math.cos(psi),Math.sin(psi),0];
   return p;
 }
