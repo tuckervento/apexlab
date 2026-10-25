@@ -164,6 +164,15 @@ function syncHeight3d(){
   $('#heightValue3d').textContent=slider.value+'×';
   if(applied3d.height!==e){S.scene3d.setHeightScale(e);applied3d.height=e;dirty3d=true;}
 }
+const streakInput3d={speed:0,tAnim:0,on:false,reducedMotion:false};
+$('#streaksOn3d').onchange=()=>{dirty3d=true;};
+function syncStreaks3d(input){
+  const toggle=$('#streaksOn3d'),note=$('#streaksNote3d');
+  toggle.disabled=S.reducedMotion;note.hidden=!S.reducedMotion;
+  streakInput3d.speed=input.car?.speed??0;streakInput3d.tAnim=S.animT;
+  streakInput3d.on=toggle.checked&&['chase','heli','pair','tv'].includes(S.cam3d.mode);
+  streakInput3d.reducedMotion=S.reducedMotion;
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -178,6 +187,7 @@ function draw3d(dt){
     syncTrace3d(input);
     syncPair3d();
     syncHeight3d();
+    syncStreaks3d(input);
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
     if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv','heli','pair'].includes(S.cam3d.mode)))initCamera(input);
     else{
@@ -185,7 +195,7 @@ function draw3d(dt){
     }
     const carAttitude=stepAttitude3d(api,input,dtAnim,seek);
     const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state),keyView=JSON.stringify(view);
-    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude});lastView3d=keyView;dirty3d=false;}
+    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude,streaks:streakInput3d});lastView3d=keyView;dirty3d=false;}
     placeOverlays3d();
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}

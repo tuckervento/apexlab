@@ -1,3 +1,4 @@
+import { STREAK_MAX, streakCount, streakLength, streakLayout, streakPosition } from './streaks.js';
 import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
 import { scaledHeight, scaledPitch } from './heights.js';
 import { findCorners } from '../map2d/map.js';
@@ -20,6 +21,24 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     reversedDepthBuffer:depth==='reversed',logarithmicDepthBuffer:depth==='log'});
   const scene=new THREE.Scene(),perspective=new THREE.PerspectiveCamera(),orthographic=new THREE.OrthographicCamera(),target=new THREE.Vector3();
   let camera=perspective;
+  const streakMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(0.025,0.025,1),
+    new THREE.MeshBasicMaterial({color:pal.colors.ink,transparent:true,opacity:0.16,depthWrite:false}),STREAK_MAX);
+  streakMesh.name='speedStreaks';streakMesh.count=0;streakMesh.frustumCulled=false;
+  streakMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(streakMesh);
+  const streakSeeds=streakLayout(),streakPoint=new Float64Array(3),streakMatrix=new THREE.Matrix4();
+  const streakPos=new THREE.Vector3(),streakScale=new THREE.Vector3(1,1,1);
+  function frameStreaks(input){
+    const speed=input?.on?input.speed:0;
+    streakMesh.count=streakCount(speed,input?.reducedMotion);
+    streakScale.z=streakLength(speed,input?.reducedMotion);
+    for(let i=0;i<streakMesh.count;i++){
+      streakPosition(streakSeeds,i,speed,input.tAnim,streakPoint);
+      streakPos.fromArray(streakPoint).applyQuaternion(camera.quaternion).add(camera.position);
+      streakMatrix.compose(streakPos,camera.quaternion,streakScale);streakMesh.setMatrixAt(i,streakMatrix);
+    }
+    if(streakMesh.count)streakMesh.instanceMatrix.needsUpdate=true;
+  }
+
   const world=new THREE.Group();world.name='heightWorld';scene.add(world);
   let heightScale=1,heightBase=0;
   scene.background=new THREE.Color(pal.colors.sky3d);
@@ -225,6 +244,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function setCars(specs){removeCar(car);removeCar(ghostCar);car=makeCar(specs.car,false);ghostCar=makeCar(specs.ghost,true);buildTrace(specs.trace);}
   function setTheme(value){
     pal=value;scene.background.setStyle(pal.colors.sky3d);
+    streakMesh.material.color.setStyle(pal.colors.ink);
     themeWorld();
     themeTrace();
     if(track){
@@ -256,6 +276,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     frameAttitude(input.attitude);
     const v=input.view;
     frameCamera(v);
+    frameStreaks(input.streaks);
     if(scene.fog)fogRange(track.geometry.attributes.position.array,size,v,scene.fog,heightScale,heightBase);
     renderer.render(scene,camera);
   }
@@ -264,6 +285,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function info(){return {depth,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,programs:renderer.info.programs.length};}
   function dispose(){
     canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',lost);
+    streakMesh.dispose();remove(streakMesh);
     disposeTrace();
     disposeWorld();
     disposeKerbs();
