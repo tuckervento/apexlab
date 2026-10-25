@@ -34,11 +34,14 @@ option (Q7, task 5.3); render on the main thread (T1, §5).
   changes anywhere else. All conversion goes through `src/views/scene3d/frame.js` (task 0.4); never swizzle inline.
 - **Purity** (R1): `src/views/scene3d/` never imports `S` or `src/app/*`. It takes explicit inputs (canvas, palette
   from `readColors`, data, view). Geometry, camera, attitude and effects maths are pure modules tested in Node.
-- **Importing three:** modules that Node tests import must not use the bare `'three'` specifier (Node can't resolve
-  it). They import nothing from three, or `vendor/three-0.186.1/build/three.core.js` by relative path. Only the
-  renderer-facing module(s) import `three.module.js` (also by relative path, so the URL matches the import map's).
-  Addons, if any, come in through the `"three/addons/"` import map entry. Task 0.3 verifies this rule in Node and
-  corrects this paragraph if reality differs.
+- **Importing three** (verified by task 0.3; measurements in `vendor/three-0.186.1/README.md`): modules that Node tests
+  import must not use the bare `'three'` or `'three/addons/…'` specifiers (Node throws `ERR_MODULE_NOT_FOUND`: no
+  import map, no `node_modules`). They import nothing from three, or `vendor/three-0.186.1/build/three.core.js` by
+  relative path. Only the renderer-facing module(s) import `three.module.js` (also by relative path, so the URL matches
+  the import map's; in Chrome, `import('three')` and both relative URLs give one instance, with no "Multiple instances"
+  warning). That split is a convention, not a Node limit: `three.module.js` also imports in Node with no DOM, and only
+  `new WebGLRenderer()` throws (`document is not defined`). Addons, if any, come in through the `"three/addons/"`
+  import map entry; they import the bare `'three'`, so a module that imports an addon can't be loaded in Node at all.
 - **Cameras** live one per file in `src/views/scene3d/cameras/<name>.js`, each exporting `init(input)`,
   `step(state, input, dtAnim)` and `view(state)`. `input` is `{T, car, ghost, replay, aspect, corners?}`, where
   `car`/`ghost` are smooth poses or null. A **view** is
