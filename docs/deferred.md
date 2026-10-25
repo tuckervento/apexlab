@@ -11,7 +11,7 @@ and delete or update it here when it lands.
 
 | # | Item | Value | Size | Risk | Changes flat goldens? |
 |---|---|---|---|---|---|
-| A1 | 2.5D tilted map — superseded by 3D Map camera, pending Q (§13 Q2) | high (topology at a glance) | M–L | medium | no |
+| A1 | 2.5D tilted map — the 3D Map camera shipped (tilt 0–60°, height exaggeration); close A1 as superseded? Pending Q (`docs/3d-view.md` §13 Q2) | high (topology at a glance) | M–L | medium | no |
 | A2 | Banking | high (realistic hilly corners) | L | high | no |
 | A3 | Load tables only for the reachable load range — **not workable**; Illinois GGV halved the build instead | — | — | — | no |
 | A4 | Grade and vertical curvature from the line driven | low–medium (≤ 44 ms of lap) | M | medium | no |
@@ -25,8 +25,8 @@ and delete or update it here when it lands.
 | B1 | Saved runs: show more of the comparison | medium (TODO #6) | S | none | no |
 | B2 | Ghost from a run whose station count changed | low | S–M | low | no |
 
-Suggested order: A1 (the visible win), then A2 (the next physics step; it
-reshapes A4, so do A4 with or after it). A5 can ride along with A2. A7 on its own, with its own golden review.
+Suggested order: A2 (the next physics step; it reshapes A4, so do A4 with or after it). A1's visible win
+shipped as the 3D view's Map camera (step 9); keep A1 only if a Canvas 2D tilt is still wanted. A5 can ride along with A2. A7 on its own, with its own golden review.
 
 ---
 
@@ -50,7 +50,7 @@ reshapes A4, so do A4 with or after it). A5 can ride along with A2. A7 on its ow
 
 ## A1. 2.5D tilted map — superseded (pending Q)
 
-**Status.** Superseded by the 3D Map camera (`cameras/ortho.js`, plan task 2.4), with a 0–60° tilt slider; pending Q’s confirmation of `docs/3d-view.md` §13 Q2. The Canvas 2D sketch below is historical.
+**Status.** Superseded by the 3D Map camera (`cameras/ortho.js`, plan task 2.4), which shipped with step 9 (2026-10-25). It frames like `Camera.fit`, follows like `Camera.frame`, has a 0–60° *Tilt* slider and the *Height* exaggeration slider, and keeps the corner labels and map tags (HTML overlays placed by `project()`). The trade-off: it is a WebGL view (WebGL2 needed; editing stays on the flat 2D map). Still pending Q’s confirmation of `docs/3d-view.md` §13 Q2 before A1 is closed. The Canvas 2D sketch below is historical.
 
 **Why.** The 2D cues (height tint, elevation chart, telemetry) work, but you can't *see* a crest at a glance. Q wanted
 2.5D if it wasn't a big step up; it was judged a significant one, so step 8 shipped 2D cues.
@@ -276,7 +276,10 @@ resampled), but the recorded lap is refused as a ghost (`ghostFrom` in `src/app/
 
 ## Elsewhere
 
-- **3D view** (migration step 9): `ARCHITECTURE.md` §10.3 and §11. A1 is a stepping stone.
+- **3D view** (migration step 9): **done** 2026-10-25 (`ARCHITECTURE.md` §3 and §11; plan `PLAN.md`, record
+  `STATUS.md`). Left open there: whether A1 closes (above); the camera select widening under reduced motion; Streaks
+  not offered in Bonnet; pair framing ignoring the inset; a direct check of the 3.6 label positions. Banking (A2) has its
+  3D input ready (`stationFrames`' `bank`, zeros today).
 - README TODO items 7 (tyre degradation), 8 (weather), 9 (simple controls mapping to the full parameters).
 - `ARCHITECTURE.md` §12: presets are seeds (store generated control points as data); the dynamic check's driver gains
   were tuned on two presets; the lap and dynamic models disagree more for some presets (not investigated).

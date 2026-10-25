@@ -2,7 +2,7 @@
 
 racing to find the right line
 
-Apex Lab finds the minimum-time racing line around a closed circuit for a car you configure, then checks how much of that pace a time-stepped vehicle model can actually hold. Everything runs in the browser. The physics is plain JavaScript (ES modules), with no build step and no dependencies.
+Apex Lab finds the minimum-time racing line around a closed circuit for a car you configure, then checks how much of that pace a time-stepped vehicle model can actually hold. Everything runs in the browser. The physics is plain JavaScript (ES modules), with no build step and no dependencies. The optional 3D view draws with three.js 0.186.1, vendored in the repo.
 
 ## Run
 
@@ -10,7 +10,7 @@ Apex Lab finds the minimum-time racing line around a closed circuit for a car yo
 node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.mjs to change the port)
 ```
 
-- **Requirements:** Node.js to serve the files, and a current browser with module Web Workers. Developed with Node v26.12.1 and tested in Chrome.
+- **Requirements:** Node.js to serve the files, and a current browser with module Web Workers (and WebGL2 for the 3D view). Developed with Node v26.12.1 and tested in Chrome.
 - **No install step.** The only external resource is Google Fonts.
 
 ## What you can do
@@ -49,6 +49,22 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 - Telemetry plots speed over lap distance against the centreline.
 - **Ghost:** pin a lap and race against it after changing the car or line, with a time-gap chart. The readouts gain ghost and Δ columns, compared at the same race time or the same place on track, or as each lap's maxima (left and right turns, drive and braking apart). Each map tag adds a Δ against the other car at that same spot.
 
+**See it in 3D**
+- The **3D** button beside the zoom controls turns the stage into a 3D scene, with the 2D map as a corner inset. It loads only when first opened, and the 2D map is unchanged when it's off. Editing the circuit switches back to 2D.
+- The scene has the road with its hills, kerbs, the racing line coloured as on the map, the start band and gantry, braking boards and signs, corner labels, and the map tags.
+- Eight cameras:
+  - **Overview:** drag to orbit; right-drag or Shift-drag to pan; wheel or pinch to zoom; *Fit* to reset.
+  - **Chase**, **Bonnet**, **Heli** and **TV** (trackside, cutting between positions) follow the car.
+  - **Pair** keeps the car and the ghost in frame.
+  - **Free:** drag to look; WASD or the arrow keys to move, Q and E for down and up.
+  - **Map:** top-down, with a 0–60° tilt slider.
+- A *Height* slider exaggerates the hills in Overview and Map.
+- The cars lean, pitch, steer and spin their wheels. These movements are cosmetic, not physics. Spoked wheels turn into a blurred disc when they would strobe.
+- **Lap model / Dynamic check / Both** chooses the cars: with a current dynamic check, its time-stepped car can drive alongside the lap-model car, and its failure point is marked.
+- Chase and Heli widen the field of view with speed and respond to g and to the road. *Streaks* (Chase, Heli, Pair and TV) adds speed streaks.
+- With *reduce motion* set in the operating system, the camera effects and streaks are off and Bonnet is unavailable.
+- Without WebGL2, or if the GPU context is lost, the view returns to 2D and says so in the status chip.
+
 **Save and compare runs**
 - **Export run** saves the car, circuit and line on screen, with the lap it gives, as one JSON file (about 240 KB).
 - **Load run** replaces all three and stops on the saved line, re-scored by the current physics, with the saved lap as the ghost. The Δ against the ghost is then the effect of the physics change alone. *Run* re-optimises from there.
@@ -75,6 +91,7 @@ index.html ─ src/app/                 state, worker client, controls, frame lo
                └── src/dynamics/   bicycle model, inverse dynamics, dynamic check
 
              src/views/map2d/      map and charts, drawn from explicit inputs
+             src/views/scene3d/    3D view: WebGL scene (vendored three.js), cameras, pure mesh and motion helpers
              src/playback/         pose(t) along a lap or a dynamic trace; race clock for ghosts
              src/race/             multi-lap race loop and judge (Node only so far), driving src/drivers/
 ```
@@ -88,6 +105,9 @@ index.html ─ src/app/                 state, worker client, controls, frame lo
 | `src/solver/` | `Solver` behind a message protocol (commands in, events out), and the Web Worker that runs it. The main thread never runs physics. |
 | `src/playback/` | `pose()` (position, heading, speed, accelerations, gear; plus steering and slip for dynamic traces) and the race clock. |
 | `src/views/map2d/` | Camera, palette, map drawing and side-panel charts: pure functions of what they're given. |
+| `src/views/scene3d/` | The 3D view: `scene.js` (the WebGL renderer, loaded on first use), the eight cameras, and pure helpers for meshes, markings, car model, attitude, camera effects, streaks and wheel blur. Like the map, it reads no app state. |
+| `vendor/three-0.186.1/` | three.js, pinned and checked by hash (`tests/vendor-three.test.mjs`). |
+| `tools/` | `cdp.mjs`, a zero-dependency headless-Chrome driver, and its browser scenarios in `tools/scenarios/` (screenshot references in `ref/`). |
 | `src/app/` | The page: one state object, the solver client, controls, input, frame loop and boot. Car and circuit presets. Saved runs (file format, committed physics hash). |
 | `tests/` | Node tests: see below. |
 | `prototype/` | The original single-file prototype, frozen as a reference. |
@@ -107,6 +127,15 @@ node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
 - **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, the committed physics hash, and a run file recorded before elevation that must still reload exactly.
 - **Elevation:** flat circuits unchanged bit for bit; the gradient on hills; closed forms (crest and compression corner speeds, terminal speed up a ramp); the dynamic check on hills.
 - **Race:** steady laps, lap times that add up, resets (including across the finish line), and the judge's thresholds. `node tests/check-race-mutations.mjs` (run separately) checks that each of these tests fails on deliberately broken code.
+- **3D view:** the pure modules (frames, meshes, cameras, attitude, effects, streaks, wheel blur) in Node, and the vendored three.js against its hashes.
+
+The browser side (the panel, the frame loop, the WebGL scene) is checked by scenarios driving headless Chrome:
+
+```bash
+node tools/cdp.mjs tools/scenarios/view3d.mjs   # exit 0 pass, 1 a check failed, 2 the driver couldn't run it
+```
+
+The 3D scenarios compare screenshots against references in `tools/scenarios/ref/`. `APEX_UPDATE_REFS=1` rewrites them; review the images before committing.
 
 Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`. Run the same command after driver edits; it regenerates independent physics and driver identities.
 
@@ -114,6 +143,8 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): conventions, physics, optimiser, data shapes, the worker protocol, the pose contract, and the migration plan with its status.
 - [CLAUDE.md](CLAUDE.md): a short guide for working on the code, including the things that bite.
+- [docs/3d-view.md](docs/3d-view.md): the 3D view's requirements and design options (the plan it came from is `PLAN.md`, its record `STATUS.md`).
+- [docs/deferred.md](docs/deferred.md): work set aside on purpose, with the context to pick it up.
 
 ## TODO
 

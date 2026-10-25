@@ -246,6 +246,10 @@ Line numbers are for `ARCHITECTURE.md` unless noted.
 
 ## Growth: before the 3D view (migration step 9)
 
+*Step 9 landed on 2026-10-25 without resolving these. G1 was worked around rather than fixed: `S.cam` is still a map2d
+`Camera`; the 3D view keeps its own `S.cam3d` and the inset `S.camMini`, and `main.js` still holds both views' input and
+the loop. On G2, the 3D view reads `S.T` and derives its frames with `stationFrames`, adding no new track shape.*
+
 - **G1.** `S.cam` is a map2d `Camera` held in app state (`src/app/state.js:6,19`), so `S` depends on one view. A second view
   needs it out of `S`, and a frame loop that isn't tied to map2d (`main.js` mixes map input, the loop and the lap readout).
   [`deferred.md` A1](deferred.md#a1-25d-tilted-map) (2.5D map) is a stepping stone and will hit this first.

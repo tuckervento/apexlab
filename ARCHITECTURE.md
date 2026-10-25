@@ -2,25 +2,25 @@
 
 Apex Lab finds the minimum-time racing line around a closed circuit for a configurable car, then checks how much of that pace a time-stepped vehicle model can actually hold.
 
-This document describes the current code (physics, solver, views and app in ES modules under `src/`; `index.html` is markup and CSS; the original single-page prototype is frozen in `prototype/apex-lab.html`) and the plan for splitting it into a physics core, a solver that runs off the main thread, and interchangeable views (the existing 2D map first, a 3D view later).
+This document describes the current code (physics, solver, views and app in ES modules under `src/`; `index.html` is markup and CSS; the original single-page prototype is frozen in `prototype/apex-lab.html`) and the plan for splitting it into a physics core, a solver that runs off the main thread, and interchangeable views (the 2D map, and the 3D view of step 9).
 
 ---
 
 ## 1. Status
 
-- **Layers** (migration steps 1–7 done):
+- **Layers** (migration steps 1–9 done, §11):
   - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
   - `src/dynamics/` — `bicycle` (model and inverse dynamics), `plant` (integration and automatic gearbox), `observe` (scalar observations), `lap` (legacy `dynLap` orchestration), `check` (`DynCheck`). No DOM.
   - `src/drivers/` — `reference` (the original controller behind the driver interface, §3), `index`. Outside the `PHYSICS` hash; hashed separately as `DRIVER`.
   - `src/race/` — `race` (multi-lap race loop at constant grip), `judge` (plant-only race rules), `index`; rules in `src/race/README.md`. No DOM, no module-level mutable state. Node only for now (no solver command or UI) and not yet in either hash.
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
-  - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
-  - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
-  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `telemetry` (live readout, map-tag text), `main` (map input, frame loop, HUD, boot), `presets` (`CARS`, `TRACKS`), `sliders` (the car slider table), `simple` (simple car controls: base car and knobs → `CarParams`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
+  - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force); `scene3d/`: the 3D view (§3): `scene` (the WebGL renderer, loaded lazily through `index`), pure helpers tested in Node (`frame`, `meshes`, `line`, `kerbs`, `markings`, `overlays`, `fog`, `heights`, `car`, `attitude`, `car-attitude`, `effects`, `streaks`, `wheels`), and `cameras/` (`orbit`, `chase`, `bonnet`, `free`, `heli`, `pair`, `ortho`, `tv`). Views draw from explicit inputs and never read app state.
+  - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `stationPose`, `lapExtremes`, `smoothPose`, `raceClock`, `traceClock`; §10.2). No DOM.
+  - `src/app/` — `state` (`S`, the one app state object), `client` (solver-worker protocol client), `controls` (side panel, buttons, actions), `telemetry` (live readout, map-tag text), `main` (map and 3D input, frame loop, HUD, boot), `trace3d` (which car the 3D view shows: the lap car, the dynamic-check trace, or both), `presets` (`CARS`, `TRACKS`), `sliders` (the car slider table), `simple` (simple car controls: base car and knobs → `CarParams`), `runfile` (saved-run file format, §7), `physics-version` (generated hash of the physics source, §7).
   - `index.html` — markup and CSS, plus `<script type="module" src="./src/app/main.js">`.
 - **The physics code was moved verbatim** from the prototype's `CORE`/`DYN` blocks. `tests/parity.test.mjs` checks the modules against `prototype/apex-lab.html` bit for bit.
 - **Run:** `node serve.mjs`, then open `http://localhost:8000`. Browsers don't load ES modules or Workers from `file://`. `serve.mjs` is a zero-dependency static server bound to 127.0.0.1.
-- **No build step, no dependencies.** Fonts load from Google Fonts; nothing else is external.
+- **No build step, no package dependencies.** One library is vendored: three.js **0.186.1** under `vendor/three-0.186.1/` (`build/three.module.js`, `build/three.core.js`, its licence). Only `src/views/scene3d/` imports it, and the page loads it only when 3D first opens. Fonts load from Google Fonts; nothing else is external.
 
 ---
 
@@ -68,18 +68,52 @@ result requires both identities and the same runtime. Saved runs carry optional 
 older files remain readable but cannot identify their driver separately. Existing snapshot ghosts still
 replay their stored samples. Race result files and replay compatibility gating remain future work.
 
-`src/views/scene3d/index.js` lazily exposes `createScene3d(canvas, pal, {onLost, forceLogDepth}?)`.
-The returned view owns GPU resources: `setTrack(T)`, `setLine(disp, mode, pal)`, `setGhost(snapshot|null)`,
-`setCars({car, ghost})`, `setTheme(pal)`, `resize(rect, dpr)`, `frame({car, ghost, view})`,
-`info()` and `dispose()`. Setters rebuild/dispose resources; frame applies poses and a perspective view.
-`info()` reports depth strategy, triangles, geometries and programs; `forceLogDepth` tests the fallback.
-Context lost/restored events reach `onLost(event)`; `_debug.{renderer,scene}` supports browser checks.
+**3D view (step 9).** `src/views/scene3d/index.js` lazily exposes
+`createScene3d(canvas, pal, {onLost, forceLogDepth}?)`. The returned view owns every GPU resource:
+- **Setters** rebuild and dispose: `setTrack(T)`, `setLine(disp, mode?, pal?)`, `setGhost(snapshot|null)`,
+  `setCars({car, ghost, trace?})` (car specs; the trace car is optional), `setTheme(pal)`, `setHeightScale(e ≥ 1)`
+  (scales the `heightWorld` group about the ground; panels and gantry stay rigid), `setFailMarker(station|null)`,
+  `resize(rect, dpr)`.
+- **`frame(input)`** renders one frame, from `{car, ghost, trace, view, attitude, streaks, wheelBlur}`:
+  - `car`, `ghost` and `trace` are poses (`smoothPose`), or null to hide that car;
+  - `view` is a camera module's `view()`: a perspective view, or an orthographic one when `view.ortho` is set;
+  - `attitude` is `{car, ghost, trace}`, each an `attitude.js` `view()`;
+  - `streaks` is `{speed, tAnim, on, reducedMotion}`;
+  - `wheelBlur` is `{car, ghost, trace}` booleans from `wheels.js`.
 
-`main.js` imports that entry on the first 3D open, owns `S.scene3d`, and steps the camera in
-`S.cam3d = {mode: 'overview' | 'chase', state}` in replay time. Track/line/ghost/car keys gate rebuilds;
-paused, unchanged views skip rendering. Overview input and the stage's `#camera3d` selector are app wiring.
-Failures return to 2D with persistent `S.view3dMsg`; context loss disposes the scene and replaces its canvas.
-The inset uses `drawMap` with `scaleBar:false`; the default keeps the full 2D map unchanged.
+  Inside `frame()` the order is: place the cars, heights, attitude, wheels, camera, streaks, fog, render.
+- **Queries:** `carRadii()`, `project(point, out)` (three-frame point → CSS pixels and `visible`, for the HTML
+  overlays), `info()` (depth strategy, triangles, geometries, programs) and `dispose()`. `forceLogDepth` tests the
+  logarithmic-depth fallback.
+- Context lost/restored events reach `onLost(event)`; `_debug.{renderer, scene}` is for browser checks only.
+
+The 3D frame convention lives in `frame.js`: three `(X, Y, Z) = data (x, z, y)`, and yaw is minus heading (§10.3).
+Meshes are named (`road`, `lapCar`, `ghostCar`, `traceCar`, `wheelFace`, `wheelBlur`, …), and the world meshes sit
+in the `heightWorld` group.
+
+On the app side, `main.js` imports the entry on the first 3D open and owns `S.scene3d`:
+- **Cameras.** It steps a camera in `S.cam3d = {mode, state}` in replay time. `CAMERAS` maps each mode to its
+  `cameras/` module (each with `init`, `step` and `view`): `overview` (orbit), `chase`, `bonnet`, `free`, `heli`,
+  `pair`, `ortho` (labelled Map) and `tv`. The `#camera3d` select and the other 3D controls sit in one bottom-left
+  column, `#controls3d`.
+- **Rendering.**
+  - Track, line, ghost and car keys gate the rebuilds.
+  - A paused, unchanged view skips rendering (the render-skip key `lastView3d`).
+  - Per-car attitude springs run in `stepAttitude3d()` before the camera step.
+  - `applyEffects3d()` adds FOV, g response and shake to the chase and heli views before the render-skip key.
+  - `syncWheels3d()` sets the wheel-blur flags.
+- **Reduced motion.** The camera effects, streaks and Bonnet read `S.reducedMotion` (kept current from
+  `prefers-reduced-motion`); the cars' cosmetic attitude does not:
+  - the effects and streaks are off;
+  - Bonnet is disabled;
+  - the static wheel disc stays.
+- **Failures.** A failure returns to 2D with a persistent `S.view3dMsg` ("3D off: …" in the status chip). A lost
+  context disposes the scene and replaces its canvas.
+- **The inset.** In 3D the 2D map is a corner inset, drawn with `S.camMini` and `drawMap` with `scaleBar:false`;
+  with 3D off the full 2D map is unchanged, pixel for pixel.
+
+Like the 2D map, the 3D view gets everything physical from worker events: `S.T`, `S.disp`, `S.info` and the dynamic
+check's trace (`trace3d.js`).
 
 ### 3.1 Core
 
@@ -107,7 +141,7 @@ The inset uses `drawMap` with `scaleBar:false`; the default keeps the full 2D ma
 
 ### 3.3 App (everything else)
 
-The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` (always `carFor(simple, manual)`: a base car, the simple knobs, and fields set by hand in Advanced; §7) and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/`. From core the app uses only `genCtrl`, `genElev` and constants (`G`; `src/app/simple.js`, the simple-controls knob mapping, also reads `RHO`, `ETA` and `CRR`); the views import nothing from core.
+The optimiser and the dynamic check run in a Web Worker (`src/solver/worker.js` wrapping `Solver`), in back-to-back 15 ms slices while there is work, yielding between slices (through a `MessageChannel`) to take commands. The main thread keeps its state in one object `S` (`src/app/state.js`): the UI parameters `P` (always `carFor(simple, manual)`: a base car, the simple knobs, and fields set by hand in Advanced; §7) and what the worker sent, `T` (track), `disp` (line snapshot), `info` (`describeCar`), `prog` (optimiser progress), `dynRes`, plus its own `ghost`, `hist` and `cam`. `src/app/client.js` applies worker events to `S` and calls UI hooks; `controls.js` owns the panel; `telemetry.js` builds the live readout and the map tags' text; `main.js` runs the frame loop, which passes `S` into the views in `src/views/map2d/` and, in 3D, `src/views/scene3d/` (§3). From core the app uses only `genCtrl`, `genElev` and constants (`G`; `src/app/simple.js`, the simple-controls knob mapping, also reads `RHO`, `ETA` and `CRR`); the views import nothing from core.
 
 - `setCar`/`setTrack` are coalesced: one in flight per kind, and only the latest pending one is sent next, so a slider or handle drag can't queue up ~60 ms rebuilds.
 - A snapshot never steps back to an older car or track, and a new track is swapped in together with its first snapshot (stations change with the track).
@@ -498,12 +532,13 @@ raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker wa
 - **Lap snapshot** (the line, ghosts): interpolated within a station segment; heading from the segment, `ax`/`ay` from the lap model's speeds and curvature, `s` along the line. Bit for bit what the map and HUD computed before step 7. Lines index the same track stations, so `stationPose(ghost, car.station, car.frac)` is the ghost at the car's place: the telemetry's *Same place* Δ and the map tags compare the two cars this way.
 - **Smooth pose**: `smoothPose(snapshotOrTrace, t, info?)` preserves `pose()` timing and telemetry, with cubic Hermite position and wrapped central-difference station tangents in line distance; heading and smoothed grade come from the derivative. Adds `pitch` (radians from grade) and unit `tangent: [x,y,z]` in the data frame. For traces, time-based Hermites use rotated recorded body velocities for x/y and yaw rate for unwrapped psi; height uses time-based central differences of recorded z (zero without it). Trace timing clamps and all non-geometric fields match `pose()`. The existing `pose()` is unchanged; its lack of attitude fields below still applies.
 - **DynTrace** (`DynCheck.result.dyn.trace`, §7): true heading `psi`, steering and slip recorded by `dynLap`; `s` is distance travelled; `z` is the centreline height under the car (stations `seg`, `seg+1` interpolated by the observed fraction; level cross-section, so it holds for any line); the gear is the one the driver model was in. `rpm` comes from the best-gear table at that speed (no per-gear ratios in `CarInfo`). The trace starts where the dynamic lap starts (the straightest station), not at the start line. On the skidpad the recorded state is kinematically consistent with the car's own path: |ay| = v²κ within 0.6%, r + dβ/dt = vκ within 0.3%.
-- Not yet: `roll`, and `pitch` beyond `smoothPose`'s grade (no attitude model). Nothing in the UI plays back a dynamic trace yet.
+- The pose contract has no `roll`, and no `pitch` beyond `smoothPose`'s grade: there is no attitude model in the physics. The 3D view's body roll, pitch, steer and wheel spin are cosmetic, from `src/views/scene3d/attitude.js` (springs driven by the pose's `ax`, `ay` and speed; the trace car steers by its recorded `steer`). They are view state, not part of this contract.
+- **Trace playback:** the 3D view plays a dynamic-check trace as a third car (`src/app/trace3d.js`). `tracePoseAt` is `smoothPose(dyn.trace, traceClock(...).t)`, shown only while the trace has `started` and not `ended`, and only while the result is current (`currentTrace`). The 2D map draws the trace only as a static dashed path, with no car on it.
 - **Trace clock alignment:** `traceClock(snapshot, dyn, raceT) → {t, started, ended}` subtracts `snapshot.tc[dyn.start]` from race time, so trace time zero and the lap car's passage through the straightest station coincide. Pass `raceClock(...)` for repeating playback, or continuous race time for multi-lap traces; this helper never wraps or clamps `t`. `started` means `t >= dyn.trace.t[0]` (the first recorded sample is slightly after zero); `ended` means strictly past the last recorded sample, for complete and incomplete traces alike. An empty trace is unstarted and ended. Callers must handle these flags before sampling `pose`, whose existing trace sampler clamps to its endpoints. No pace scaling is applied: the cars align at the start station, then run at their own speeds.
 
 ### 10.3 Track model for elevation and 3D
 
-Elevation changes both physics and rendering, so design the per-station track record once. Step 8 implemented the elevation half: per station `z`, `dz`, `cth` (cos of grade) and `kv` (vertical curvature), with the plan view (`cx`, `cy`, `nx`, `ny`, `kc`) unchanged, so stations and lines don't move when hills change. Still to come with banking and 3D:
+Elevation changes both physics and rendering, so design the per-station track record once. Step 8 implemented the elevation half: per station `z`, `dz`, `cth` (cos of grade) and `kv` (vertical curvature), with the plan view (`cx`, `cy`, `nx`, `ny`, `kc`) unchanged, so stations and lines don't move when hills change. Step 9 implemented the view half in the three frame: `stationFrames(T, bank?)` (`src/views/scene3d/frame.js`) gives each station an `origin`, a horizontal `tangent`, a `lateral` and an `up`, and takes a per-station `bank` input that is all zeros today. Still to come with banking, the full record:
 
 ```ts
 station: { s, x, y, z, tangent, lateral /* banked */, up, widthL, widthR, grade, bank, kH /* horizontal */, kV /* vertical */ }
@@ -536,7 +571,16 @@ Each step keeps behaviour identical and is checked against §8.
 6. ✅ **Port the 2D map and charts** as the first protocol client. Compare against prototype screenshots. Views live in `src/views/map2d/`, the wiring in `src/app/`. Headless Chrome, one session: identical to step 5 in six states (screenshot, every canvas, panel text). Against the prototype, the map, speed, force and gap canvases are identical in all six. The only other differences were the stale HUD gear digit (since fixed, `0f3d61f`) and the "out of date" label that step 5 shows after a car change (the prototype never redrew it). Also in this step: snapshots show only lines the optimiser accepted (`Optimizer.current`).
 7. ✅ **Add `playback.pose()`**; the 2D car marker and ghost use it. Both sources supported (§10.2). `dynLap`'s trace records the car's state (+0.2 ms on the one traced lap per check). Replay-off rendering is identical to step 6, and the lap pose equals the old `carState` bit for bit.
 8. ✅ **Elevation** (grade, crests and compressions; no banking): heights in the track model, grip tables on a load-factor axis, gravity and load in the lap model and its adjoint, the same in the bicycle model, the solver building load tables for hilly circuits, run files v2 (the first explicit migration), and the app's Hills slider, height editing, elevation chart, height tint and telemetry. Flat circuits are bit-identical (goldens, parity, the pre-elevation run file); six hilly combos added to the goldens. §4.7.
-9. **3D view** as a second client of the protocol and pose contract.
+9. ✅ **3D view** as a second client of the protocol and pose contract (`PLAN.md`, 33 tasks; record in `STATUS.md`; design in `docs/3d-view.md`). What shipped:
+   - a lazy WebGL view on vendored three.js 0.186.1, filling `#stage` with the 2D map as a corner inset;
+   - eight cameras: overview, chase, bonnet, free, heli, pair, Map (tilted orthographic, meant to supersede deferred A1, pending Q) and TV;
+   - road, kerbs, line ribbon, ground, start band, gantry, corner boards and signs, HTML corner labels and map tags;
+   - height exaggeration in the overview and Map cameras;
+   - cosmetic attitude and wheel spin, with spoked wheels that turn into a blurred disc past the per-frame Nyquist limit;
+   - the dynamic-check trace as a third car, with its failure marker;
+   - FOV, g response, shake and speed streaks, all off under reduced motion.
+
+   No physics changed: the goldens are untouched. The one physics-source edit is task 0.2, which records trace heights (A11, an output only) and so regenerated the physics hash. With 3D off, the 2D view is byte-identical to before (`tools/scenarios/view-toggle.mjs`). Node tests cover the pure modules; 25 headless-Chrome scenarios (`tools/scenarios/`, WebGL through SwiftShader) cover the renderer and the wiring.
 
 ---
 

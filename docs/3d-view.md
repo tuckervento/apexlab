@@ -1,5 +1,9 @@
 # 3D view: requirements and options
 
+> **Status (2026-10-25): implemented.** Step 9 is done; `ARCHITECTURE.md` §3 (the scene API and app wiring) and §11
+> describe what shipped, `PLAN.md` holds the task breakdown and `STATUS.md` the record, including where the build
+> departed from this document. Read this file for the reasoning behind the choices; it is not kept current.
+
 Research and planning notes for migration step 9 (`ARCHITECTURE.md` §11): what a 3D view needs, how the existing
 physics would drive it, and the options for each part, with a recommendation and the reasoning. Written 2026-10-24 at
 commit `188ad94`; no source was changed. Library versions are from the npm registry and browser support from MDN
