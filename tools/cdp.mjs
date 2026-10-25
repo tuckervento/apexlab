@@ -4,7 +4,7 @@
 //
 //   node tools/cdp.mjs tools/scenarios/refused.mjs
 //
-// A scenario module's default export gets {run, sleep}: run(expr) evaluates expr in the page (a promise is awaited) and
+// A scenario module's default export gets {run, sleep, call} (call: the raw DevTools protocol, e.g. for screenshots): run(expr) evaluates expr in the page (a promise is awaited) and
 // returns its value; the page's own modules are reachable with import('/src/app/state.js') and the like, the same
 // instances the app uses. The result is printed with the page's console errors; a page exception exits 1, and so does a
 // result of the form {allTrue: false, checks}.
@@ -49,7 +49,7 @@ export async function withApp(fn, { port = 8765, debugPort = 9333, bootMs = 5000
     await call('Runtime.enable');
     await call('Page.navigate', { url: `http://localhost:${port}/` });
     await sleep(bootMs); // the worker builds the car and circuit and starts searching
-    return { result: await fn({ run, sleep }), exceptions, errors };
+    return { result: await fn({ run, sleep, call }), exceptions, errors }; // call(method, params): raw DevTools protocol
   } finally {
     ws?.close(); browser.kill(); server.kill();
     await sleep(300); rmSync(profile, { recursive: true, force: true }); // our own temporary profile
