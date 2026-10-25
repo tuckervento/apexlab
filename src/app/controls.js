@@ -5,7 +5,7 @@ import { genCtrl } from '../core/index.js';
 import { CARS, TRACKS } from './presets.js';
 import { S, $, circuit, hillsFollow } from './state.js';
 import { send, sendState, sendLoad, settled } from './client.js';
-import { PHYSICS } from './physics-version.js';
+import { PHYSICS, DRIVER } from './physics-version.js';
 import { makeRunFile, readRunFile, toGhost, liveHash, CAR_KEYS } from './runfile.js';
 import { fmtTime } from '../views/format.js';
 import { findCorners } from '../views/map2d/map.js';
@@ -136,9 +136,11 @@ export function bindButtons(){
 // ---------- saved runs (src/app/runfile.js): export the displayed car, circuit and line; load one back
 // pendingLoad: {rev, mode: 'run' | 'ghost', run, name}. liveSha: hash of the physics source this page fetched, which
 // differs from PHYSICS.sha256 when the source was edited and physics-version.js not regenerated.
-let pendingLoad=null,liveSha=null,pickMode=null;
+let pendingLoad=null,liveSha=null,liveDriverSha=null,pickMode=null;
 liveHash(PHYSICS.files,async f=>{const r=await fetch(new URL('../'+f,import.meta.url));if(!r.ok)throw new Error(`${f}: HTTP ${r.status}`);return r.arrayBuffer();})
   .then(h=>{liveSha=h;},e=>console.error('physics hash:',e));
+liveHash(DRIVER.files,async f=>{const r=await fetch(new URL('../'+f,import.meta.url));if(!r.ok)throw new Error(`${f}: HTTP ${r.status}`);return r.arrayBuffer();})
+  .then(h=>{liveDriverSha=h;},e=>console.error('driver hash:',e));
 const ctrlEqual=(a,b)=>a.length===b.length&&a.every((p,i)=>p[0]===b[i][0]&&p[1]===b[i][1]&&(p[2]||0)===(b[i][2]||0)); // heights too (absent = 0)
 const short=h=>h?h.slice(0,7):'unknown';
 // File contents are untrusted: lines go in as text nodes, never as HTML.
@@ -148,6 +150,11 @@ function physicsNote(run){
   let s=rec===cur?`Physics source is the same as this build (${short(cur)}).`:`Physics source differs: recorded ${short(rec)}, this build ${short(cur)}. A refactor changes the hash without changing results.`;
   if(run.physics.live&&run.physics.live!==rec)s+=' The file was exported from uncommitted physics edits.';
   if(liveSha&&liveSha!==cur)s+=` This page is running uncommitted physics edits (${short(liveSha)}).`;
+  if(run.driver){
+    s+=run.driver.sha256===DRIVER.sha256?` Driver source matches (${short(DRIVER.sha256)}).`:` Driver source differs: recorded ${short(run.driver.sha256)}, this build ${short(DRIVER.sha256)}.`;
+    if(run.driver.live&&run.driver.live!==run.driver.sha256)s+=' The file was exported from uncommitted driver edits.';
+  }else s+=' This older file has no separate driver identity.';
+  if(liveDriverSha&&liveDriverSha!==DRIVER.sha256)s+=` This page is running uncommitted driver edits (${short(liveDriverSha)}).`;
   return s;
 }
 const runSummary=(run,name)=>[`${name} · exported ${run.exported?run.exported.slice(0,10):'(no date)'} · recorded lap ${fmtTime(run.result.lap)}${run.result.dyn?` · dynamic check ${(run.result.dyn.frac*100).toFixed(1)}%`:''}${run.result.converged?'':' · search not converged'}`,physicsNote(run)];
@@ -164,7 +171,7 @@ function exportRun(){
     if(!settled())throw new Error('Not exported: a car or circuit change is still being built. Try again in a moment.');
     const d=S.disp,tv=$('#trackPreset').value,cv=$('#carPreset').value,tp=isNaN(+tv)?null:TRACKS[+tv],trackName=tp?tp.name:tv==='r'?'Random':'Edited';
     const run=makeRunFile({P:S.P,ctrl:S.ctrl,width:S.width,trackName,seed:tp?tp.seed:null,disp:d,prog:S.prog,refT:S.refT,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,
-      physics:{sha256:PHYSICS.sha256,live:liveSha},exported:new Date().toISOString(),userAgent:navigator.userAgent});
+      physics:{sha256:PHYSICS.sha256,live:liveSha},driver:{name:DRIVER.name,sha256:DRIVER.sha256,live:liveDriverSha},exported:new Date().toISOString(),userAgent:navigator.userAgent});
     const name=[cv,trackName,fmtTime(d.t)].join('-').toLowerCase().replace(/[^a-z0-9.]+/g,'-')+'.apexlab.json';
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(run)],{type:'application/json'}));a.download=name;a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),1000);

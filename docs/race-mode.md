@@ -262,6 +262,20 @@ a law. Each re-optimisation took 3.8–5.0 s in Node.
 
 ### 5.1 Split plant and driver (prerequisite)
 
+**Implementation update (2026-10-24):** the initial split now lives in `dynamics/plant.js`,
+`dynamics/observe.js`, `dynamics/lap.js` and `drivers/reference.js`. The existing `dynLap` API defaults to
+this reference driver and accepts an alternate driver as its final argument. Dynamic goldens remain
+unchanged. Each driver has independent per-run state; observations contain scalar copies.
+
+**Q's decision (2026-10-24):** the reference driver stays **outside** the physics hash, with independent
+`PHYSICS` and `DRIVER` identities. The original proposal kept it inside the physics hash because a run file's
+dynamic-check result depends on it; recording both identities now covers that dependency.
+`runSource()` hashes rules/physics;
+`driverSource()` hashes the reference driver's own file. Saved runs now record both, with optional
+metadata preserving old-file readability. Reproducing a dynamic check requires both hashes and a
+matching runtime. `node tests/make-physics-version.mjs --write` regenerates both manifests. Future
+race rules/timing can join the physics set without pulling driver policy into it.
+
 Separate `dynLap` into:
 
 - `plantStep(state, action, dt)`: the physics that is there today, expression for expression;
@@ -273,9 +287,8 @@ Separate `dynLap` into:
 - **Bit-identical is the bar.** The dynamic goldens (30 combos), the skidpad goldens and parity must pass untouched,
   exactly like migration step 2. Splitting functions doesn't change the arithmetic if every expression keeps its
   order.
-- **Where the reference driver lives.** Keep it in `src/dynamics/`, inside the physics hash: the dynamic check's
-  result (in run files) depends on it, so it is part of "the rules". Race competitors live in `src/drivers/` with
-  their own hash (§5.7).
+- **Where the reference driver lives (updated).** `src/drivers/reference.js`, outside the physics hash.
+  The dynamic check depends on both independent identities; competitors will have their own driver manifests.
 - **Today's driver-relative trouble test** stays with `DynCheck` (it's how the check defines "clean"). The race judge
   gets its own plant-only tests (§5.6).
 - **Gears.** Shift *timing* (`shiftT` without drive) is plant; *choosing* a gear is driver. Make the plant offer an

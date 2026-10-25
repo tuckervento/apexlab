@@ -54,7 +54,7 @@ node serve.mjs        # then open http://localhost:8000   (PORT=8080 node serve.
 - **Export run** saves the car, circuit and line on screen, with the lap it gives, as one JSON file (about 240 KB).
 - **Load run** replaces all three and stops on the saved line, re-scored by the current physics, with the saved lap as the ghost. The Δ against the ghost is then the effect of the physics change alone. *Run* re-optimises from there.
 - **Load as ghost** keeps your car and races the saved lap, on the saved circuit.
-- Each file records a hash of the physics source that made it. Loading says whether it matches this build, and whether this page is running uncommitted physics edits.
+- Each file records separate hashes of the physics and reference driver sources that made it. Loading compares both identities and reports uncommitted physics or driver edits.
 - Files from a different file format or car-parameter set are refused, naming the fields.
 
 **Dynamic check**
@@ -105,7 +105,7 @@ node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
 - **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, the committed physics hash, and a run file recorded before elevation that must still reload exactly.
 - **Elevation:** flat circuits unchanged bit for bit; the gradient on hills; closed forms (crest and compression corner speeds, terminal speed up a ramp); the dynamic check on hills.
 
-Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`.
+Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`. Run the same command after driver edits; it regenerates independent physics and driver identities.
 
 ## Documentation
 

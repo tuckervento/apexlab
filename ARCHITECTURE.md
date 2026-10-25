@@ -10,7 +10,7 @@ This document describes the current code (physics, solver, views and app in ES m
 
 - **Layers** (migration steps 1–7 done):
   - `src/core/` — `constants`, `rng`, `units`, `powertrain`, `car`, `describe`, `track`, `lap`, `optimiser` (+ `index.js`). Track, car, view data, lap model, optimiser. No DOM, no module-level mutable state.
-  - `src/dynamics/` — `bicycle` (model, inverse dynamics, `dynLap`), `check` (`DynCheck`). No DOM.
+  - `src/dynamics/` — `bicycle` (model and inverse dynamics), `plant` (integration and automatic gearbox), `observe` (scalar observations), `lap` (legacy `dynLap` orchestration), `check` (`DynCheck`). No DOM.
   - `src/solver/` — `solver` (`Solver`: owns car, track, line, `Optimizer`, `DynCheck`; speaks the §10.1 protocol; no DOM, no worker APIs), `worker` (Web Worker adapter).
   - `src/views/` — `format` (`fmtTime`); `map2d/`: `camera` (world ↔ screen, fit, follow framing, zoom), `colors` (palette from CSS), `map` (`drawMap`, `findCorners`), `charts` (speed, convergence, gap, force). Views draw from explicit inputs and never read app state.
   - `src/playback/` — `pose` (`pose(source, t, info?)` along a lap snapshot or a dynamic trace; `raceClock`). No DOM.
@@ -39,6 +39,23 @@ Because the screen is y-down, `n` is drawn on the visual right-hand side of the 
 ---
 
 ## 3. Layers and public functions today
+
+The dynamic plant and driver are separate. `createPlant(car, initial)` creates vehicle state;
+`plantStep(state, {steer, fx}, car, dc, line, station, dt)` advances it, including steering-rate limits,
+automatic gear selection, shift interruption and force saturation. `observe(state, line, station, t)` returns
+fresh scalar observations. Neither the plant nor observations import driver code.
+
+`src/drivers/reference.js` preserves the original controller behind `init(ctx)` and `step(state, obs)`.
+`dynLap(..., keepTrace, driver?)` defaults to that driver; its legacy start, finish and driver-relative
+trouble tests remain unchanged. Driver initialization receives copies of the car, line and speed plan;
+per-step observations contain scalar copies, no references to plant state. This interface is not a JavaScript sandbox.
+
+`PHYSICS` hashes core, dynamics and solver source; `DRIVER` hashes the reference driver's own source.
+Both manifests live in `src/app/physics-version.js`, regenerated with
+`node tests/make-physics-version.mjs --write`. Drivers may use physics helpers: reproducing a dynamic
+result requires both identities and the same runtime. Saved runs carry optional separate driver metadata;
+older files remain readable but cannot identify their driver separately. Existing snapshot ghosts still
+replay their stored samples. Race result files and replay compatibility gating remain future work.
 
 ### 3.1 Core
 
@@ -321,7 +338,7 @@ All six checks are ported to `tests/` (run with `node --test tests/`, ~15 s), wh
    - `tests/golden.json` holds, for all 6 cars × 4 circuits and each car on Harrow Ring with 25 m of hills (step 8): the centreline lap, the line converged from the centreline (the *fixture*) with its lap and optimiser effort, and the dynamic-check result on it, including the final traced lap's error maxima and mean error. It also holds the skidpad results. Its `meta` records Node/V8, commit, and a SHA-256 of the physics source.
    - Regenerate with `node tests/make-golden.mjs --write` (~1 min for the 30 combos in Node v26, one child process per combo) after an intended physics change, and review the diff. If the V8 build differs from `meta`, every golden assertion fails with both versions named; property assertions still run.
    - Reference: GT racer on Harrow Ring (seed 27, 12 m), single run from the centreline: **78.3771 s** in Node v26.12.0 and v26.12.1 (V8 14.6.202.34); 78.348 s in Chrome 153. Restarting ("Search again") is a fresh draw, not a refinement: six consecutive restarts in Chrome gave 78.278–78.398 s.
-   - Teeth: `CRR` 0.012 → 0.0121 fails every lap golden; `DYN.kr` 0.3 → 0.31 fails every dynamic golden and the skidpad goldens while all property checks still pass.
+   - Teeth: `CRR` 0.012 → 0.0121 fails every lap golden; `GAINS.kr` in `src/drivers/reference.js` 0.3 → 0.31 fails every dynamic golden and the skidpad goldens while all property checks still pass.
 4. **Skidpad** (`skidpad.test.mjs`). Road car, 80 m circle (a 16-point spline, so |k| ripples ±1.4%), constant speed at 90/95/98% of the lap model's v² there. Property: a clean lap and mean lateral error ≤ 0.2 m. Measured with the current driver gains: 0.059 / 0.068 / 0.077 m (still clean at 100%: 0.088 m).
 5. **Model consistency** and 6. **Margin table** (`golden.test.mjs`, on the 30 fixtures). The prototype's figures, utilisation ≤ ~1.06 and a margin of 92–99%, hold only for the GT racer and Open-wheeler on the current code. The properties are sanity bounds every preset meets: dynamic-check fraction in [0.85, 1], utilisation ≤ 1.15, and a clean final lap. Measured (fraction % / peak utilisation):
 

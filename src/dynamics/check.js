@@ -1,6 +1,7 @@
 // Moved verbatim from prototype/apex-lab.html (migration step 2).
 import { makeScratch, lapEval } from '../core/lap.js';
-import { dynSetup, dynNominal, dynLap, grades } from './bicycle.js';
+import { dynSetup, dynNominal, grades } from './bicycle.js';
+import { dynLap } from './lap.js';
 
 // The check: (1) inverse dynamics along the line at the lap sim's speeds gives each axle's grip use, yaw inertia
 // included; (2) the time-stepped car drives the line at a uniform fraction of the lap sim's speeds, and a bisection
