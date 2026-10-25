@@ -51,6 +51,12 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 #view3d:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
 .stage.v3d #view{inset:auto;right:max(16px,env(safe-area-inset-right,0px));bottom:16px;width:min(300px,36%);height:auto;aspect-ratio:4/3;
   outline:1px solid var(--rule);border-radius:4px;cursor:pointer} /* outline, not border: the canvas box stays the drawing's size */
+.stage.v3d.mini-off #view{display:none} /* inset collapsed by #miniToggle, which sits on the inset's bottom-right corner */
+#miniToggle{position:absolute;right:max(16px,env(safe-area-inset-right,0px));bottom:16px;height:22px;padding:0 7px;font:10.5px var(--mono);letter-spacing:.04em;
+  background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;cursor:pointer}
+#miniToggle:hover{border-color:var(--ink)}
+#miniToggle[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+#miniToggle[hidden]{display:none}
 .panel{overflow-y:auto;background:var(--panel);padding-block:20px 32px;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
 
 /* Lap block and status chip (Telemetry and Optimiser sections) */
@@ -182,6 +188,7 @@ details p{margin:6px 0 0}
       <button id="zFollow" aria-label="Follow the car" aria-pressed="false" class="follow">CAR</button>
       <button id="zView" aria-label="3D view" aria-pressed="false" class="follow">3D</button>
     </div>
+    <button id="miniToggle" aria-label="Map inset" aria-pressed="true" hidden>MAP</button>
     <div class="warn" id="warn" hidden></div>
     <div class="legend" id="legend">
       <div id="legSpeed"><div class="bar"></div><div class="ends"><span id="legMin">—</span><span>km/h</span><span id="legMax">—</span></div></div>

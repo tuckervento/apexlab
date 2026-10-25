@@ -44,14 +44,17 @@ export function fit(){S.cam.fit(S.T,S.width);}
 // main.js supplies the active camera actions.
 function syncBonnet3d(){
   const option=$('#camera3d option[value="bonnet"]');
-  option.disabled=S.reducedMotion;option.textContent=S.reducedMotion?'Bonnet (off: reduced motion)':'Bonnet';
+  // the reason goes in a tooltip: a longer label would widen the select
+  const note=S.reducedMotion?'Bonnet is off: reduced motion':'';
+  option.disabled=S.reducedMotion;option.title=note;$('#camera3d').title=note;
   if(S.reducedMotion&&S.cam3d.mode==='bonnet'){S.cam3d.mode='chase';S.cam3d.state=null;}
   $('#camera3d').value=S.cam3d.mode;
 }
 export function setView(v){syncBonnet3d();if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
   $('#camera3d').hidden=!on;
+  $('#stage').classList.toggle('mini-off',on&&!S.miniOpen);$('#miniToggle').hidden=!on;$('#miniToggle').setAttribute('aria-pressed',String(S.miniOpen));
   $('#orthoControls').hidden=!on||S.cam3d.mode!=='ortho';
-  $('#streaks3d').hidden=!on||!['chase','heli','pair','tv'].includes(S.cam3d.mode);
+  $('#streaks3d').hidden=!on||!['chase','bonnet','heli','pair','tv'].includes(S.cam3d.mode);
   $('#height3d').hidden=!on||!new Set(['overview','ortho']).has(S.cam3d.mode);
   renderTraceUI();
   for(const b of ['#zIn','#zOut','#zFit'])$(b).disabled=on&&!['overview','ortho'].includes(S.cam3d.mode);$('#zFollow').disabled=on;}

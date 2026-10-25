@@ -37,6 +37,7 @@ const cv=$('#view'),ctx=cv.getContext('2d'),cam=S.cam;
 function resize(){
   if(S.view!=='3d'){cam.resize(cv,$('#stage').getBoundingClientRect(),window.devicePixelRatio);return;}
   if(S.scene3d){S.scene3d.resize($('#view3d').getBoundingClientRect(),window.devicePixelRatio);dirty3d=true;}
+  if(!S.miniOpen)return; // collapsed inset: no box to size; the next resize after expanding sizes it
   S.camMini.resize(cv,cv.getBoundingClientRect(),window.devicePixelRatio);if(S.T)S.camMini.fit(S.T,S.width);
 }
 const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy),zoomAt=(f,sx,sy)=>cam.zoomAt(f,sx,sy);
@@ -44,6 +45,7 @@ const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy),zoomAt
 // Zooming out scales the current zoom (visible at once); zooming in raises S.followZ (cam.z never exceeds it).
 const zoomFollow=f=>{S.followZ=Math.max(0.05,Math.min(40,(f<1?cam.z:S.followZ)*f));},FOLLOW_MARGIN=40;
 $('#zFollow').onclick=()=>setFollow(!S.follow);$('#zView').onclick=()=>setView(S.view==='3d'?'2d':'3d');
+$('#miniToggle').onclick=()=>{S.miniOpen=!S.miniOpen;setView(S.view);};
 $('#zIn').onclick=()=>{if(S.view==='3d'){zoom3d(1/1.5);return;}S.follow?zoomFollow(1.5):zoomAt(1.5,cam.cw/2,cam.ch/2);};
 $('#zOut').onclick=()=>{if(S.view==='3d'){zoom3d(1.5);return;}S.follow?zoomFollow(1/1.5):zoomAt(1/1.5,cam.cw/2,cam.ch/2);};
 $('#zFit').onclick=()=>{if(S.view==='3d'){if(['overview','ortho'].includes(S.cam3d.mode)&&S.T&&S.disp)initCamera();return;}setFollow(false);fit();};
@@ -202,7 +204,7 @@ function syncStreaks3d(input){
   const toggle=$('#streaksOn3d'),note=$('#streaksNote3d');
   toggle.disabled=S.reducedMotion;note.hidden=!S.reducedMotion;
   streakInput3d.speed=input.car?.speed??0;streakInput3d.tAnim=S.animT;
-  streakInput3d.on=toggle.checked&&['chase','heli','pair','tv'].includes(S.cam3d.mode);
+  streakInput3d.on=toggle.checked&&['chase','bonnet','heli','pair','tv'].includes(S.cam3d.mode);
   streakInput3d.reducedMotion=S.reducedMotion;
 }
 const wheelBlur3d={car:false,ghost:false,trace:false};
@@ -303,7 +305,7 @@ function draw(){
   // each car against the other at the same place (both lines index the track's stations; a track change clears the ghost)
   const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
   const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};
-  drawMap(ctx,mini?S.camMini:cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:mini?[]:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,scaleBar:!mini,tags:mini?null:tags});
+  if(!mini||S.miniOpen)drawMap(ctx,mini?S.camMini:cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:mini?[]:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,scaleBar:!mini,tags:mini?null:tags});
   renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV',hills:!T.flat,mode:ghost?S.deltaMode:'time',carLap:disp,ghostLap:ghost});
   if(ghost)$('#liveGap').textContent=cs?fmtDelta(disp.tc[cs.station]-ghost.tc[cs.station],2)+' s':'—';
   if(cs){S.carPos=cs.station;S.carV=cs.speed;}else S.carPos=-1;
@@ -355,7 +357,8 @@ function frameBody(ts){
   if(perfEnabled)perfSample(ts);
   if(S.frameErr&&S.running)S.frameErr=null;
   const dt=Math.min(0.1,(ts-lastTs)/1000||0);lastTs=ts;frameN++;
-  if(S.view!==shownView){shownView=S.view;resize();} // setView changed the layout: inset or full stage
+  const layout=S.view==='3d'&&!S.miniOpen?'3d-collapsed':S.view;
+  if(layout!==shownView){shownView=layout;resize();} // setView changed the layout: inset (open or collapsed) or full stage
   const {T,disp,prog:p,ghost}=S;
   const pin=$('#pinBtn'),unsettled=!settled();if(pin.disabled!==unsettled)pin.disabled=unsettled; // a change still being built: its ghost would be stale
   if(!T||!disp||!p)return; // nothing from the solver yet

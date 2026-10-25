@@ -21,7 +21,7 @@ export default async ctx=>{
     return {near:v.near===0.1,nearCar:Math.hypot(...v.position.map((n,i)=>n-origin[i]))<2,zoomDisabled:['#zIn','#zOut','#zFit'].every(s=>q(s).disabled)};
   })()`));
   await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-  Object.assign(checks,await run(`(async()=>{const {S,q,until,settle}=b3;await until(()=>S.reducedMotion&&S.cam3d.mode==='chase');await settle();const o=q('#camera3d option[value="bonnet"]');return {reducedDisabled:o.disabled&&o.textContent.includes('reduced motion'),reducedFallback:q('#camera3d').value==='chase'};})()`));
+  Object.assign(checks,await run(`(async()=>{const {S,q,until,settle}=b3;await until(()=>S.reducedMotion&&S.cam3d.mode==='chase');await settle();const o=q('#camera3d option[value="bonnet"]');return {reducedDisabled:o.disabled&&o.title.includes('reduced motion'),reducedFallback:q('#camera3d').value==='chase'};})()`));
   await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
   const point=await run(`(async()=>{const {S,q,until,select,free}=b3;await until(()=>!S.reducedMotion);await select('free');b3.before=structuredClone(S.cam3d.state);const r=q('#view3d').getBoundingClientRect();return {x:Math.round(r.left+r.width*0.5),y:Math.round(r.top+r.height*0.4)};})()`);
   await call('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
