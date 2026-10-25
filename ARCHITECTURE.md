@@ -482,6 +482,7 @@ raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker wa
 ```
 
 - **Lap snapshot** (the line, ghosts): interpolated within a station segment; heading from the segment, `ax`/`ay` from the lap model's speeds and curvature, `s` along the line. Bit for bit what the map and HUD computed before step 7. Lines index the same track stations, so `stationPose(ghost, car.station, car.frac)` is the ghost at the car's place: the telemetry's *Same place* Δ and the map tags compare the two cars this way.
+- **Smooth lap pose**: `smoothPose(snapshot, t, info?)` preserves `pose()` timing and telemetry, with cubic Hermite position and wrapped central-difference station tangents in line distance; heading and smoothed grade come from the derivative. Adds `pitch` (radians from grade) and unit `tangent: [x,y,z]` in the data frame. Trace input throws. The existing `pose()` is unchanged; its lack of attitude fields below still applies.
 - **DynTrace** (`DynCheck.result.dyn.trace`, §7): true heading `psi`, steering and slip recorded by `dynLap`; `s` is distance travelled; the gear is the one the driver model was in. `rpm` comes from the best-gear table at that speed (no per-gear ratios in `CarInfo`). The trace starts where the dynamic lap starts (the straightest station), not at the start line. On the skidpad the recorded state is kinematically consistent with the car's own path: |ay| = v²κ within 0.6%, r + dβ/dt = vκ within 0.3%.
 - Not yet: `pitch`, `roll` (no attitude model). Nothing in the UI plays back a dynamic trace yet.
 

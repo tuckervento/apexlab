@@ -56,3 +56,23 @@ function tracePose(tr,rt,info){
   return p;
 }
 const at=(info,v)=>Math.min(info.n-1,Math.round(v/info.vstep));
+
+// Smooth lap geometry for 3D; timing and telemetry remain those of lapPose. Central differences are with
+// respect to line distance, scaled to this segment for Hermite's unit parameter. Wrap at the start line.
+export function smoothPose(src,t,info){
+  if(!src.tc)throw new TypeError('smoothPose requires a lap snapshot');
+  const p=lapPose(src,t,info),N=src.px.length,i=p.station,j=(i+1)%N,f=p.frac,h=src.ds[i];
+  const component=a=>{
+    if(!a)return [0,0];
+    const prev=(i+N-1)%N,next=(j+1)%N;
+    const m0=(a[j]-a[prev])/(src.ds[prev]+h)*h,m1=(a[next]-a[i])/(h+src.ds[j])*h;
+    const f2=f*f,f3=f2*f;
+    return [(2*f3-3*f2+1)*a[i]+(f3-2*f2+f)*m0+(-2*f3+3*f2)*a[j]+(f3-f2)*m1,
+      (6*f2-6*f)*a[i]+(3*f2-4*f+1)*m0+(-6*f2+6*f)*a[j]+(3*f2-2*f)*m1];
+  };
+  const [x,dx]=component(src.px),[y,dy]=component(src.py),[z,dz]=component(src.pz),len=Math.hypot(dx,dy,dz);
+  p.x=x;p.y=y;p.z=z;p.heading=Math.atan2(dy,dx);
+  p.grade=dz/Math.hypot(dx,dy);p.pitch=Math.atan2(dz,Math.hypot(dx,dy));
+  p.tangent=[dx/len,dy/len,dz/len];
+  return p;
+}
