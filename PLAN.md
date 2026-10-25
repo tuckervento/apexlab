@@ -272,6 +272,10 @@ fields.
       re-fits the overview.
     - When paused, with the camera still and no new data, skip the render (§5).
     - If WebGL2 is missing, the import fails or the context is lost, go back to 2D with a status-chip message (R5).
+    - (Added after 1.6, Q 2026-10-24.) The inset minimap's scale bar lies over the track. Add a `drawMap` option to
+      leave it out, and pass it for the inset. The zoom buttons (`#zIn`, `#zOut`, `#zFit`, `#zFollow`) are disabled in 3D
+      by `setView`. Re-enable the ones that get 3D meanings (at least Fit, re-fitting the overview). A drag on the inset
+      counts as a click and switches to 2D, which is accepted as is.
 
     Also edit PLAN-3D.md so every not-yet-started P2–P5 task names the real `S.cam3d`/selector/frame-loop hooks.
   - Depends on: 0.1, 1.5, 1.6, 1.7
