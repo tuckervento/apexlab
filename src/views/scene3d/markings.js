@@ -92,3 +92,13 @@ export function labelPlanes(records,{width=2,height=1.4,tiles=labelAtlas(records
   });
   return {...b.finish(),uv:new Float32Array(uv)};
 }
+
+// Separate backs keep atlas digits invisible from the far side, with a 5 mm panel thickness.
+export function labelBacks(records,{width=2,height=1.4}={}){
+  const b=builder();
+  for(const r of records){
+    const c=Math.cos(r.yaw),s=Math.sin(r.yaw),p=(x,y)=>[r.position[0]+x*c-0.005*s,r.position[1]+y,r.position[2]-x*s-0.005*c];
+    b.quad([p(width/2,-height/2),p(-width/2,-height/2),p(-width/2,height/2),p(width/2,height/2)],[-s,0,-c]);
+  }
+  return b.finish();
+}

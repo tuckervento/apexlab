@@ -12,7 +12,7 @@ import { drawMap } from '../views/map2d/map.js';
 import { pose, smoothPose, stationPose, raceClock } from '../playback/pose.js';
 import { dataToThree } from '../views/scene3d/frame.js';
 import { cornerAnchor } from '../views/scene3d/overlays.js';
-import { currentTrace, tracePoseAt, traceCars } from './trace3d.js';
+import { currentTrace, tracePoseAt, traceCars, traceTagPose, traceTagText } from './trace3d.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
 import * as tv from '../views/scene3d/cameras/tv.js';
@@ -110,9 +110,9 @@ function placeOverlays3d(){
   const place=(el,point)=>{api.project(point,overlayPoint);el.hidden=!overlayPoint.visible;if(overlayPoint.visible){el.style.left=overlayPoint.x+'px';el.style.top=overlayPoint.y+'px';}};
   for(const label of cornerLabels)place(label.el,label.point);
   const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],S.animT);
-  const cs=d.t>0?pose(d,rt,S.info):null,gs=g&&g.t>0?pose(g,rt):null;
-  const ghostHere=cs&&g?stationPose(g,cs.station,cs.frac):null,carHere=gs?stationPose(d,gs.station,gs.frac):null;
-  const tag=(el,p,other)=>{if(!p||S.tagMode==='off'){el.hidden=true;return;}const text=tagText(S.tagMode,p,other);el.textContent=text.main+(text.delta?'\n'+text.delta:'');place(el,dataToThree(p.x,p.y,p.z??0));};
+  const dyn=currentTrace(S.dynRes,S.dynStale),cs=traceTagPose(d.t>0?smoothPose(d,rt,S.info):null,tracePoseAt(d,dyn,rt),S.traceShow,!!dyn),gs=g&&g.t>0?pose(g,rt):null;
+  const ghostHere=cs&&g?stationPose(g,cs.station,dyn&&S.traceShow==='dynamic'?0:cs.frac):null,carHere=gs?stationPose(d,gs.station,gs.frac):null;
+  const tag=(el,p,other)=>{if(!p||S.tagMode==='off'){el.hidden=true;return;}const text=traceTagText(S.tagMode,p,other);el.textContent=text.main+(text.delta?'\n'+text.delta:'');place(el,dataToThree(p.x,p.y,p.z??0));};
   tag(tagCar,cs,ghostHere);tag(tagGhost,gs,carHere);
   const result=S.dynRes&&!S.dynStale?S.dynRes:null,station=result?.fail?.at??null;
   if(failApi!==api||failResult!==result||failStation!==station||applied3d.failTrack!==S.T){

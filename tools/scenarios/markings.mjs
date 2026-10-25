@@ -37,8 +37,28 @@ export default async ctx=>{
     const after=[];scene.traverse(o=>{if(o.geometry)after.push(o.geometry);});
     const themeStable=before.length===after.length&&before.every((g,i)=>g===after[i])&&memory().textures===first.textures;
     api.setTheme(original);api.frame(input);
+    const THREE=await import('/vendor/three-0.186.1/build/three.core.js');
+    let frontOnly=true,plainBacks=true;
+    scene.traverse(o=>{if(o.userData.labels)frontOnly&&=o.material.side===THREE.FrontSide;
+      if(o.name==='labelBacks')plainBacks&&=!o.material.map&&o.material.side===THREE.FrontSide;});
+    // Isolate one real board and sample its interior, excluding the ink border and silhouettes.
+    const group=scene.getObjectByName('boards'),saved=[];
+    scene.traverse(o=>{if(o.isMesh){saved.push([o,o.visible]);o.visible=o.parent===group;}});
+    const pixelVariance=side=>{
+      const n=[Math.sin(board.yaw),0,Math.cos(board.yaw)],v={position:board.position.map((x,k)=>x+side*5*n[k]),target:board.position,up:[0,1,0],fovDeg:35,near:0.1,far:10000};
+      input.view=v;api.frame(input);
+      const gl=renderer.getContext(),values=[];
+      for(let y=-35;y<=35;y+=2)for(let x=-55;x<=55;x+=2){
+        const px=new Uint8Array(4);gl.readPixels(400+x,300+y,1,1,gl.RGBA,gl.UNSIGNED_BYTE,px);values.push(px[0]+px[1]+px[2]);
+      }
+      const mean=values.reduce((a,b)=>a+b,0)/values.length;
+      return values.reduce((a,b)=>a+(b-mean)**2,0)/values.length;
+    };
+    const frontVariance=pixelVariance(1),backVariance=pixelVariance(-1);
+    for(const [o,visible] of saved)o.visible=visible;
+    input.view=start;api.frame(input);
     window.markingsCheck={api,input,start,corner};
-    return {named,counts,themeStable,corners:corners.length,first,rebuilds};
+    return {frontOnly,plainBacks,frontVariance,backVariance,named,counts,themeStable,corners:corners.length,first,rebuilds};
   })()`);
   const references={};
   for(const [name,view] of [['start','start'],['boards','corner']]){
@@ -47,6 +67,6 @@ export default async ctx=>{
     references[name]=await compareToReference(ctx,png,fileURLToPath(new URL(`./ref/markings-${name}.png`,import.meta.url)));
   }
   await run('markingsCheck.api.dispose()');
-  const checks={themeStable:seen.themeStable,named:seen.named,counts:seen.counts,rebuilds:seen.rebuilds.every(m=>m.geometries===seen.first.geometries&&m.textures===seen.first.textures),start:references.start.ok,boards:references.boards.ok};
+  const checks={frontOnly:seen.frontOnly,plainBacks:seen.plainBacks,blankBack:seen.backVariance<1&&seen.frontVariance>100,themeStable:seen.themeStable,named:seen.named,counts:seen.counts,rebuilds:seen.rebuilds.every(m=>m.geometries===seen.first.geometries&&m.textures===seen.first.textures),start:references.start.ok,boards:references.boards.ok};
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,references};
 };

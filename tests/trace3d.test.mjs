@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-const {currentTrace,tracePoseAt,traceCars,failureReplayTime}=await import(process.env.TRACE3D_MODULE||'../src/app/trace3d.js');
+const {currentTrace,tracePoseAt,traceCars,traceTagPose,traceTagText,failureReplayTime}=await import(process.env.TRACE3D_MODULE||'../src/app/trace3d.js');
 const snapshot={tc:[0,3,6,9],t:9};
 const trace={t:[0.25,1.25],x:[3,4],y:[0,0],psi:[0,0],v:[1,1],vy:[0.1,0.1],r:[0,0],st:[1,1],s:[0,1],z:[0,0],ax:[0,0],ay:[0,0],delta:[0.1,0.1],alf:[0,0],alr:[0,0],gear:[1,1]};
 const dyn={start:1,trace};
@@ -29,4 +29,21 @@ test('failure replay seeks 1.5 seconds before station including lap wrap and gho
     const rt=raceClock(laps,failureReplayTime(snapshot,{at}));
     assert.equal((snapshot.tc[at]-rt+snapshot.t)%snapshot.t,1.5);
   }
+});
+
+test('trace tag follows only the visible dynamic car and hides outside its interval',()=>{
+  const lap={x:1},p=tracePoseAt(snapshot,dyn,3.75);
+  assert.equal(traceTagPose(lap,p,'dynamic',true),p);
+  for(const mode of ['lap','both'])assert.equal(traceTagPose(lap,p,mode,true),lap);
+  assert.equal(traceTagPose(lap,p,'dynamic',false),lap);
+  for(const t of [3,4.5])assert.equal(traceTagPose(lap,tracePoseAt(snapshot,dyn,t),'dynamic',true),null);
+  for(const key of ['speed','ax','ay'])assert.ok(Number.isFinite(p[key]),key);
+});
+
+test('trace tag text explains lap-only grip and preserves speed and g telemetry',async()=>{
+  const {tagText}=await import('../src/app/telemetry.js'),p=tracePoseAt(snapshot,dyn,3.75),other={speed:2,ax:1,ay:2};
+  assert.deepEqual(traceTagText('grip',p,other),{main:'grip: lap model only'});
+  for(const mode of ['speed','g'])assert.deepEqual(traceTagText(mode,p,other),tagText(mode,p,other));
+  const lap={...other,phys:{uf:0.7,ur:0.8}};
+  assert.deepEqual(traceTagText('grip',lap,lap),tagText('grip',lap,lap));
 });
