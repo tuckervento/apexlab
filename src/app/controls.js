@@ -42,7 +42,13 @@ export function showError(msg){S.frameErr=S.frameErr||new Error(msg);runLabel();
 export function fit(){S.cam.fit(S.T,S.width);}
 // 2D map or 3D view ('2d' | '3d'; always 2D while editing the track). main.js sizes the map canvas for it on the next frame.
 // main.js supplies the active camera actions.
-export function setView(v){if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
+function syncBonnet3d(){
+  const option=$('#camera3d option[value="bonnet"]');
+  option.disabled=S.reducedMotion;option.textContent=S.reducedMotion?'Bonnet (off: reduced motion)':'Bonnet';
+  if(S.reducedMotion&&S.cam3d.mode==='bonnet'){S.cam3d.mode='chase';S.cam3d.state=null;}
+  $('#camera3d').value=S.cam3d.mode;
+}
+export function setView(v){syncBonnet3d();if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
   $('#camera3d').hidden=!on;
   $('#orthoControls').hidden=!on||S.cam3d.mode!=='ortho';
   $('#height3d').hidden=!on||!new Set(['overview','ortho']).has(S.cam3d.mode);
