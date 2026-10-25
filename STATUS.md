@@ -1,11 +1,11 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave B: 0.4, 5.1)_
+_Last updated: 2026-10-25 (Wave C: 1.1–1.5)_
 
 ## Snapshot
 
-9 of 33 tasks done (Waves A and B), all merged to `main`; on `main` 285/285 tests pass and the physics hash is
-current. Next: Wave C (1.1–1.5).
+14 of 33 tasks done (Waves A–C), all merged to `main`; on `main` 320/320 tests pass and the physics hash is current.
+Next: 1.7.
 
 ## Completed
 
@@ -42,6 +42,18 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   `tests/smooth-pose.test.mjs` 6 tests pass; full suite 283/283; golden/playback diffs empty; skidpad mean radius error
   at mid-samples 0.006 m smooth vs 0.488 m linear; coordinator's teeth (chord tangents, i.e. linear, in an `APEX_SRC`
   copy) fail the skidpad-midpoint test.
+- [x] 1.1 track ribbon (Codex) — done 2026-10-25 — `3d/1.1` `cdbce90` — verified: full suite 293/293; coordinator's
+  teeth (drop the seam quad) fail 8/8 ribbon tests.
+- [x] 1.2 line ribbon and colour modes (Codex, one follow-up) — done 2026-10-25 — `3d/1.2` `1daf006` — verified: full
+  suite 288/288; returns `{position, index}`; colours are linear RGB; coordinator's teeth: swapped pedal thresholds
+  fail 2/3, no linear conversion fails 2/3.
+- [x] 1.3 car model (Codex) — done 2026-10-25 — `3d/1.3` `0a2453c` — verified: full suite 288/288; axes match
+  `frame.js` (+X forward, +Z right, `'YZX'` yaw then pitch); coordinator's teeth (FR at −Z) fail 2/3.
+- [x] 1.4 orbit camera (Codex) — done 2026-10-25 — `3d/1.4` `72f5838` — verified: full suite 302/302; coordinator's
+  teeth (fit distance halved) fail 16/17.
+- [x] 1.5 chase camera (Codex, one follow-up to its tests) — done 2026-10-25 — `3d/1.5` `f8807b3` — verified: full
+  suite 289/289; coordinator's teeth (ignore `input.sample`) fail 2/4, the cross-frame-rate comparison among them
+  (0.95 m against a 1 cm tolerance).
 
 ## In Progress
 
@@ -102,6 +114,36 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   tangent is `r`, and `z` tangents are time central differences of `tr.z`. A trace pose has `pitch` and `tangent` but
   still no `grade`. `smooth-pose.test.mjs`'s "trace input throws" assertion was replaced by trace tests.
 
+- 2026-10-25: Wave C ran as one parallel cycle of 5 Codex tasks (Q's request). It merged to `main` (`--no-ff`, 1.1 to
+  1.5 in order) with no conflicts; the code is identical to the tested trial tree. Corrections to PLAN.md carried in
+  the prompts:
+  1. 1.2's line ribbon is in **`src/views/scene3d/line.js`**, not `meshes.js`, to avoid an add/add conflict with 1.1.
+  2. Each task has its own test file: `scene3d-meshes`, `-line`, `-car`, `-camera`, `-chase`.
+  3. 1.3: **`cg` is the CG height in metres**, not a front–rear position. Axles come from `rear` (rear weight %),
+     with the pose point at the CG: the front axle is `wb·rear/100` ahead of it and the rear axle `wb·(1−rear/100)`
+     behind. The dims are `{wb, track, cg = 0.44, rear = 50}`, and the defaults cover a ghost's `{wb, track}`.
+  4. 1.4's fit test builds its edges from `stationFrames`, not from `trackRibbon` (concurrent).
+  5. The chase camera takes an optional `input.sample(tAnim) → pose` for each spring sub-step (as `attitude.js`
+     does): an extension to the camera contract.
+- Wave C interfaces for 1.7:
+  - `trackRibbon(T, frames, {heightColors, pal}) → {position, normal, index, color?}`.
+  - `lineRibbon(disp, {halfWidth, lift}) → {position, index}`, with 4 vertices per segment so colours don't blend
+    across stations; `lineColors(disp, mode, pal) → Float32Array` (modes speed, pedal, util, ghost).
+  - Vertex colours are **linear RGB** in both.
+  - `buildCarModel(dims, {color, opacity})`, `placeCar(group, pose)`, `disposeCar(group)`. `userData.radius` is the
+    cosmetic wheel radius, for `attitude.js`.
+  - Both cameras' `view()` returns `{position, target, up, fovDeg, near, far}`.
+  - Orbit exports `init`, `step`, `view`, `orbit`, `pan` and `zoom`. Its state also keeps `fovDeg`, `aspect` and
+    `radius`.
+  - Chase trails 8 m behind and 3 m up, uses a 1 m ground margin, and its `fovDeg` is fixed at 60. Its ground clamp
+    uses the height at the car's station.
+- Review findings sent back to Codex (Q approved):
+  - 1.2 returned `positions` and sRGB, out of step with 1.1. It was renamed to `position` and converted to linear RGB.
+  - 1.5's tests passed with a camera that ignored `sample`, because `input.car` was never updated and the only
+    "behind" check used a pose that didn't move. The tests now update `input.car` every frame, and a moving-car bound
+    is derived as `hypot(8, 3) + 2·vmax/8 + 2 m` (26.8 m flat; observed 24.6 m). The implementation was unchanged.
+
 ## Next Up
 
-- Wave C: 1.1, 1.2, 1.3, 1.4 (each needs 0.4) and 1.5 (needs 0.1, 0.4). Codex by default.
+- 1.7 scene module (fan-in: needs 0.5 and 1.1–1.4; renders in a browser, so it's the first Codex task to check whether
+  Codex can run the headless driver). After it, 1.8, and the P3 tasks 3.1–3.4 that depend only on 1.7.
