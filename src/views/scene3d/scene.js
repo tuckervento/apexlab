@@ -1,6 +1,6 @@
 import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
 import { findCorners } from '../map2d/map.js';
-import { startBand, gantry, boardPlacements, signPlacements, labelPlanes, labelAtlas, markerPosts } from './markings.js';
+import { startBand, gantry, boardPlacements, signPlacements, labelPlanes, labelBacks, labelAtlas, markerPosts } from './markings.js';
 import { dataToThree, stationFrames } from './frame.js';
 import { trackRibbon, groundPlane, skirts, groundHeight } from './meshes.js';
 import { fogRange, worldSize } from './fog.js';
@@ -98,6 +98,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     if(!markings)return;
     markings.traverse(o=>{if(!o.isMesh)return;
       if(o.userData.labels){paintLabels(o);return;}
+      if(o.name==='labelBacks'){o.material.color.setStyle(pal.colors.paper);return;}
       if(o.name==='gantry'||o.name==='markerPosts'){o.material.color.setStyle(pal.colors.ink);return;}
       const ink=new THREE.Color(pal.colors.ink),paper=new THREE.Color(pal.colors.paper),a=o.geometry.attributes.color;
       for(let i=0;i<a.count;i++){const c=o.userData.checks[i]?paper:ink;a.setXYZ(i,c.r,c.g,c.b);}a.needsUpdate=true;
@@ -116,12 +117,14 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     posts.name='markerPosts';markings.add(posts);
     for(const [name,records] of [['boards',boards],['signs',signs]]){
       const group=new THREE.Group();group.name=name;group.userData.count=records.length;markings.add(group);if(!records.length)continue;
+      const back=new THREE.Mesh(geometry(labelBacks(records)),new THREE.MeshBasicMaterial({side:THREE.FrontSide}));
+      back.name='labelBacks';group.add(back);
       for(const page of labelAtlas(records.length).pages){
         const subset=records.slice(page.start,page.start+page.count);
         const data=labelPlanes(subset,{tiles:page.tiles}),geo=geometry(data);geo.setAttribute('uv',new THREE.BufferAttribute(data.uv,2));
         const canvas=document.createElement('canvas');canvas.width=page.width;canvas.height=page.height;
         const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
-        const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));
+        const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:texture,side:THREE.FrontSide}));
         mesh.userData={canvas,tiles:page.tiles,labels:subset.map(r=>String(r.distance??r.number))};group.add(mesh);
       }
     }

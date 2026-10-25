@@ -46,6 +46,33 @@ export default async ctx=>{
     const renderedHeading=Math.abs(group('traceCar').rotation.y-yawFromHeading(last.trace.heading))<1e-6;
     q('#trace3d [data-v="dynamic"]').click();await settle();
     const dynamicOnly=!group('lapCar').visible&&group('traceCar').visible;
+    const THREE=await import('/vendor/three-0.186.1/build/three.core.js');
+    const tagMatches=name=>{
+      const v=last.view,canvas=q('#view3d'),c=new THREE.PerspectiveCamera(v.fovDeg,canvas.clientWidth/canvas.clientHeight,v.near,v.far);
+      c.position.fromArray(v.position);c.up.fromArray(v.up);c.lookAt(new THREE.Vector3().fromArray(v.target));c.updateMatrixWorld();
+      const p=group(name).position.clone().project(c),tag=q('#overlay3d .car3d');
+      return !tag.hidden&&Math.abs(parseFloat(tag.style.left)-(p.x+1)*canvas.clientWidth/2)<3&&Math.abs(parseFloat(tag.style.top)-(1-p.y)*canvas.clientHeight/2)<3;
+    };
+    q('#tagSeg [data-v="speed"]').click();await settle();
+    const dynamicTag=tagMatches('traceCar');
+    q('#tagSeg [data-v="g"]').click();await settle();
+    const dynamicG=tagMatches('traceCar')&&!q('#overlay3d .car3d').textContent.includes('NaN');
+    q('#tagSeg [data-v="grip"]').click();await settle();
+    const dynamicGrip=tagMatches('traceCar')&&q('#overlay3d .car3d').textContent==='grip: lap model only';
+    q('#tagSeg [data-v="speed"]').click();await settle();
+    const visibleTime=S.animT;
+    await seek(d.tc[dyn.start]+tr.t[0]-0.01);
+    const tagBeforeHidden=q('#overlay3d .car3d').hidden&&!group('traceCar').visible;
+    let tagAfterHidden=null;
+    if(d.tc[dyn.start]+tr.t.at(-1)+0.01<d.t){
+      await seek(d.tc[dyn.start]+tr.t.at(-1)+0.01);
+      tagAfterHidden=q('#overlay3d .car3d').hidden&&!group('traceCar').visible;
+    }
+    await seek(visibleTime);
+    q('#trace3d [data-v="lap"]').click();await settle();const lapTag=tagMatches('lapCar');
+    q('#trace3d [data-v="both"]').click();await settle();const bothTag=tagMatches('lapCar');
+    q('#trace3d [data-v="dynamic"]').click();await settle();
+
     const chase=await import('/src/views/scene3d/cameras/chase.js');
     q('#camera3d [data-v="chase"]').click();await settle();
     const expected=chase.view(chase.init({T:S.T,car:last.trace})),actual=chase.view(S.cam3d.state);
@@ -74,7 +101,7 @@ export default async ctx=>{
     }
     await document.fonts.ready;
     window.traceCheck={S,q,until,settle,api,group,trace,render:()=>original(last)};
-    return {aligned,bothVisible,sideslip,renderedHeading,themeTrace,beta,corner,traceCorner:tr.st[j],reachable,dynamicOnly,chaseFollowsTrace,geometryStable,counts,opaqueNoShadow,replayFailure,
+    return {dynamicG,dynamicGrip,tagBeforeHidden,tagAfterHidden,dynamicTag,lapTag,bothTag,aligned,bothVisible,sideslip,renderedHeading,themeTrace,beta,corner,traceCorner:tr.st[j],reachable,dynamicOnly,chaseFollowsTrace,geometryStable,counts,opaqueNoShadow,replayFailure,
       failure:R.fail,cleanSetup:R.fail?null:'Default GT racer / Harrow Ring centreline passed cleanly; failure replay needs coordinator follow-up with a failing setup.'};
   })()`);
   await run('traceCheck.render()');
@@ -85,8 +112,9 @@ export default async ctx=>{
     await until(()=>S.dynStale,'stale result');await settle();
     return {traceHidden:!trace.visible&&!group('traceCar'),controlHidden:q('#trace3d').hidden,failureHidden:!q('#replayFailure')};
   })()`);
-  const checks={renderedHeading:seen.renderedHeading,themeTrace:seen.themeTrace,aligned:seen.aligned,bothVisible:seen.bothVisible,sideslip:seen.sideslip,dynamicOnly:seen.dynamicOnly,chaseFollowsTrace:seen.chaseFollowsTrace,
+  const checks={dynamicG:seen.dynamicG,dynamicGrip:seen.dynamicGrip,tagBeforeHidden:seen.tagBeforeHidden,dynamicTag:seen.dynamicTag,lapTag:seen.lapTag,bothTag:seen.bothTag,renderedHeading:seen.renderedHeading,themeTrace:seen.themeTrace,aligned:seen.aligned,bothVisible:seen.bothVisible,sideslip:seen.sideslip,dynamicOnly:seen.dynamicOnly,chaseFollowsTrace:seen.chaseFollowsTrace,
     geometryStable:seen.geometryStable,opaqueNoShadow:seen.opaqueNoShadow,reference:reference.ok,...stale};
+  if(seen.tagAfterHidden!==null)checks.tagAfterHidden=seen.tagAfterHidden;
   if(seen.replayFailure!==null)checks.replayFailure=seen.replayFailure;
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,reference};
 };

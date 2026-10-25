@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadCore, setupPreset } from './load-core.mjs';
 import { stationFrames } from '../src/views/scene3d/frame.js';
 import { findCorners } from '../src/views/map2d/map.js';
-import { boardPlacements, signPlacements, startBand, labelAtlas, labelPlanes, markerPosts } from '../src/views/scene3d/markings.js';
+import { boardPlacements, signPlacements, startBand, labelAtlas, labelPlanes, labelBacks, markerPosts } from '../src/views/scene3d/markings.js';
 
 const core=await loadCore();
 for(const preset of core.TRACKS)for(const hills of [0,40]){
@@ -21,6 +21,21 @@ for(const preset of core.TRACKS)for(const hills of [0,40]){
       assert.ok(Math.sin(r.yaw)*tx+Math.cos(r.yaw)*tz<0,'faces approaching cars');
     }
     signs.forEach((r,i)=>{assert.equal(r.number,i+1);assert.equal(r.station,corners[i].apex);});
+  });
+  test(`${preset.name}, ${hills} m: blank backs face away just behind every panel`,()=>{
+    const records=[...boardPlacements(T,corners),...signPlacements(T,corners)],front=labelPlanes(records),back=labelBacks(records);
+    assert.equal(back.index.length,records.length*6);
+    records.forEach((r,i)=>{
+      const n=Array.from(front.normal.slice(12*i,12*i+3)),bn=Array.from(back.normal.slice(12*i,12*i+3));
+      assert.ok(n.reduce((v,x,k)=>v+x*bn[k],0)<-0.999,'opposite normals');
+      const center=m=>[0,1,2].map(k=>[0,1,2,3].reduce((v,j)=>v+m.position[12*i+3*j+k]/4,0));
+      const a=center(front),b=center(back),delta=b.map((v,k)=>v-a[k]),depth=delta.reduce((v,x,k)=>v+x*n[k],0);
+      assert.ok(depth< -0.004&&depth> -0.006,'back is 5 mm behind');
+      assert.ok(Math.hypot(...delta)<0.01,'within a centimetre');
+      const ids=Array.from(back.index.slice(6*i,6*i+3)),p=ids.map(j=>Array.from(back.position.slice(3*j,3*j+3)));
+      const u=p[1].map((v,k)=>v-p[0][k]),v=p[2].map((x,k)=>x-p[0][k]),cross=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+      assert.ok(cross.reduce((a,x,k)=>a+x*bn[k],0)>0,'back winding matches normal');
+    });
   });
   test(`${preset.name}, ${hills} m: posts reach road and meet panels`,()=>{
     const records=[...boardPlacements(T,corners),...signPlacements(T,corners)],m=markerPosts(T,records),panels=labelPlanes(records);
