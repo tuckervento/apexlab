@@ -79,31 +79,45 @@ export function renderDyn(){
 export function dynLap(n){$('#dynState').textContent='running · lap '+n;}
 
 // ---------- panels
+// ---------- the car: a base car, the knobs on it, and fields set by hand on top (simple.js); S.P is always
+// carFor(S.simple, S.manual). One pane: each section starts with its knobs, then the fields they set.
+const KNOBS_IN={Powertrain:['power','pt','drive','gearbox'],Chassis:['weight','balance'],Aero:['downforce'],Tyres:['tyre'],Brakes:[]}; // Balance: roll stiffness, its bigger lever, is Chassis
+const label=t=>`<span class="ctl-label" style="min-width:auto;flex:1;font-family:var(--body);font-size:13px;color:var(--ink)">${t}</span>`;
+function knobHTML(s){
+  const note=`<small class="knob-note" id="kn-${s.k}" hidden></small>`;
+  const gear=s.k==='power'?`<small class="knob-note" id="gearNote" hidden>Gearing set by hand below, so Power, Weight and Downforce leave it alone <button data-reset="gearing">↺ give it back</button></small>`:'';
+  if(s.opts)return `<div class="knob" id="k-${s.k}"><div class="row">${label(s.l)}<div class="seg" id="ks-${s.k}">${s.opts.map(([v,l])=>`<button data-v="${v}" aria-pressed="false">${l}</button>`).join('')}</div></div>${note}</div>`;
+  return `<div class="field knob" id="k-${s.k}"><label for="kf-${s.k}">${s.l}</label><output id="ko-${s.k}"></output><input type="range" id="kf-${s.k}" min="${s.min}" max="${s.max}" step="${s.st}">${note}</div>${gear}`;
+}
 export function buildCarUI(){
+  const placed=Object.values(KNOBS_IN).flat(),groups=SPEC.filter(s=>s.g).map(s=>s.g);
+  if(SIMPLE.some(s=>!placed.includes(s.k))||Object.keys(KNOBS_IN).some(g=>!groups.includes(g)))throw new Error('buildCarUI: a knob has no section (KNOBS_IN)');
   const sel=$('#carPreset');baseOptions();
   sel.onchange=()=>{if(sel.value!=='loaded')setBase(sel.value);}; // 'loaded': the loaded run's car, already the base
-  const mode=$('#carMode');mode.onclick=e=>{const b=e.target.closest('button');if(b)setCarMode(b.dataset.v);};setCarMode(S.carMode);
-  buildSimpleUI();
   const box=$('#carFields');let html='';
   for(const s of SPEC){
-    if(s.g){html+=`<h3>${s.g}</h3>`;continue;}
-    if(s.seg){html+=`<div class="row"><span class="ctl-label" style="min-width:auto;flex:1;font-family:var(--body);font-size:13px;color:var(--ink)">${s.l}</span><div class="seg" id="seg-${s.k}">${s.seg.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return `<button data-v="${v}" aria-pressed="false">${l}</button>`;}).join('')}</div></div>`;continue;}
+    if(s.g){html+=`<h3>${s.g}</h3>`;const ks=KNOBS_IN[s.g];if(ks.length)html+=`<div class="knobs">${ks.map(k=>knobHTML(SIMPLE.find(x=>x.k===k))).join('')}</div>`;continue;}
+    if(s.seg)continue; // Type and Driven wheels: the knobs above are these fields
     html+=`<div class="field"${s.pt?` data-pt="${s.pt}"`:''}><label for="f-${s.k}">${s.l}</label><output id="o-${s.k}"></output><input type="range" id="f-${s.k}" min="${s.min}" max="${s.max}" step="${s.st}">${s.h?`<small>${s.h}</small>`:''}</div>`;
   }
   box.innerHTML=html;
+  for(const s of SIMPLE){
+    if(s.opts)$('#ks-'+s.k).onclick=e=>{const b=e.target.closest('button');if(!b||b.disabled)return;S.simple[s.k]=b.dataset.v;applyCar();};
+    else $('#kf-'+s.k).oninput=e=>{S.simple[s.k]=+e.target.value;applyCar();};
+  }
   for(const s of SPEC){
-    if(s.g) continue;
-    if(s.seg){$('#seg-'+s.k).onclick=e=>{const b=e.target.closest('button');if(!b)return;S.P[s.k]=S.manual[s.k]=b.dataset.v;setSeg($('#seg-'+s.k),b.dataset.v);syncFields();syncKnobs();carChanged();};continue;}
+    if(s.g||s.seg)continue;
     const inp=$('#f-'+s.k);
     inp.oninput=()=>{S.P[s.k]=S.manual[s.k]=+inp.value;$('#o-'+s.k).textContent=s.f(S.P[s.k])+(s.u?' '+s.u:'');syncKnobs();carChanged();}; // set by hand: knobs no longer move it
   }
-  syncFields();
+  box.addEventListener('click',e=>{const r=e.target.closest('[data-reset]');if(!r)return; // ↺: the knob sets these fields again
+    for(const f of r.dataset.reset==='gearing'?GEARING:KNOB_FIELDS[r.dataset.reset])delete S.manual[f];applyCar();});
+  $('#simpleReset').onclick=()=>setBase(S.simple.base);
+  $('#carEdited').addEventListener('click',e=>{if(e.target.closest('button')){S.manual={};applyCar();}});
+  syncFields();syncKnobs();
 }
-// ---------- the car: a base car, the simple knobs on it, and fields set by hand in Advanced on top (simple.js). S.P is
-// always carFor(S.simple, S.manual); the dropdown is the base car in both pages.
 function applyCar(){S.P=carFor(S.simple,S.manual);syncFields();syncKnobs();carChanged();}
 function setBase(base){S.simple=defaults(base);S.manual={};baseOptions();applyCar();} // a new base clears knobs and hand edits
-function setCarMode(m){S.carMode=m;setSeg($('#carMode'),m);$('#simpleFields').hidden=m!=='simple';$('#carFields').hidden=m==='simple';}
 // The presets, plus the loaded run's car while it is the base (options built as elements: its name comes from a file).
 function baseOptions(){
   const sel=$('#carPreset'),b=S.simple.base,loaded=CARS[b.name]!==b.car;
@@ -112,27 +126,7 @@ function baseOptions(){
 }
 const signed=(v,d=0)=>(v>0?'+':v<0?'−':'±')+Math.abs(v).toFixed(d);
 const KNOB_OUT={weight:v=>`${signed(v)} % · ${Math.round(S.P.mass)} kg`,power:v=>`${signed(v)} % · ${Math.round(S.P.power)} kW`,
-  downforce:v=>`${signed(v,2)} · CL·A ${S.P.cla.toFixed(2)} m²`,balance:v=>v===0?'as base car':`${signed(v,2)} · toward ${v<0?'understeer':'oversteer'}`};
-function buildSimpleUI(){
-  let html='';
-  for(const s of SIMPLE){
-    const note=`<small class="knob-note" id="kn-${s.k}" hidden></small>`;
-    if(s.opts)html+=`<div class="knob" id="k-${s.k}"><div class="row"><span class="ctl-label" style="min-width:auto;flex:1;font-family:var(--body);font-size:13px;color:var(--ink)">${s.l}</span><div class="seg" id="ks-${s.k}">${s.opts.map(([v,l])=>`<button data-v="${v}" aria-pressed="false">${l}</button>`).join('')}</div></div>${note}</div>`;
-    else html+=`<div class="field knob" id="k-${s.k}"><label for="kf-${s.k}">${s.l}</label><output id="ko-${s.k}"></output><input type="range" id="kf-${s.k}" min="${s.min}" max="${s.max}" step="${s.st}">${note}</div>`;
-    if(s.k==='power')html+=`<small class="knob-note" id="gearNote" hidden>Gearing set by hand in Advanced, so Power, Weight and Downforce leave it alone <button data-reset="gearing">↺ give it back</button></small>`;
-  }
-  html+=`<div class="row"><button class="btn" id="simpleReset">Reset to base car</button></div>`;
-  const box=$('#simpleFields');box.innerHTML=html;
-  for(const s of SIMPLE){
-    if(s.opts)$('#ks-'+s.k).onclick=e=>{const b=e.target.closest('button');if(!b||b.disabled)return;S.simple[s.k]=b.dataset.v;applyCar();};
-    else $('#kf-'+s.k).oninput=e=>{S.simple[s.k]=+e.target.value;applyCar();};
-  }
-  box.addEventListener('click',e=>{const r=e.target.closest('[data-reset]');if(!r)return; // ↺: the knob sets these fields again
-    for(const f of r.dataset.reset==='gearing'?GEARING:KNOB_FIELDS[r.dataset.reset])delete S.manual[f];applyCar();});
-  $('#simpleReset').onclick=()=>setBase(S.simple.base);
-  $('#carEdited').addEventListener('click',e=>{if(e.target.closest('button')){S.manual={};applyCar();}});
-  syncKnobs();
-}
+  downforce:v=>`${signed(v,2)} · CL·A ${S.P.cla.toFixed(2)} m²`,balance:v=>v===0?'base':`${signed(v,2)} · toward ${v<0?'understeer':'oversteer'}`};
 // Knob positions and readouts, and which knobs are greyed by fields set by hand.
 function syncKnobs(){
   const st=knobStates(S.manual),n=Object.keys(S.manual).length;
@@ -142,16 +136,16 @@ function syncKnobs(){
     if(s.opts){setSeg($('#ks-'+s.k),v);$('#ks-'+s.k).querySelectorAll('button').forEach(b=>b.disabled=off);}
     else{const inp=$('#kf-'+s.k);inp.value=v;inp.disabled=off;$('#ko-'+s.k).textContent=KNOB_OUT[s.k](v);}
     note.hidden=st[s.k]==='on';
-    if(!note.hidden)note.innerHTML=`${off?'Set by hand in Advanced':'Partly set by hand in Advanced'} <button data-reset="${s.k}">↺ give it back</button>`;
+    if(!note.hidden)note.innerHTML=`${off?'Set by hand below':'Partly set by hand below'} <button data-reset="${s.k}">↺ give it back</button>`;
   }
   $('#k-gearbox').hidden=S.P.pt==='EV'; // an EV has no gearbox
   $('#gearNote').hidden=!st.gearing;
   const ed=$('#carEdited');ed.hidden=!n;
-  if(n)ed.innerHTML=`${n} field${n>1?'s':''} set by hand in Advanced <button class="textbtn">↺ clear</button>`;
+  if(n)ed.innerHTML=`${n} field${n>1?'s':''} set by hand <button class="textbtn">↺ clear</button>`;
 }
 function syncFields(){
   const P=S.P;
-  for(const s of SPEC){if(s.g)continue;if(s.seg){setSeg($('#seg-'+s.k),P[s.k]);continue;}$('#f-'+s.k).value=P[s.k];$('#o-'+s.k).textContent=s.f(P[s.k])+(s.u?' '+s.u:'');}
+  for(const s of SPEC){if(s.g||s.seg)continue;$('#f-'+s.k).value=P[s.k];$('#o-'+s.k).textContent=s.f(P[s.k])+(s.u?' '+s.u:'');}
   document.querySelectorAll('[data-pt]').forEach(el=>el.hidden=el.dataset.pt!==P.pt);
 }
 export function buildTrackUI(){

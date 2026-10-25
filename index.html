@@ -89,7 +89,7 @@ select{font-family:var(--body);font-size:13px;padding:7px 8px;border-radius:4px;
 .knob.off{opacity:.45}
 .knob-note{color:var(--muted);font-size:11.5px}
 .knob-note button,.textbtn{border:0;background:none;padding:0 2px;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline}
-#carFields[hidden],#simpleFields[hidden]{display:none!important}
+.knobs{display:flex;flex-direction:column;gap:10px;padding-bottom:10px;border-bottom:1px dashed var(--rule)}
 .ctl-label{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:64px}
 .derived{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding:10px 12px;border:1px dashed var(--rule);border-radius:4px}
 .derived b{color:var(--ink);font-weight:500;display:block;font-size:14px}
@@ -231,8 +231,7 @@ details p{margin:6px 0 0}
 
     <section id="carSection">
       <h2>Car</h2>
-      <div class="row"><select id="carPreset" aria-label="Base car"></select>
-        <div class="seg" id="carMode" role="group" aria-label="Car controls"><button data-v="simple" aria-pressed="true">Simple</button><button data-v="advanced" aria-pressed="false">Advanced</button></div></div>
+      <div class="row"><select id="carPreset" aria-label="Base car"></select><button class="btn" id="simpleReset">Reset to base car</button></div>
       <small class="knob-note" id="carEdited" hidden></small>
       <p class="note" id="carRefused" role="status" hidden></p>
       <div class="derived" id="derived"></div>
@@ -240,8 +239,7 @@ details p{margin:6px 0 0}
         <canvas class="chart" id="forceChart" height="160"></canvas>
         <div class="chart-cap"><span><i style="background:var(--ink)"></i>Drive force</span><span id="capGears"><i style="background:var(--grid2)"></i>Each gear</span><span><i style="background:var(--accent)"></i>Traction limit</span><span><i style="background:var(--muted)"></i>Drag + rolling</span><span>kN over km/h</span></div>
       </div>
-      <div id="simpleFields" style="display:flex;flex-direction:column;gap:10px"></div>
-      <div id="carFields" style="display:flex;flex-direction:column;gap:10px" hidden></div>
+      <div id="carFields" style="display:flex;flex-direction:column;gap:10px"></div>
     </section>
 
     <section id="trackSection">

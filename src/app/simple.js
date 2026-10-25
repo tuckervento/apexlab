@@ -1,7 +1,7 @@
 // Simple car controls (docs/simple-controls.md): a base car plus a few knobs, mapped onto the 25 CarParams fields. Pure,
 // no DOM. Every knob is relative to the base car, so centred knobs (defaults) reproduce the preset exactly; a closed-form
 // "neutral" balance would mislabel cars by several percent (the doc's finding). Derived values are clamped to the
-// Advanced slider ranges (SPEC), so the Advanced panel never shows a value it can't offer; carSpec still validates.
+// slider ranges (SPEC), so the panel's detailed sliders never show a value they can't offer; carSpec still validates.
 import { CARS } from './presets.js';
 import { SPEC } from './sliders.js';
 import { G, RHO, ETA, CRR } from '../core/index.js';
@@ -18,12 +18,12 @@ const BAL_ROLL=10,BAL_AERO=5; // balance b in [−1, 1]: rollF − 10b, aeroF + 
 export const SIMPLE=Object.freeze([
   {k:'weight',l:'Weight',min:-25,max:25,st:1,u:'%'},
   {k:'power',l:'Power',min:-50,max:50,st:1,u:'%'},
-  {k:'tyre',l:'Tyres',opts:[['base','As base car'],['street','Street'],['sport','Sport'],['semi','Semi-slick'],['slick','Slick']]},
+  {k:'tyre',l:'Tyres',opts:[['base','Base'],['street','Street'],['sport','Sport'],['semi','Semi-slick'],['slick','Slick']]},
   {k:'downforce',l:'Downforce',min:-2,max:2,st:0.05,u:'m² CL·A'},
   {k:'balance',l:'Balance (understeer ↔ oversteer)',min:-1,max:1,st:0.05,u:''},
   {k:'pt',l:'Type',opts:[['ICE','Combustion'],['EV','Electric']]},
   {k:'drive',l:'Driven wheels',opts:[['RWD','RWD'],['AWD','AWD']]},
-  {k:'gearbox',l:'Gearbox',opts:[['base','As base car'],['manual','Manual'],['dct','DCT'],['seq','Sequential']]}
+  {k:'gearbox',l:'Gearbox',opts:[['base','Base'],['manual','Manual'],['dct','DCT'],['seq','Sequential']]}
 ].map(s=>Object.freeze(s.opts?{...s,opts:Object.freeze(s.opts.map(o=>Object.freeze(o)))}:s)));
 
 const RANGE=Object.fromEntries(SPEC.filter(s=>s.min!==undefined).map(s=>[s.k,s]));
@@ -78,7 +78,7 @@ export function deriveParams(simple){
   return p;
 }
 
-// The car the panel shows: the knobs' car with the fields set by hand in Advanced (manual: {field: value}) on top, so a
+// The car the panel shows: the knobs' car with the fields set by hand on the sliders (manual: {field: value}) on top, so a
 // knob change never undoes a hand edit.
 export function carFor(simple,manual){
   const p=deriveParams(simple);

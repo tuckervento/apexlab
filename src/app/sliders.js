@@ -2,14 +2,6 @@
 // Pure data with no DOM, so the panel (controls.js), tests and other editors of S.P share one table. The ranges are
 // what the panel offers, not what physics accepts: carSpec (src/core/units.js) checks values against physical limits.
 export const SPEC=[
-  {g:'Chassis'},
-  {k:'mass',l:'Mass',min:150,max:3000,st:5,u:'kg',f:v=>v.toFixed(0)},
-  {k:'cg',l:'CoG height',min:0.2,max:0.8,st:0.01,u:'m',f:v=>v.toFixed(2),h:'Higher CoG transfers more load in corners'},
-  {k:'track',l:'Track width (axle)',min:1.2,max:2.0,st:0.01,u:'m',f:v=>v.toFixed(2),h:'Wider resists load transfer but eats usable road'},
-  {k:'wb',l:'Wheelbase',min:1.8,max:3.8,st:0.01,u:'m',f:v=>v.toFixed(2),h:'Longer resists pitch under braking but rotates more slowly'},
-  {k:'yawDI',l:'Yaw inertia (dynamic index)',min:0.6,max:1.4,st:0.01,u:'',f:v=>v.toFixed(2),h:'Yaw inertia ÷ (mass × CG-to-axle distances). Higher is lazier to change direction'},
-  {k:'rear',l:'Weight on rear',min:35,max:70,st:1,u:'%',f:v=>v.toFixed(0)},
-  {k:'rollF',l:'Roll stiffness on front',min:25,max:75,st:1,u:'%',f:v=>v.toFixed(0),h:'Share of cornering load transfer taken by the front axle. More front pushes the car toward understeer'},
   {g:'Powertrain'},
   {k:'pt',seg:[['ICE','Combustion'],['EV','Electric']],l:'Type'},
   {k:'power',l:'Peak power',min:10,max:800,st:5,u:'kW',f:v=>v.toFixed(0)},
@@ -22,14 +14,22 @@ export const SPEC=[
   {k:'v1',pt:'ICE',l:'1st gear at redline',min:30,max:180,st:1,u:'km/h',f:v=>v.toFixed(0)},
   {k:'vTopG',pt:'ICE',l:'Top gear at redline',min:80,max:420,st:1,u:'km/h',f:v=>v.toFixed(0)},
   {k:'drive',seg:['RWD','AWD'],l:'Driven wheels'},
+  {g:'Chassis'},
+  {k:'mass',l:'Mass',min:150,max:3000,st:5,u:'kg',f:v=>v.toFixed(0)},
+  {k:'cg',l:'CoG height',min:0.2,max:0.8,st:0.01,u:'m',f:v=>v.toFixed(2),h:'Higher CoG transfers more load in corners'},
+  {k:'track',l:'Track width (axle)',min:1.2,max:2.0,st:0.01,u:'m',f:v=>v.toFixed(2),h:'Wider resists load transfer but eats usable road'},
+  {k:'wb',l:'Wheelbase',min:1.8,max:3.8,st:0.01,u:'m',f:v=>v.toFixed(2),h:'Longer resists pitch under braking but rotates more slowly'},
+  {k:'yawDI',l:'Yaw inertia (dynamic index)',min:0.6,max:1.4,st:0.01,u:'',f:v=>v.toFixed(2),h:'Yaw inertia ÷ (mass × CG-to-axle distances). Higher is lazier to change direction'},
+  {k:'rear',l:'Weight on rear',min:35,max:70,st:1,u:'%',f:v=>v.toFixed(0)},
+  {k:'rollF',l:'Roll stiffness on front',min:25,max:75,st:1,u:'%',f:v=>v.toFixed(0),h:'Share of cornering load transfer taken by the front axle. More front pushes the car toward understeer'},
   {g:'Aero'},
   {k:'cla',l:'Downforce · CL·A',min:0,max:6,st:0.05,u:'m²',f:v=>v.toFixed(2)},
   {k:'aeroF',l:'Aero balance on front',min:25,max:65,st:1,u:'%',f:v=>v.toFixed(0),h:'Share of downforce on the front axle'},
   {k:'cda',l:'Drag · CD·A',min:0.25,max:1.6,st:0.01,u:'m²',f:v=>v.toFixed(2)},
-  {g:'Brakes'},
-  {k:'brakeF',l:'Brake bias on front',min:0,max:85,st:1,u:'%',f:v=>v.toFixed(0),h:'Fixed front share of brake force. The first axle to lock sets the braking limit'},
   {g:'Tyres'},
   {k:'mu',l:'Peak grip μ',min:0.7,max:2.0,st:0.01,u:'',f:v=>v.toFixed(2)},
   {k:'sens',l:'Load sensitivity',min:0,max:0.4,st:0.01,u:'',f:v=>v.toFixed(2),h:'Grip lost per doubling of tyre load'},
-  {k:'slipPk',l:'Peak slip angle',min:3,max:12,st:0.5,u:'°',f:v=>v.toFixed(1),h:'Dynamic check only: how far the tyre slips before its grip peaks'}
+  {k:'slipPk',l:'Peak slip angle',min:3,max:12,st:0.5,u:'°',f:v=>v.toFixed(1),h:'Dynamic check only: how far the tyre slips before its grip peaks'},
+  {g:'Brakes'},
+  {k:'brakeF',l:'Brake bias on front',min:0,max:85,st:1,u:'%',f:v=>v.toFixed(0),h:'Fixed front share of brake force. The first axle to lock sets the braking limit'}
 ];
