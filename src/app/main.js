@@ -11,8 +11,11 @@ import { drawMap } from '../views/map2d/map.js';
 import { pose, smoothPose, stationPose, raceClock } from '../playback/pose.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
+import * as tv from '../views/scene3d/cameras/tv.js';
 import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
+
+const CAMERAS={overview:orbit,chase,tv}; // S.cam3d.mode → camera module (each: init, step, view)
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed,refused,ghostDropped:updGhostUI});
 
@@ -38,10 +41,10 @@ let opening3d=null,applied3d={},dirty3d=true,lastView3d='',cameraStart=0,cameraT
 const aspect3d=()=>{const r=$('#view3d').getBoundingClientRect();return r.width/Math.max(1,r.height);};
 function cameraInput(){
   const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],S.animT);
-  return {T:S.T,car:d.t>0?smoothPose(d,rt,S.info):null,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
+  return {T:S.T,corners:S.corners,car:d.t>0?smoothPose(d,rt,S.info):null,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
 }
 function initCamera(input=cameraInput()){
-  S.cam3d.state=(S.cam3d.mode==='overview'?orbit:chase).init(input);cameraStart=S.animT;cameraTrack=S.T;dirty3d=true;
+  S.cam3d.state=CAMERAS[S.cam3d.mode].init(input);cameraStart=S.animT;cameraTrack=S.T;dirty3d=true;
 }
 function zoom3d(f){if(S.cam3d.mode==='overview'&&S.cam3d.state){orbit.zoom(S.cam3d.state,f);dirty3d=true;}}
 function fail3d(reason){
@@ -97,12 +100,12 @@ function draw3d(dt){
     const dims={wb:S.P.wb,track:S.P.track,cg:S.P.cg,rear:S.P.rear},key=JSON.stringify(dims),hasGhost=!!g;
     if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
-    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&S.cam3d.mode==='chase'))initCamera(input);
+    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv'].includes(S.cam3d.mode)))initCamera(input);
     else{
       input.sample=t=>{const rt=raceClock(g?[d.t,g.t]:[d.t],cameraStart+t);return d.t>0?smoothPose(d,rt,S.info):null;};
-      (S.cam3d.mode==='overview'?orbit:chase).step(S.cam3d.state,input,dtAnim);
+      CAMERAS[S.cam3d.mode].step(S.cam3d.state,input,dtAnim);
     }
-    const view=(S.cam3d.mode==='overview'?orbit:chase).view(S.cam3d.state),keyView=JSON.stringify(view);
+    const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state),keyView=JSON.stringify(view);
     if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({car:input.car,ghost:input.ghost,view});lastView3d=keyView;dirty3d=false;}
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}
