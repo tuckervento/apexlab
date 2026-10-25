@@ -23,7 +23,7 @@ export default async ctx=>{
     }
     if(!(best>0))throw new Error('no sustained right-hand bend');
     S.animT=end-0.9;q('#zView').click();await until(()=>!!S.scene3d);
-    q('#camera3d [data-v="chase"]').click();await until(()=>!!S.cam3d.state);await raf();await raf();
+    {const select=q('#camera3d');select.value='chase';select.dispatchEvent(new Event('change',{bubbles:true}));};await until(()=>!!S.cam3d.state);await raf();await raf();
     q('#replaySeg [data-v="1"]').click();await until(()=>S.animT>=end);
     q('#replaySeg [data-v="0"]').click();await raf();await raf();
     const car=S.scene3d._debug.scene.getObjectByName('lapCar');

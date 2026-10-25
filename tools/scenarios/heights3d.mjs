@@ -14,7 +14,7 @@ export default async ctx=>{
     await until(()=>S.T!==old&&!S.T.flat);send({type:'pause'});await until(()=>!S.running);
     const rev=S.disp.lineRev;send({type:'setLine'});await until(()=>S.disp.lineRev!==rev);
     q('#replaySeg [data-v="0"]').click();S.animT=3;S.hist=[];S.prog.evals=0;
-    q('#zView').click();await settle();q('#camera3d [data-v="overview"]').click();await settle();
+    q('#zView').click();await settle();{const select=q('#camera3d');select.value='overview';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     await document.fonts.ready;
     const core=await import('/vendor/three-0.186.1/build/three.core.js');
     const {smoothPose}=await import('/src/playback/pose.js'),{cornerAnchor}=await import('/src/views/scene3d/overlays.js');
@@ -47,9 +47,9 @@ export default async ctx=>{
       const anchor=new core.Vector3().fromArray(cornerAnchor(S.T,S.corners[i]));anchor.y=base+3*(anchor.y-base);anchor.project(camera);
       labelProjection&&=Math.abs(parseFloat(el.style.left)-(anchor.x+1)*canvas.clientWidth/2)<1&&Math.abs(parseFloat(el.style.top)-(1-anchor.y)*canvas.clientHeight/2)<1;
     });
-    q('#camera3d [data-v="chase"]').click();await until(()=>world.scale.y===1);await settle();
+    {const select=q('#camera3d');select.value='chase';select.dispatchEvent(new Event('change',{bubbles:true}));};await until(()=>world.scale.y===1);await settle();
     const chaseUnit=Math.abs(car.position.y-p.z)<0.03&&q('#heightScale3d').value==='3'&&q('#height3d').hidden;
-    q('#camera3d [data-v="overview"]').click();await until(()=>world.scale.y===3);await settle();
+    {const select=q('#camera3d');select.value='overview';select.dispatchEvent(new Event('change',{bubbles:true}));};await until(()=>world.scale.y===3);await settle();
     const restored=!q('#height3d').hidden;
     await set(5);
     const sun=scene.children.find(o=>o.isDirectionalLight),cam=sun.shadow.camera,e=cam.matrixWorld.elements,t=sun.target.position,l=sun.position;

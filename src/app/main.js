@@ -79,10 +79,7 @@ async function open3d(){
     finally{opening3d=null;}
   })();
 }
-$('#camera3d').onclick=e=>{
-  const b=e.target.closest('button');if(!b)return;S.cam3d.mode=b.dataset.v;S.cam3d.state=null;
-  $('#camera3d').querySelectorAll('button').forEach(q=>q.setAttribute('aria-pressed',String(q===b)));setView(S.view);
-};
+$('#camera3d').onchange=e=>{S.cam3d.mode=e.target.value;S.cam3d.state=null;setView(S.view);};
 function bind3dInput(canvas){
   const points=new Map();let gesture=null;
   const active=()=>S.view==='3d'&&S.cam3d.mode==='overview'&&S.cam3d.state;

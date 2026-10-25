@@ -25,7 +25,7 @@ export default async ({run,call})=>{
     for(const mode of ['2d','overview','chase']){
       if(mode!=='2d'){
         if(S.view!=='3d')q('#zView').click();
-        q('#camera3d [data-v="'+mode+'"]').click();
+        {const select=q('#camera3d');select.value=mode;select.dispatchEvent(new Event('change',{bubbles:true}));};
       }
       await settle(mode);
       const restart=async()=>{
