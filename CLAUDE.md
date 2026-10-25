@@ -31,7 +31,7 @@ Key couplings across the layers:
 - The main thread has no car, bounds, line or optimiser: everything physical arrives as worker events. Views get car data only from `carInfo` (`describeCar`), and the line only from `snapshot` (tyre use `u` too, after a `view` command).
 - `carChanged()`/`rebuildTrack()` send `setCar`/`setTrack`, coalesced (one in flight per kind, latest pending). In the worker these rebuild the car (~16 ms; ~250 ms with load tables on a hilly circuit) or track, re-score or restart the optimiser, and recompute the reference lap.
 - A new track is swapped in only together with its first snapshot (station counts differ); snapshots never step back to an older car/track revision; dynamic results are current only while their three revisions match the displayed snapshot.
-- Worker exceptions arrive as `error` events (the solver pauses itself); `frame()`/`frameBody()` also catch exceptions. Both show in the status chip rather than killing the page — a past silent freeze was a missing `Optimizer.clamp` at convergence.
+- Worker exceptions arrive as `error` events. Each command is a transaction (`Solver.handle` runs it on `Optimizer.fork()` with its events held back): one that throws restores every field and sends only `{paused: false}`, and the client puts the panel back to the last accepted car or circuit (`refused` hook). A slice that throws pauses the solver (`{paused: true}`); `frame()`/`frameBody()` also catch exceptions. Both show in the status chip rather than killing the page — a past silent freeze was a missing `Optimizer.clamp` at convergence.
 
 ## Deferred work
 

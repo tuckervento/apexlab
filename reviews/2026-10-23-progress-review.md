@@ -203,14 +203,14 @@ Unchanged from the first review: steps 1–7 done, 8 (elevation) and 9 (3D view)
 - **Test gap:** the "emitted arrays are copies" test does not cover `dynResult`. In the browser, structured clone copies it anyway.
 - **Fix:** trim the payload to what the docs say and copy it, or document the real shape. Add `dynResult` to the copies test.
 
-#### [ ] L4. Non-atomic `setTrack` / `setCar` / `load` after validation (SUSPECTED; nothing tried made it throw)
+#### [x] L4. Non-atomic `setTrack` / `setCar` / `load` after validation (SUSPECTED; nothing tried made it throw)
 
 - **Where:** `setTrack` assigns `this.T`/`trackRev` and emits `track` before `makeBounds`/`resetLine`; `setCar` has the same shape after `buildCar`.
 - **`load`:** validates everything first (tested). But it then assigns `this.car`, `this.T`, `this.B` and the revs, emits `carInfo` and `track`, and only then runs `opt.setup`, `computeRef` and `publish`. If one of those threw, the solver would hold new car and track with the old `off`/`opt`, and `client.js` would report "Not loaded: … Nothing was changed", which would be false. The comment "the solver validates before it changes anything, so S still matches it" only holds for the validation errors.
 - **Fix:** build `opt.setup`/`computeRef` results into locals, then commit and emit. Or make the post-validation steps provably non-throwing and say so.
 - **Test gap:** the error tests only cover failures that happen before any state changes.
 
-#### [ ] L5. Ghost / track station mismatch race (SUSPECTED, by reading; `#pinBtn` unchanged)
+#### [x] L5. Ghost / track station mismatch race (SUSPECTED, by reading; `#pinBtn` unchanged)
 
 - **Where:** `src/app/controls.js:128` (`#pinBtn`).
 - **Risk:** the ghost is cleared on a track change, but `#pinBtn` can pin the old track's `disp` before the new snapshot arrives. The ghost then has the old N against the new disp, so `stationPose` and the gap chart index out of range and draw NaN. `pinBtn` also throws if `S.disp` is null, and takes `wb`/`track` from `S.P`, which may already differ from the snapshot's car.

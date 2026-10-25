@@ -402,7 +402,7 @@ As implemented in step 5 (`src/solver/solver.js`; tested directly in `tests/solv
 { type: 'loaded',    rev, N, clamped: { n, max } }   // after the load's snapshot; clamped: stations moved to fit this build's track limits, and by how much
 { type: 'progress',  stage, of, knot, polish, evals, lap, running, converged }
 { type: 'dynProgress', lap } | { type: 'dynResult', carRev, trackRev, lineRev, result }
-{ type: 'error',     rev, message, stack }           // the solver pauses and stays usable; rev: the failing command's, null for a slice
+{ type: 'error',     rev, paused, message, stack }   // a command is a transaction: one that fails changes nothing and stops nothing (paused: false, rev: its rev); a failing slice pauses the solver (paused: true, rev: null). Either way it stays usable
 ```
 
 - **The worker owns `running`.** It changes only on `run`, `pause`, `dynCheck`, `load` (`run`), convergence, an error (which pauses it and sends no `progress`), and `resume` on `setCar`/`setTrack`: when set, the worker starts searching as soon as the new line exists. The app resumes after a car or circuit change this way, not with a separate `run`, because setCar/setTrack are coalesced on the main thread and a `run` sent beside one could overtake it. `S.running` only mirrors the `running` of the latest `progress` (and is cleared on an `error` or a worker failure); a command that changes it is answered by the next `progress`. A queued `resume` is dropped if the circuit is being edited by the time it is sent.

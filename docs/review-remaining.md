@@ -24,6 +24,8 @@ references were re-read; nothing else in those files was.
 | M4 (part) app layer untested | `tests/client.test.mjs` covers `client.js` | `b1d4c6f`, `3a90158` |
 | M6 `carSpec` doesn't range-check | throws outside physical limits (not the slider ranges, which moved to `src/app/sliders.js`) | `8859d07` |
 | L2 zero-length circuit | `buildTrack` refuses `L < width` (identical points give L ~ 1e-13 m, so `L > 0` was not enough); `publish` throws on a non-finite lap | `e4f467c`, `385bbb2` |
+| L4 half-changed state after a late throw | every command a transaction (`Optimizer.fork`, events held back); a refused car or circuit puts the panel back and the search goes on (Q's call) | `4573d72`, `8d7532a` |
+| L5 ghost on the wrong circuit | ghosts carry `trackRev`; a new circuit drops a ghost from another; Pin disabled until settled | `a0038e1` |
 | L7, L9, L10, L11 | `STAGES` frozen; dead code removed; solver tests share one converged run; telemetry DOM refs per table | `67eebe5`, `e6d0fc6`, `eb81506`, `f3408e8` |
 
 ## Needs a person at a browser first
@@ -53,17 +55,14 @@ robustness change, and a `golden.json` diff means something went wrong.
 
 | ID | Item | Severity | Size | Hash? | Order |
 |---|---|---|---|---|---|
-| L4 | `setTrack`/`setCar`/`load` can fail after they start changing state | Low (suspected) | S–M | yes | 2 |
 | M2 | A car change mid-polish seeds the re-score from a rejected line | Medium (small effect) | S–M | yes | 3 |
 | L3 | `dynResult` isn't a copy and is much bigger than documented | Low | S | yes | 4 |
-| L5 | A ghost can be pinned on the previous circuit's stations | Low (suspected) | S | no | 2 |
 | M4 | The rest of the app layer has no tests | Medium | M | no | 3 |
 | L8 | An adjoint nit that can't be reached | Low | XS | maybe | any |
 | — | Docs drift (2 of 11 left, both waiting on L3) | Low | S | no | any |
 | G1, G2 | Camera lives in app state; three shapes of the track | Growth | M | no | before 3D |
 
-Suggested order: M6 and L2 are done (`8859d07`, `385bbb2`). Next **L4 + L5** (state that can end up
-half-changed or mismatched), then **M2 with M4** (M2's test needs the paused-loaded-run case), then the cleanups.
+Suggested order: M6, L2, L4 and L5 are done. Next **M2 with M4** (M2's test needs the paused-loaded-run case), then the cleanups.
 
 ---
 
@@ -121,7 +120,10 @@ line of defence.
 
 **Verify.** A `setTrack` test with coincident control points expects one `error` and unchanged state (mirror the `load` test).
 
-## L4. Half-changed state after a post-validation failure (Low, suspected, hash)
+## L4. Half-changed state after a post-validation failure (Low, suspected, hash) — done, `4573d72`, `8d7532a`
+
+**Done** as a transaction around every command rather than per-command locals (Q chose clean recovery: the search
+keeps running and the panel reverts). Kept below for the record.
 
 **Why.** `load` builds and validates everything before assigning (tested). But it then assigns `this.car`, `this.T`, `this.B`
 and the revisions, emits `carInfo` and `track`, and only then runs `opt.setup`, `computeRef` and `publish`
@@ -172,7 +174,10 @@ nothing is wrong yet. Run files store only `frac`, `t`, `umax`, `uaxle` and `fai
 send only that as fresh copies with a transfer list, and document the shape. Or document the real shape and fix the header
 comment. Either way add `dynResult` to the "emitted arrays are copies" test.
 
-## L5. Ghost pinned on the wrong station set (Low, suspected, app)
+## L5. Ghost pinned on the wrong station set (Low, suspected, app) — done, `a0038e1`
+
+**Done** as below; the client drops the stale ghost (tested), and Pin's disabled state was checked in headless Chrome.
+Kept below for the record.
 
 **Why.** `#pinBtn` (`src/app/controls.js:143`) copies `S.disp` into the ghost and takes `wb`/`track` from `S.P`. After a
 circuit change the ghost is cleared, but the button can pin the old circuit's `disp` before the new snapshot arrives, giving
