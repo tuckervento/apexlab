@@ -14,6 +14,7 @@ import { dataToThree } from '../views/scene3d/frame.js';
 import { cornerAnchor } from '../views/scene3d/overlays.js';
 import { currentTrace, tracePoseAt, traceCars, traceTagPose, traceTagText } from './trace3d.js';
 import * as attitude from '../views/scene3d/attitude.js';
+import * as effects from '../views/scene3d/effects.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
 import * as ortho from '../views/scene3d/cameras/ortho.js';
@@ -187,6 +188,13 @@ function syncHeight3d(){
   $('#heightValue3d').textContent=slider.value+'×';
   if(applied3d.height!==e){S.scene3d.setHeightScale(e);applied3d.height=e;dirty3d=true;}
 }
+let effectsCamera=null,effectsState=null;
+function applyEffects3d(view,input,dtAnim){
+  if(!['chase','heli'].includes(S.cam3d.mode))return;
+  if(effectsCamera!==S.cam3d.state){effectsCamera=S.cam3d.state;effectsState=effects.init();}
+  else effects.step(effectsState,input.car,input.T,dtAnim,{replay:S.replay,reduced:S.reducedMotion,sample:input.sample});
+  effects.apply(effectsState,view,{reduced:S.reducedMotion});
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -208,7 +216,9 @@ function draw3d(dt){
     else{
       CAMERAS[S.cam3d.mode].step(S.cam3d.state,input,dtAnim);
     }
-    const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state),keyView=JSON.stringify(view);
+    const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state);
+    applyEffects3d(view,input,dtAnim);
+    const keyView=JSON.stringify(view);
     if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude});lastView3d=keyView;dirty3d=false;}
     placeOverlays3d();
     lastAnim3d=S.animT;
