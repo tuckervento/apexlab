@@ -9,6 +9,7 @@ import { fogRange, worldSize } from './fog.js';
 import { kerbs, kerbColors } from './kerbs.js';
 import { lineRibbon, lineColors } from './line.js';
 import { applyAttitude } from './car-attitude.js';
+import { applyWheelBlur } from './wheels.js';
 import { buildCarModel, placeCar, disposeCar } from './car.js';
 
 // forceLogDepth exercises the fallback even on GPUs with EXT_clip_control.
@@ -261,6 +262,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function resize(rect,dpr){cssWidth=rect.width;cssHeight=rect.height;renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);perspective.aspect=rect.width/rect.height;perspective.updateProjectionMatrix();}
   function carRadii(){return {car:car?.userData.radius,ghost:ghostCar?.userData.radius,trace:traceCar?.userData.radius};}
   function frameAttitude(a){if(car?.visible)applyAttitude(car,a?.car);if(ghostCar?.visible)applyAttitude(ghostCar,a?.ghost);if(traceCar?.visible)applyAttitude(traceCar,a?.trace);}
+  function frameWheels(b){applyWheelBlur(car,b?.car);applyWheelBlur(ghostCar,b?.ghost);applyWheelBlur(traceCar,b?.trace);}
   function frameCamera(v){
     camera=v.ortho?orthographic:perspective;
     if(v.ortho){const h=v.ortho.halfHeight,w=h*cssWidth/cssHeight;camera.left=-w;camera.right=w;camera.top=h;camera.bottom=-h;}
@@ -274,6 +276,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
     frameHeights(); // before the attitude: only the grade pitch is scaled, not the cosmetic pitch on top
     frameAttitude(input.attitude);
+    frameWheels(input.wheelBlur);
     const v=input.view;
     frameCamera(v);
     frameStreaks(input.streaks);

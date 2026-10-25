@@ -31,8 +31,9 @@ export default async ctx=>{
     const input={car:smoothPose(S.disp,3),ghost:smoothPose(S.disp,6),view:orbit.view(orbit.init({T:S.T,aspect:800/600}))};
     api.frame(input);
     const model=buildCarModel(S.P);let carTriangles=0;
-    model.traverse(o=>{if(o.geometry)carTriangles+=o.geometry.index.count/3;});disposeCar(model);
-    const expected=trackRibbon(S.T,stationFrames(S.T),{pal}).index.length/3+2*lineRibbon(S.disp).index.length/3+2*carTriangles
+    model.traverseVisible(o=>{if(o.geometry)carTriangles+=o.geometry.index.count/3;});disposeCar(model);
+    /* Lap car main + shadow pass, ghost main pass. */
+    const expected=trackRibbon(S.T,stationFrames(S.T),{pal}).index.length/3+2*lineRibbon(S.disp).index.length/3+3*carTriangles
       +groundPlane(S.T).index.length/3+skirts(S.T,stationFrames(S.T)).index.length/3
       +kerbs(S.T,stationFrames(S.T),findCorners(S.T),{pal}).index.length/3
       +labelBacks([...boardPlacements(S.T,findCorners(S.T)),...signPlacements(S.T,findCorners(S.T))]).index.length/3

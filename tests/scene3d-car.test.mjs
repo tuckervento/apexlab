@@ -57,10 +57,10 @@ test('placement preserves forward tangent and right wheels through yaw and pitch
   disposeCar(car);
 });
 
-test('disposal frees all three geometries and both shared materials exactly once',()=>{
+test('disposal frees all four geometries and four shared materials exactly once',()=>{
   const car=buildCarModel(CARS.Kart),geometries=new Set(),materials=new Set();
   car.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)materials.add(o.material);});
-  assert.equal(geometries.size,3);assert.equal(materials.size,2);
+  assert.equal(geometries.size,4);assert.equal(materials.size,4);
   const counts=new Map();
   for(const resource of [...geometries,...materials]){
     counts.set(resource,0);resource.addEventListener('dispose',()=>counts.set(resource,counts.get(resource)+1));
