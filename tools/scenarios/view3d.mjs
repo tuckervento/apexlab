@@ -14,9 +14,13 @@ export default async ctx=>{
     const original=HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext=function(type,...args){return type==='webgl2'?null:original.call(this,type,...args);};
     const before=q('#view').toDataURL();q('#zView').click();
-    // The fallback needs the three import to fail over, seconds on a loaded machine: wait for it (60 s cap), not 5 s.
-    for(let i=0;i<1200&&!S.view3dMsg;i++)await wait(50);await wait(100);
+    // The fallback needs the three import to fail over (seconds on a loaded machine, 60 s cap); the chip shows the
+    // message from the next frame on, so read it after two frames, not after a fixed time (frames take >100 ms here).
+    for(let i=0;i<1200&&!S.view3dMsg;i++)await wait(50);
+    let framesAfterMsg=0;const countFrames=()=>{framesAfterMsg++;if(framesAfterMsg<1000)requestAnimationFrame(countFrames);};requestAnimationFrame(countFrames);
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     const missingWebgl=S.view==='2d'&&q('#status').textContent.includes('3D off:')&&!S.frameErr;
+    const missingWebglSeen=missingWebgl?null:{view:S.view,msg:S.view3dMsg,chip:q('#status').textContent,frameErr:S.frameErr?String(S.frameErr):null,framesAfterMsg,booted:!!(S.T&&S.disp&&S.prog)};
     S.animT+=2;await wait(100);const mapAlive=q('#view').toDataURL()!==before;
     HTMLCanvasElement.prototype.getContext=original;
     send({type:'pause'});for(let i=0;i<100&&S.running;i++)await wait(50);
@@ -27,6 +31,7 @@ export default async ctx=>{
     // the state and then two frames (one rendered with it) instead of a fixed time.
     const settle=async()=>{for(let i=0;i<100&&!S.cam3d.state;i++)await wait(20);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));};
     window.v3check={S,q,wait,settle};
+    if(missingWebglSeen)window.v3missing=missingWebglSeen;
     return {lazyBefore,missingWebgl,mapAlive,lazyAfter:performance.getEntriesByType('resource').some(e=>e.name.includes('/vendor/three')),opensAfterFailure:!!S.scene3d&&S.view3dMsg===null};
   })()`));
   for(const mode of ['overview','chase']){
@@ -104,5 +109,7 @@ export default async ctx=>{
     })()`);
     checks[name+'Selector']=seen[name].visible&&seen[name].clear&&seen[name].inStage;
   }
+  // Evidence for the intermittent missingWebgl failure (null when it passed).
+  seen.missingWebgl=await run('window.v3missing??null');
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,references,projection:'Reconstruct PerspectiveCamera from active public view(); project the live car group world position.'};
 };
