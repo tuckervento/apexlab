@@ -17,7 +17,8 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   const depth=!forceLogDepth&&context.getExtension('EXT_clip_control')?'reversed':'log';
   const renderer=new THREE.WebGLRenderer({canvas,context,antialias:true,
     reversedDepthBuffer:depth==='reversed',logarithmicDepthBuffer:depth==='log'});
-  const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(),target=new THREE.Vector3();
+  const scene=new THREE.Scene(),perspective=new THREE.PerspectiveCamera(),orthographic=new THREE.OrthographicCamera(),target=new THREE.Vector3();
+  let camera=perspective;
   scene.background=new THREE.Color(pal.colors.sky3d);
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
   // Neutral fill keeps dark palettes readable; oblique sun separates slopes without washing out the road.
@@ -200,16 +201,23 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     themeFailMarker();
     tintCar(car,pal.colors.accent);tintCar(ghostCar,pal.colors.ghost);
   }
-  function resize(rect,dpr){cssWidth=rect.width;cssHeight=rect.height;renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
+  function resize(rect,dpr){cssWidth=rect.width;cssHeight=rect.height;renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);perspective.aspect=rect.width/rect.height;perspective.updateProjectionMatrix();}
   function carRadii(){return {car:car?.userData.radius,ghost:ghostCar?.userData.radius,trace:traceCar?.userData.radius};}
   function frameAttitude(a){if(car?.visible)applyAttitude(car,a?.car);if(ghostCar?.visible)applyAttitude(ghostCar,a?.ghost);if(traceCar?.visible)applyAttitude(traceCar,a?.trace);}
+  function frameCamera(v){
+    camera=v.ortho?orthographic:perspective;
+    if(v.ortho){const h=v.ortho.halfHeight,w=h*cssWidth/cssHeight;camera.left=-w;camera.right=w;camera.top=h;camera.bottom=-h;}
+    else camera.fov=v.fovDeg;
+    camera.near=v.near;camera.far=v.far;camera.updateProjectionMatrix();
+    camera.position.fromArray(v.position);camera.up.fromArray(v.up);target.fromArray(v.target);camera.lookAt(target);
+  }
   function frame(input){
     frameTrace(input.trace);
     if(car){car.visible=!!input.car;if(input.car){placeCar(car,input.car);sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}}
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
     frameAttitude(input.attitude);
-    const v=input.view;camera.position.fromArray(v.position);camera.up.fromArray(v.up);target.fromArray(v.target);camera.lookAt(target);
-    if(camera.fov!==v.fovDeg||camera.near!==v.near||camera.far!==v.far){camera.fov=v.fovDeg;camera.near=v.near;camera.far=v.far;camera.updateProjectionMatrix();}
+    const v=input.view;
+    frameCamera(v);
     if(scene.fog)fogRange(track.geometry.attributes.position.array,size,v,scene.fog);
     renderer.render(scene,camera);
   }
