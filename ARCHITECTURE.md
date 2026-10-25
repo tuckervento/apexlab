@@ -219,7 +219,8 @@ The check runs on the line the solver last published, the one on screen, and its
 
 ### Simple controls (app only; `src/app/simple.js`)
 
-The car panel's Simple page edits `CarParams` through a base car and seven knobs; nothing below the app layer sees them,
+The car panel edits `CarParams` through a base car and seven knobs, each at the top of the section whose sliders it sets
+(Powertrain, Chassis, Aero, Tyres, Brakes; `KNOBS_IN` in `controls.js`); nothing below the app layer sees them,
 and run files store only the 25 fields.
 ```
 S.simple = { base: { name, car },      // a preset ({name, car: CARS[name]}) or a loaded run's car ('Loaded: …')

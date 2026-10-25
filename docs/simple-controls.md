@@ -124,7 +124,7 @@ nothing below the app layer changes.
 - **Clamping:** derived values are clamped to the Advanced slider ranges, which means exporting the ranges from `SPEC`.
   Advanced then never shows an out-of-range value, and `carSpec` still validates in the worker.
 - **State:** `S.simple = {base, weight, power, tyre, downforce, balance, gearbox}` beside `S.P`.
-- **Simple / Advanced toggle** in `#carSection` (`index.html:228`). Switching to Advanced loses nothing: the derived
+- **Simple / Advanced toggle** (superseded: the panel became one pane, see Decisions) in `#carSection` (`index.html:228`). Switching to Advanced loses nothing: the derived
   numbers appear as sliders. An Advanced edit *detaches* the simple panel, which then says that changing a knob
   re-derives from the base and replaces those edits.
 - **Derived readout** stays visible in both modes; it is how a user sees what Balance actually did.
@@ -179,7 +179,7 @@ For step 2 (UI):
 | Decision | Answer |
 |---|---|
 | Default mode for new users | **Simple** |
-| Layout | **one panel with two pages** (Simple / Advanced) in the car section, not two panels |
+| Layout | first built as one panel with two pages (Simple / Advanced); then, since switching pages made it hard to see what a knob did, **one pane**: each section starts with its knobs, then the sliders they set. Sections Powertrain, Chassis, Aero, Tyres, Brakes; Balance heads Chassis; Type and Driven wheels appear once. Choice options read "Base" |
 | Weight and Power (% knobs) | show the resulting kg and kW beside them |
 | Gearbox knob on an EV | hidden |
 | Switching Type on a preset | fine to use the preset's unused fields (EV saloon as ICE becomes a 1-gear car) |
