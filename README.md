@@ -117,14 +117,14 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 
 ## TODO
 
-1. ~Decouple sim and UI~
-2. ~"car" camera expands to fit ghost~
-3. ~more physics observability~
-4. ~Add Z axis / elevation changes~
-5. ~save/load car config + simmed line~
 6. support comparison of cars/simmed lines between apex lab versions
 7. improved tyre physics (maybe not full temperatures, but some sort of deg is needed)
 8. weather
-9. ~add "simple" controls that map to the full configurables~
+10. speed streaks are lame
+11. control for 'number of hills' in elevation
+12. banking
+13. movable/collapsible minimap in 3d
+14. ghost waits for you, you don't wait for ghost
+15. smoothing turning rotations
 
 Progress ([docs/race-mode.md](docs/race-mode.md) §9): phase 1 (plant/driver split) and phase 2 (race loop and judge at constant grip, Node only) are done. Next: per-axle grip scales, then tyre wear.

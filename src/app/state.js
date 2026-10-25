@@ -19,7 +19,7 @@ export const S={
   simple:defaults('GT racer'), manual:{},
   trackIdx:0, width:12, hills:0 /* m from lowest to highest point */, ctrl, origCtrl:ctrl.map(p=>p.slice()), sel:-1 /* control point selected while editing */, fitPending:false,
   T:null, refT:0, refV:null, disp:null, prog:null, ghost:null, corners:[],
-  running:false /* mirrors the worker's, from its progress events */, colorMode:'speed', tagMode:'speed' /* map tags: off, speed, g, grip */, deltaMode:'time' /* telemetry with a ghost: time, place (live) or max (lap maxima) */, replay:4, animT:0, editing:false, follow:false, followZ:7 /* closest follow zoom, px/m */, frameErr:null,
+  running:false /* mirrors the worker's, from its progress events */, colorMode:'speed', tagMode:'speed' /* map tags: off, speed, g, grip */, deltaMode:'time' /* telemetry with a ghost: time, place (live) or max (lap maxima) */, replay:1, animT:0, editing:false, follow:false, followZ:7 /* closest follow zoom, px/m */, frameErr:null,
   hist:[], pal:null /* {colors, ramp} from the page's CSS */, cam:new Camera(), carPos:-1, carV:0,
   // '2d' or '3d'; in 3D the 2D map is a corner inset drawn with camMini (fitted edge to edge: no overlays sit on it), and
   // cam keeps its framing for the way back
