@@ -14,6 +14,8 @@
 // layout) for those screenshots. Without VIEW_TOGGLE_BASELINE the comparison is skipped and says so.
 import { readFileSync, writeFileSync } from 'node:fs';
 
+export const options = {webgl:true};
+
 const frames = 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))';
 
 export default async ({ run, sleep, call }) => {
@@ -65,12 +67,12 @@ export default async ({ run, sleep, call }) => {
     const cam0 = camOf(S.cam), seen = { stage: st, view2d: rect('#view') };
     c.bootsIn2d = S.view === '2d' && q('#view3d').hidden && near(rect('#view'), st);
 
-    q('#zView').click(); await frame();
+    q('#zView').click(); for(let i=0;i<100&&!S.scene3d;i++)await new Promise(r=>setTimeout(r,50)); await frame();
     const v3 = rect('#view3d'), vi = rect('#view'), cv = q('#view'); Object.assign(seen, { view3d: v3, inset: vi, backing: [cv.width, cv.height], mini: { cw: S.camMini.cw, ch: S.camMini.ch } });
     c.toggleShows3d = S.view === '3d' && !q('#view3d').hidden && q('#zView').getAttribute('aria-pressed') === 'true';
     c.view3dAtStageSize = near(v3, st);
     const zoomBtns = ['#zIn', '#zOut', '#zFit', '#zFollow'].map(s => q(s));
-    c.zoomDisabledIn3d = zoomBtns.every(b => b.disabled); // they drive the hidden 2D camera
+    c.zoomOverviewIn3d = zoomBtns.every((b,i) => b.disabled === (i === 3)); // overview has Fit and zoom
     // the inset: a corner box well inside the stage, its backing store and S.camMini at its size, S.cam left alone
     c.viewAtInsetSize = vi.w < st.w / 2 && vi.h < st.h / 2 && vi.w > 100 && Math.abs(st.x + st.w - (vi.x + vi.w) - 16) < 0.5 && Math.abs(st.y + st.h - (vi.y + vi.h) - 16) < 0.5
       && cv.width === Math.round(vi.w * S.camMini.dpr) && S.camMini.cw === vi.w && S.camMini.ch === vi.h;

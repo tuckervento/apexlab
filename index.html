@@ -60,6 +60,8 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 @keyframes pulse{from{opacity:1}to{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.chip::before{animation:none!important}}
 
+.camera3d{position:absolute;left:16px;bottom:110px;background:var(--panel)}
+.camera3d[hidden]{display:none}
 .zoom{position:absolute;top:16px;right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:6px}
 .zoom button{width:34px;height:34px;font-family:var(--mono);font-size:16px;background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:4px;cursor:pointer}
 .zoom button:hover{border-color:var(--ink)}
@@ -139,6 +141,7 @@ details p{margin:6px 0 0}
   <main class="stage" id="stage">
     <canvas id="view3d" aria-label="3D view of the circuit" hidden></canvas>
     <canvas id="view" aria-label="Circuit map with the optimised racing line"></canvas>
+    <div class="seg camera3d" id="camera3d" aria-label="3D camera" hidden><button data-v="overview" aria-pressed="true">Overview</button><button data-v="chase" aria-pressed="false">Chase</button></div>
     <div class="zoom">
       <button id="zIn" aria-label="Zoom in">+</button>
       <button id="zOut" aria-label="Zoom out">−</button>
