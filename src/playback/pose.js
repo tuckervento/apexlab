@@ -9,6 +9,13 @@
 // Both cars leave the line together; the quicker one waits at the line for the other, then they go again.
 export function raceClock(lapTimes,animT){const cyc=lapTimes.length>1?Math.max(...lapTimes)+1:lapTimes[0];return animT%cyc;}
 
+// Race time is measured from the lap's start line; trace time zero is passage through dyn.start.
+// Leave time unwrapped and unclamped, including before/after the recorded samples (multi-lap traces are valid).
+export function traceClock(snapshot,dyn,raceT){
+  const t=raceT-snapshot.tc[dyn.start],ts=dyn.trace.t;
+  return {t,started:ts.length>0&&t>=ts[0],ended:ts.length===0||t>ts[ts.length-1]};
+}
+
 export function pose(src,t,info){return src.tc?lapPose(src,t,info):tracePose(src,t,info);}
 
 // Lap snapshot {px, py, v, k, ds, tc, t, phys?}: the station segment at time t, then stationPose within it.
