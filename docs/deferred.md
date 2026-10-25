@@ -13,7 +13,7 @@ and delete or update it here when it lands.
 |---|---|---|---|---|---|
 | A1 | 2.5D tilted map | high (topology at a glance) | M–L | medium | no |
 | A2 | Banking | high (realistic hilly corners) | L | high | no |
-| A3 | Load tables only for the reachable load range | medium (slider feel on hills) | S–M | low | no |
+| A3 | Load tables only for the reachable load range — **not workable**; Illinois GGV halved the build instead | — | — | — | no |
 | A4 | Grade and vertical curvature from the line driven | low–medium (≤ 44 ms of lap) | M | medium | no |
 | A5 | Lateral demand on horizontal speed | low (~1% at 15% grade) | S | low | no |
 | A6 | Hilly `lapEval` speed | medium (search time on hills) | S–M | low | no |
@@ -25,7 +25,7 @@ and delete or update it here when it lands.
 | B1 | Saved runs: show more of the comparison | medium (TODO #6) | S | none | no |
 | B2 | Ghost from a run whose station count changed | low | S–M | low | no |
 
-Suggested order: A3 (cheap and felt), then A1 (the visible win), then A2 (the next physics step; it
+Suggested order: A1 (the visible win), then A2 (the next physics step; it
 reshapes A4, so do A4 with or after it). A5 can ride along with A2. A7 on its own, with its own golden review.
 
 ---
@@ -132,6 +132,13 @@ too). Dynamic check in bounds on banked circuits, with a teeth test as in P4.
 **Size.** L, comparable to elevation P1–P4. Risk: the adjoint's new offset dependence.
 
 ## A3. Load tables only for the reachable load range
+
+**Not workable as written** (measured 2026-10-24). A table range must hold for any line the optimiser tries, so it has
+to be bounded at top speed on every station, and there a 400 m crest already unloads a car below 0: at the Hills
+slider's 40 m the static range needs 14–17 of the 17 levels for every car but the Kart (Millbrook Park 10–13). The
+0.82–1.33 below is n along laps actually driven, not a bound. What landed instead: the GGV of the load levels by
+Illinois regula falsi (`solveIll`), halving the build (about 250 → 140–170 ms per car on hills), which also paid for
+E-M1's levels below 0 (Open-wheeler 308 ms). Kept below for the record.
 
 **Why.** `buildCar({loads: true})` takes ~250 ms in Node against ~16 ms flat, on every car change on a hilly circuit
 (17 load levels; `NL`, `NSTEP` at `src/core/constants.js:4`; `car.js:63`). Real circuits use a narrow band: n along the

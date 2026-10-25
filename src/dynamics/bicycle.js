@@ -60,7 +60,7 @@ export function dynNominal(car,dc,line,v){
     const ax0=(v[jn]*v[jn]-v[ip]*v[ip])/(2*(ds[ip]+ds[i])),ay=u*u*k[i],r=u*k[i];
     const rd=u*(v[jn]*k[jn]-v[ip]*k[ip])/(ds[ip]+ds[i]); // yaw acceleration
     const Fyf=(m*ay*b+Izz*rd)/L,Fyr=(m*ay*a-Izz*rd)/L;
-    const n=hs?Math.max(0,hc[i]+u*u*hk[i]/G):1,ax=hs?ax0+G*hs[i]:ax0;
+    const n=hs?hc[i]+u*u*hk[i]/G:1,ax=hs?ax0+G*hs[i]:ax0;
     const drag=0.5*RHO*p.cda*u*u+m*G*CRR,Fx=m*ax+drag;
     const [Df,Dr]=axleCaps(dc,u,ax,ay,n),[Fxf,Fxr]=splitFx(dc,Fx,Df,Dr,Fyf,Fyr);
     const Dfl=Math.sqrt(Math.max(0,Df*Df-Fxf*Fxf)),Drl=Math.sqrt(Math.max(0,Dr*Dr-Fxr*Fxr));

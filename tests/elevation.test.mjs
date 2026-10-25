@@ -58,12 +58,12 @@ test('car: a loads build keeps the flat car and packs it as the n = 1 slice', ()
     const flat = core.buildCar(P), car = core.buildCar(P, { loads: true });
     assert.equal(flat.load, null, `${name}: a flat build has no load tables`);
     for (const k of ['alat', 'kcrit', 'kcF', 'kcR']) {
-      assert.equal(car.load[k].length, NL * NT);
-      for (let i = 0; i < NT; i++) if (!Object.is(car.load[k][l1 * NT + i], flat[k][i])) assert.fail(`${name}: load.${k} at n = 1, speed index ${i}`);
+      assert.equal(car.load[k].length, (NL - car.load.l0) * NT); // levels from the car's floor l0 (review E-M1)
+      for (let i = 0; i < NT; i++) if (!Object.is(car.load[k][(l1 - car.load.l0) * NT + i], flat[k][i])) assert.fail(`${name}: load.${k} at n = 1, speed index ${i}`);
     }
     for (const k of ['ggB', 'ggT']) {
-      assert.equal(car.load[k].length, NL * NT * NQ);
-      for (let i = 0; i < NT * NQ; i++) if (!Object.is(car.load[k][l1 * NT * NQ + i], flat[k][i])) assert.fail(`${name}: load.${k} at n = 1, cell ${i}`);
+      assert.equal(car.load[k].length, (NL - car.load.l0) * NT * NQ);
+      for (let i = 0; i < NT * NQ; i++) if (!Object.is(car.load[k][(l1 - car.load.l0) * NT * NQ + i], flat[k][i])) assert.fail(`${name}: load.${k} at n = 1, cell ${i}`);
     }
     for (const k of ['alat', 'kcrit', 'ggB', 'ggT', 'vTop', 'lF', 'lR']) assert.deepEqual(car[k], flat[k], `${name}: ${k} of a loads build`);
   }
@@ -77,13 +77,14 @@ test('car: the load tables interpolate in n to within 0.5% lateral and 0.4 m/s²
   for (const [name, P] of Object.entries(core.CARS)) {
     const car = core.buildCar(P, { loads: true }), L = car.load, all = [];
     let eA = 0, eA0 = 0, eG = 0;
+    const at = l => l - L.l0; // level l's index from the car's floor; checked for n >= 0 (below, alat heads to exactly 0)
     for (let l = 0; l < NL - 1; l++) {
       const x = core.gripTables(car.spec, (l + 0.5) * NSTEP);
       for (let i = 1; i < NT; i++) {
-        const ea = Math.abs((L.alat[l * NT + i] + L.alat[(l + 1) * NT + i]) / 2 - x.alat[i]) / x.alat[i];
+        const ea = Math.abs((L.alat[at(l) * NT + i] + L.alat[at(l + 1) * NT + i]) / 2 - x.alat[i]) / x.alat[i];
         if ((l + 0.5) * NSTEP >= 0.25) eA = Math.max(eA, ea); else eA0 = Math.max(eA0, ea);
         for (const k of ['ggB', 'ggT']) for (let q = 0; q < NQ; q++) {
-          const j = i * NQ + q, e = Math.abs((L[k][l * NT * NQ + j] + L[k][(l + 1) * NT * NQ + j]) / 2 - x[k][j]);
+          const j = i * NQ + q, e = Math.abs((L[k][at(l) * NT * NQ + j] + L[k][at(l + 1) * NT * NQ + j]) / 2 - x[k][j]);
           all.push(e); eG = Math.max(eG, e);
         }
       }
@@ -138,23 +139,30 @@ test('lap: hills far past the slider still give a finite lap, speeds and gradien
   }
 });
 
-// The clamped load factor: below 0 the car has no static grip (only downforce), above the grid's top it reads the top.
+// The clamped load factor: at or below the car's floor nf (both axles unloaded, review E-M1) it has no grip at all and
+// reads the floor slice; above the grid's top it reads the top. Without downforce the floor is n = 0.
 test('lap: the load factor clamps to the grid, with zero slope, and lookups there are the end slices', () => {
-  const { NT, NQ, NL, NSTEP, G } = core, top = (NL - 1) * NSTEP, out = new Float64Array(3), tl = new Float64Array(3), tg = new Float64Array(4);
-  assert.deepEqual([core.loadAt(1, -1 / 50, 30, out), out[1], out[2]], [0, 0, -1], 'crest at speed: n clamps to 0 (airborne), flat in v');
+  const { NT, NL, NSTEP, G } = core, top = (NL - 1) * NSTEP, out = new Float64Array(3), tl = new Float64Array(3), tg = new Float64Array(4);
+  assert.deepEqual([core.loadAt(1, -1 / 50, 30, out), out[1], out[2]], [0, 0, -1], 'no downforce (floor 0): a crest at speed clamps to 0 (airborne), flat in v');
   assert.deepEqual([core.loadAt(1, 1 / 20, 40, out), out[1], out[2]], [top, 0, 1], 'hard compression: n clamps to the top');
   assert.equal(core.loadAt(1, -1 / 500, 20, out), 1 - 400 / 500 / G); assert.deepEqual([out[1], out[2]], [2 * 20 * (-1 / 500) / G, 0]);
   for (const name of ['Road car', 'GT racer']) {
     const car = core.buildCar(core.CARS[name], { loads: true }), L = car.load, v = 40.25, q = 0.4;
-    for (const [n, l] of [[0, 0], [-0.3, 0], [top, NL - 1], [top + 1, NL - 1]]) {
-      core.tab3(L.alat, v, n, tl); const ii = Math.floor(v / core.VSTEP), f = v / core.VSTEP - ii;
-      const a = L.alat[l * NT + ii] + (L.alat[l * NT + ii + 1] - L.alat[l * NT + ii]) * f;
-      assert.ok(Math.abs(tl[0] - a) < 1e-12 && tl[2] === 0, `${name}: tab3 at n = ${n} is slice ${l} (${tl[0]} vs ${a}), slope ${tl[2]}`);
-      core.gg3(L.ggT, v, q, n, tg); assert.equal(tg[3], 0, `${name}: gg3 ∂/∂n at n = ${n}`);
+    assert.ok(L.l0 < 0, `${name} has downforce, so its floor is below 0`);
+    assert.deepEqual([core.loadAt(1, -1 / 50, 30, out, L.nf), out[1], out[2]], [L.nf, 0, -1], `${name}: a crest past the floor clamps to it`);
+    for (const [n, l] of [[L.nf, L.l0], [L.nf - 0.3, L.l0], [top, NL - 1], [top + 1, NL - 1]]) {
+      core.tab3(L.alat, v, n, tl, L.l0); const ii = Math.floor(v / core.VSTEP), f = v / core.VSTEP - ii, o = (l - L.l0) * NT;
+      const a = L.alat[o + ii] + (L.alat[o + ii + 1] - L.alat[o + ii]) * f;
+      assert.ok(Math.abs(tl[0] - a) < 1e-12 && tl[2] === 0, `${name}: tab3 at n = ${n} is level ${l} (${tl[0]} vs ${a}), slope ${tl[2]}`);
+      core.gg3(L.ggT, v, q, n, tg, L.l0); assert.equal(tg[3], 0, `${name}: gg3 ∂/∂n at n = ${n}`);
     }
-    // a corner over a sharp crest: the n = 0 crossing caps the speed, finite and below it, with dv/d|k| < 0
-    const vc = core.vCornerN(car, 1 / 200, L.kcrit, 1, -1 / 60, out), vZero = Math.sqrt(G * 60);
-    assert.ok(Number.isFinite(vc) && vc > 0 && vc < vZero && out[1] < 0, `${name}: corner speed ${vc} over a 60 m crest (n = 0 at ${vZero.toFixed(1)} m/s), slope ${out[1]}`);
+    // between the floor and the level above (n < 0, so the level is a floor, not a truncation toward 0): their average
+    { const ii = Math.floor(v / core.VSTEP), f = v / core.VSTEP - ii, row = l => { const o = (l - L.l0) * NT; return L.alat[o + ii] + (L.alat[o + ii + 1] - L.alat[o + ii]) * f; };
+      core.tab3(L.alat, v, (L.l0 + 0.5) * NSTEP, tl, L.l0); assert.ok(Math.abs(tl[0] - (row(L.l0) + row(L.l0 + 1)) / 2) < 1e-12, `${name}: tab3 halfway above the floor`); }
+    // a corner over a sharp crest: reaching the floor caps the speed (downforce keeps a car gripping past n = 0), finite
+    // and below it, with dv/d|k| < 0
+    const vc = core.vCornerN(car, 1 / 200, L.kcrit, 1, -1 / 60, out), vFloor = Math.sqrt(G * 60 * (1 - L.nf));
+    assert.ok(Number.isFinite(vc) && vc > 0 && vc < vFloor && out[1] < 0, `${name}: corner speed ${vc} over a 60 m crest (floor n = ${L.nf} at ${vFloor.toFixed(1)} m/s), slope ${out[1]}`);
   }
 });
 
@@ -242,23 +250,23 @@ test('lap: a climb is slower and a descent faster than the same straight flat, a
 test('lap: the load-factor corner limit never rises with speed, and vCornerN finds its first crossing', () => {
   const { NT, VSTEP } = core, tn = new Float64Array(3), tl = new Float64Array(3), out = new Float64Array(2);
   const radii = [20, 30, 50, 80, 120, 200, 300, 500, 1000, 2000, 5000], kvs = [0, ...radii.map(r => 1 / r), ...radii.map(r => -1 / r)];
-  const K = (Kt, ii, c, kv) => { const v = ii * VSTEP, n = core.loadAt(c, kv, v, tn); core.tab3(Kt, v, n, tl); return tl[0]; };
+  let L; const K = (Kt, ii, c, kv) => { const v = ii * VSTEP, n = core.loadAt(c, kv, v, tn, L.nf); core.tab3(Kt, v, n, tl, L.l0); return tl[0]; };
   let pairs = 0, searches = 0;
   for (const [name, P] of Object.entries(core.CARS)) {
-    const car = core.buildCar(P, { loads: true }), L = car.load;
+    const car = core.buildCar(P, { loads: true }), top = Math.floor(car.vTop / VSTEP) + 1; L = car.load; // vCornerN reads up to top
     for (const tab of ['kcrit', 'kcF', 'kcR']) for (const c of [1, 0.995, 0.98]) for (const kv of kvs) {
       let prev = K(L[tab], 1, c, kv);
-      for (let ii = 2; ii < NT; ii++) { const k = K(L[tab], ii, c, kv); if (k > prev) assert.fail(`${name} ${tab} cth ${c} kv ${kv}: rises at node ${ii} (${prev} -> ${k})`); prev = k; pairs++; }
+      for (let ii = 2; ii <= top; ii++) { const k = K(L[tab], ii, c, kv); if (k > prev) assert.fail(`${name} ${tab} cth ${c} kv ${kv}: rises at node ${ii} (${prev} -> ${k})`); prev = k; pairs++; }
       if (tab !== 'kcrit') continue;
       for (const k of [1 / 15, 1 / 40, 1 / 100, 1 / 300, 1 / 1500]) {
-        if (!(K(L.kcrit, 1, c, kv) > k) || K(L.kcrit, NT - 1, c, kv) > k) continue; // the search's own edge returns
+        if (!(K(L.kcrit, 1, c, kv) > k) || K(L.kcrit, top, c, kv) > k) continue; // the search's own edge returns
         let ii = 2; while (K(L.kcrit, ii, c, kv) > k) ii++; // first node at or below k
         const Kl = K(L.kcrit, ii - 1, c, kv), Kh = K(L.kcrit, ii, c, kv), v = Math.min(car.vTop, (ii - 1 + (Kl - k) / (Kl - Kh)) * VSTEP);
         assert.equal(core.vCornerN(car, k, L.kcrit, c, kv, out), v, `${name} cth ${c} kv ${kv} k ${k}`); searches++;
       }
     }
   }
-  const want = Object.keys(core.CARS).length * 3 * 3 * kvs.length * (NT - 2); // every car, table, grade and curvature; node pairs from 1
+  const want = Object.values(core.CARS).reduce((s, P) => s + 3 * 3 * kvs.length * (Math.floor(core.buildCar(P).vTop / VSTEP) + 1 - 1), 0); // every car, table, grade and curvature; node pairs from 1 up to the car's top node
   assert.equal(pairs, want, `node pairs checked`);
   assert.ok(searches > 1000, `only ${searches} searches compared`);
 });
@@ -466,4 +474,22 @@ test('car: Illinois takes 0 as valid, as bisection does, where the margin first 
   const p = core.carSpec(core.CARS['GT racer']), i = (57 / core.VSTEP) * core.NQ + (core.NQ - 1); // v 57 m/s, q = 1, n = 2
   const ill = core.gripTables(p, 2).ggT[i], bis = core.gripTables(p, 2, true).ggT[i];
   assert.ok(bis > 2 && Math.abs(ill - bis) < 1e-5, `GT racer traction at n=2, 57 m/s, q=1: ${ill} vs ${bis}`);
+});
+
+// Over a crest a downforce car's tyres carry DF + m·g·n, so grip lasts below n = 0 until both axles' loads reach zero
+// (review E-M1); the tables used to stop at n = 0, giving downforce-only grip however hard the crest unloaded the car.
+// Now each car's tables reach down to its floor, the level where both axles carry nothing at every speed a lookup reads
+// (up to the node above top speed): there every limit is exactly 0, and one level up some speed still has grip.
+test('car: load tables reach down to zero grip, and no further', () => {
+  const { NT, NQ, NSTEP, VSTEP } = core;
+  for (const [name, P] of Object.entries(core.CARS)) {
+    const car = core.buildCar(P, { loads: true }), L = car.load, top = Math.floor(car.vTop / VSTEP) + 1;
+    assert.ok(Number.isInteger(L.l0) && L.l0 <= 0 && !Object.is(L.l0, -0), `${name}: l0 ${L.l0}`);
+    if (P.cla === 0) { assert.equal(L.l0, 0, `${name}: no downforce, floor at n = 0`); continue; }
+    const at = (k, l, w) => L[k].subarray((l - L.l0) * w, (l - L.l0 + 1) * w);
+    for (const [k, w, from] of [['alat', NT, 0], ['kcrit', NT, 1], ['ggB', NT * NQ, 0], ['ggT', NT * NQ, 0]]) // kcrit = alat/v² is ∞ at v = 0
+      assert.ok(at(k, L.l0, w).subarray(from, (top + 1) * (w / NT)).every(x => x === 0), `${name} ${k}: not zero at the floor n = ${L.l0 * NSTEP}`);
+    assert.ok(at('alat', L.l0 + 1, NT).subarray(0, top + 1).some(x => x > 0), `${name}: the floor is lower than it needs to be`);
+  }
+  assert.ok(core.buildCar(core.CARS['Open-wheeler'], { loads: true }).load.l0 < -15, 'the Open-wheeler reaches far below 0');
 });

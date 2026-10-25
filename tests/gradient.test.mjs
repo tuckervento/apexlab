@@ -127,7 +127,8 @@ function crestStadium(name) {
   return { T, car, B: core.makeBounds(T, car) };
 }
 for (const [name, clamp, where, setup] of [['Open-wheeler', 'ntop', 'hills 250 m on Kestrel Point', () => hillyPreset('Open-wheeler', 250, 1)],
-  ['Kart', 'air', 'a sharp crest on a stadium straight', () => crestStadium('Kart')]]) {
+  ['Kart', 'air', 'a sharp crest on a stadium straight', () => crestStadium('Kart')],
+  ['GT racer', 'air', 'a sharp crest on a stadium straight, past its downforce floor (n < 0)', () => crestStadium('GT racer')]]) {
   for (const tau of [0, 0.5]) {
     test(`gradient, ${where} (load factor clamps): ${name}, tau=${tau}`, t => {
       const { T, B, car } = setup(), N = T.N;

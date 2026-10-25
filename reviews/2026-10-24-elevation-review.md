@@ -34,7 +34,7 @@ The hilly physics and its adjoint are in very good shape:
 | ID | Finding | Area | Hash | Goldens |
 |---|---|---|---|---|
 | E-H1 | The snapshot's `warn` (stall / airborne / over-range) never reaches the page — **fixed**, `8db6b21` | app (`client.js`) | no | no |
-| E-M1 | n ≤ 0 is clamped to 0, so a downforce car keeps its downforce grip while it is really off the ground | core, dynamics | yes | hilly maybe; flat no |
+| E-M1 | n ≤ 0 is clamped to 0, so a downforce car keeps its downforce grip while it is really off the ground — **fixed**: tables down to each car's zero-grip floor (no golden changed) | core, dynamics | yes | none changed |
 | E-M2 | Height editing reaches 125–158% grades and 16 m crests, far outside what the model and tests cover, with no guard — **fixed** (a warning, Q's choice) | app | no | no |
 | E-L1 | Speed is capped at the flat `vTop` even downhill (undocumented) | core | yes, if changed | hilly yes |
 | E-L2 | Deferred A10 is effectively already done, and its premise is wrong | docs | no | no |
@@ -71,7 +71,7 @@ The hilly physics and its adjoint are in very good shape:
 
 ### Medium
 
-#### [ ] E-M1. At n ≤ 0 a downforce car keeps its full downforce grip, even where it is really off the ground (VERIFIED)
+#### [x] E-M1. At n ≤ 0 a downforce car keeps its full downforce grip, even where it is really off the ground (VERIFIED)
 
 - **Why it matters:**
   - The tyres' real normal load is `DF + m·g·n`. When n < 0 (a crest taken faster than √(g/|kv|)) that is less than DF, and below zero once `m·g·|n| > DF`; the car is then airborne.

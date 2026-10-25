@@ -32,39 +32,43 @@ export function tab2(a,v,out){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=
 
 // ---- elevation (hilly stations only; a flat station never reaches these)
 // Load factor at speed v on a station with cos-grade c and vertical curvature kvz: n = c + v²·kvz/g, clamped to the
-// load tables' range [0, (NL−1)·NSTEP]. Writes n, dn/dv (0 where clamped) and the clamp (−1: airborne, n <= 0, only
-// downforce grips; +1: above the grid; 0: neither) into out, returns n.
+// load tables' range [nf, (NL−1)·NSTEP], nf = car.load.nf <= 0 the car's floor (both axles unloaded: no grip at all).
+// Writes n, dn/dv (0 where clamped) and the clamp (−1: airborne, at or below the floor; +1: above the grid; 0: neither)
+// into out, returns n.
 const NTOP=(NL-1)*NSTEP;
-export function loadAt(c,kvz,v,out){const n=c+v*v*kvz/G;if(n<=0){out[1]=0;out[2]=-1;return out[0]=0;}if(n>=NTOP){out[1]=0;out[2]=1;return out[0]=NTOP;}out[1]=2*v*kvz/G;out[2]=0;return out[0]=n;}
+export function loadAt(c,kvz,v,out,nf=0){const n=c+v*v*kvz/G;if(n<=nf){out[1]=0;out[2]=-1;return out[0]=nf;}if(n>=NTOP){out[1]=0;out[2]=1;return out[0]=NTOP;}out[1]=2*v*kvz/G;out[2]=0;return out[0]=n;}
 // Level l and fraction of load factor n on the grid (n already in range).
-function nLevel(n){let y=n/NSTEP,l=y|0;if(l>NL-2)l=NL-2;return l;}
-// kcrit-style load table Kt (NL×NT) at speed node ii, at the load the station gives at that node's speed.
-function kN(Kt,ii,c,kvz){const v=ii*VSTEP;let n=c+v*v*kvz/G;n=n<0?0:n>NTOP?NTOP:n;const l=nLevel(n),f=n/NSTEP-l,a=Kt[l*NT+ii];return a+(Kt[(l+1)*NT+ii]-a)*f;}
+function nLevel(n){let y=n/NSTEP,l=Math.floor(y);if(l>NL-2)l=NL-2;return l;} // floor: levels go below 0
+// kcrit-style load table Kt (levels from l0, ×NT) at speed node ii, at the load the station gives at that node's speed.
+function kN(Kt,ii,c,kvz,l0){const v=ii*VSTEP,nf=l0*NSTEP;let n=c+v*v*kvz/G;n=n<nf?nf:n>NTOP?NTOP:n;const l=nLevel(n),f=n/NSTEP-l,o=(l-l0)*NT+ii,a=Kt[o];return a+(Kt[o+NT]-a)*f;}
 // Corner speed on a hilly station: vCorner's search on Kt (load.kcrit, kcF or kcR) where every speed node is read at
 // the load the station gives at that speed (crests unload faster cars more). The linear interpolant between nodes is
-// the model, so out[1] = dv/d|k| is its exact slope.
+// the model, so out[1] = dv/d|k| is its exact slope. The search stops at the node above top speed (the result is capped
+// at vTop anyway, and the tables reach their floor only up to there): with K never rising with speed the bracket around
+// the crossing is unique, so this is the full search's answer.
 export function vCornerN(car,k,Kt,c,kvz,out){
+  const l0=car.load.l0,top=Math.floor(car.vTop/VSTEP)+1;
   k=k<0?-k:k;out[1]=0;
   if(k<1e-7)return out[0]=car.vTop;
-  if(kN(Kt,NT-1,c,kvz)>k)return out[0]=car.vTop;
-  if(kN(Kt,1,c,kvz)<=k)return out[0]=VSTEP;
-  let lo=1,hi=NT-1;
-  while(hi-lo>1){const mid=(lo+hi)>>1;if(kN(Kt,mid,c,kvz)>k)lo=mid;else hi=mid;}
-  const Kl=kN(Kt,lo,c,kvz),den=Kl-kN(Kt,hi,c,kvz),v=(lo+(Kl-k)/den)*VSTEP;
+  if(kN(Kt,top,c,kvz,l0)>k)return out[0]=car.vTop;
+  if(kN(Kt,1,c,kvz,l0)<=k)return out[0]=VSTEP;
+  let lo=1,hi=top;
+  while(hi-lo>1){const mid=(lo+hi)>>1;if(kN(Kt,mid,c,kvz,l0)>k)lo=mid;else hi=mid;}
+  const Kl=kN(Kt,lo,c,kvz,l0),den=Kl-kN(Kt,hi,c,kvz,l0),v=(lo+(Kl-k)/den)*VSTEP;
   if(v>=car.vTop)return out[0]=car.vTop;
   out[1]=-VSTEP/den;return out[0]=v;
 }
-// Load-table lookups at speed v and load factor n (clamped to the grid): tab3 on an NL×NT table writes value, ∂/∂v,
+// Load-table lookups at speed v and load factor n (clamped to the grid, from the car's floor level l0 = car.load.l0): tab3 on an NL×NT table writes value, ∂/∂v,
 // ∂/∂n; gg3 on an NL×NT×NQ GGV writes value, ∂/∂v, ∂/∂q, ∂/∂n. Linear in n between levels, as gg2/tab2 elsewhere.
 // (the load-grid lookup is written out in both rather than shared: they run millions of times per search)
-export function tab3(t,v,n,out){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=top;x=top+1;}const fx=x-ii;
-  let z=n/NSTEP,dn=1/NSTEP;if(z<=0){z=0;dn=0;}else if(z>=NL-1){z=NL-1;dn=0;}let l=z|0;if(l>NL-2)l=NL-2;const fz=z-l;
-  const o0=l*NT,o1=o0+NT,a0=t[o0+ii],b0=t[o0+ii+1],a1=t[o1+ii],b1=t[o1+ii+1],v0=a0+(b0-a0)*fx,v1=a1+(b1-a1)*fx;
+export function tab3(t,v,n,out,l0=0){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=top;x=top+1;}const fx=x-ii;
+  let z=n/NSTEP,dn=1/NSTEP;if(z<=l0){z=l0;dn=0;}else if(z>=NL-1){z=NL-1;dn=0;}let l=Math.floor(z);if(l>NL-2)l=NL-2;const fz=z-l;
+  const o0=(l-l0)*NT,o1=o0+NT,a0=t[o0+ii],b0=t[o0+ii+1],a1=t[o1+ii],b1=t[o1+ii+1],v0=a0+(b0-a0)*fx,v1=a1+(b1-a1)*fx;
   out[0]=v0+(v1-v0)*fz;out[1]=((b0-a0)+((b1-a1)-(b0-a0))*fz)/VSTEP;out[2]=(v1-v0)*dn;}
-export function gg3(t,v,q,n,out){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=top;x=top+1;}const fx=x-ii;
+export function gg3(t,v,q,n,out,l0=0){let x=v/VSTEP,ii=x|0;const top=NT-2;if(ii>top){ii=top;x=top+1;}const fx=x-ii;
   let qq=q<0?0:q,dq=1;if(qq>=1){qq=1;dq=0;}let y=qq*(NQ-1),qi=y|0;if(qi>NQ-2)qi=NQ-2;const fy=y-qi;
-  let z=n/NSTEP,dn=1/NSTEP;if(z<=0){z=0;dn=0;}else if(z>=NL-1){z=NL-1;dn=0;}let l=z|0;if(l>NL-2)l=NL-2;const fz=z-l;
-  const o0=l*NT*NQ+ii*NQ+qi,o1=o0+NT*NQ;
+  let z=n/NSTEP,dn=1/NSTEP;if(z<=l0){z=l0;dn=0;}else if(z>=NL-1){z=NL-1;dn=0;}let l=Math.floor(z);if(l>NL-2)l=NL-2;const fz=z-l;
+  const o0=(l-l0)*NT*NQ+ii*NQ+qi,o1=o0+NT*NQ;
   const a0=t[o0],b0=t[o0+1],c0=t[o0+NQ],d0=t[o0+NQ+1],a1=t[o1],b1=t[o1+1],c1=t[o1+NQ],d1=t[o1+NQ+1];
   const v0=a0+(c0-a0)*fx+(b0-a0)*fy+(a0-b0-c0+d0)*fx*fy,v1=a1+(c1-a1)*fx+(b1-a1)*fy+(a1-b1-c1+d1)*fx*fy;
   const gv0=((c0-a0)+(a0-b0-c0+d0)*fy)/VSTEP,gv1=((c1-a1)+(a1-b1-c1+d1)*fy)/VSTEP;
@@ -116,8 +120,8 @@ export function lapEval(T,car,off,S,grad,tau,lim){
     let grip;
     if(st){const al=alat[ii]+(alat[ii+1]-alat[ii])*f,q=u*u*(ki>kj?ki:kj)/al;gg2(ggT,u,q,_t2);grip=_t2[0];}
     else{ // airborne with no downforce: no lateral limit (al = 0) and no grip, so the lateral fraction q is moot (0)
-      const n=loadAt(cth[i],kv[i],u,tn);if(tn[2]<0)air++;else if(tn[2]>0)ntop++;
-      tab3(L.alat,u,n,tl);const al=tl[0],q=al>0?u*u*(ki>kj?ki:kj)/al:0;gg3(L.ggT,u,q,n,tg);grip=tg[0];}
+      const n=loadAt(cth[i],kv[i],u,tn,L.nf);if(tn[2]<0)air++;else if(tn[2]>0)ntop++;
+      tab3(L.alat,u,n,tl,L.l0);const al=tl[0],q=al>0?u*u*(ki>kj?ki:kj)/al:0;gg3(L.ggT,u,q,n,tg,L.l0);grip=tg[0];}
     const tr=ts?grip*ts[i]:grip,pw=drv[ii]+(drv[ii+1]-drv[ii])*f,ad=tr<pw?tr:pw;
     let v2=u*u+2*(ad-kd*u*u-rr)*ds[i];
     if(!st)v2-=2*G*dz[i]; // work against gravity over the step
@@ -139,9 +143,9 @@ export function lapEval(T,car,off,S,grad,tau,lim){
       gg2(ggB,u,q,_t2);const a=(bs?_t2[0]*bs[j]:_t2[0])+kd*u*u+rr,vn=Math.sqrt(u*u+2*a*ds[j]);
       vb[j]=smin(vn,vc[j],tau,S.fb,j);
     }else{ // braking from j into i: gravity helps uphill (dz[j] > 0)
-      const n=loadAt(cth[j],kv[j],u,tn);if(tn[2]<0)air++;else if(tn[2]>0)ntop++;
-      tab3(L.alat,u,n,tl);const al=tl[0],q=al>0?u*u*(ki>kj?ki:kj)/al:0;
-      gg3(L.ggB,u,q,n,tg);const a=(bs?tg[0]*bs[j]:tg[0])+kd*u*u+rr,v2=u*u+2*a*ds[j]+2*G*dz[j],vn=v2>0?Math.sqrt(v2):0;
+      const n=loadAt(cth[j],kv[j],u,tn,L.nf);if(tn[2]<0)air++;else if(tn[2]>0)ntop++;
+      tab3(L.alat,u,n,tl,L.l0);const al=tl[0],q=al>0?u*u*(ki>kj?ki:kj)/al:0;
+      gg3(L.ggB,u,q,n,tg,L.l0);const a=(bs?tg[0]*bs[j]:tg[0])+kd*u*u+rr,v2=u*u+2*a*ds[j]+2*G*dz[j],vn=v2>0?Math.sqrt(v2):0;
       vb[j]=smin(vn,vc[j],tau,S.fb,j);
     }
   }
@@ -173,10 +177,10 @@ export function lapEval(T,car,off,S,grad,tau,lim){
       B=_t2[0]+kd*u*u+rr;dBv=_t2[1]+_t2[2]*dqv+2*kd*u;dBk=_t2[2]*dqk;
       vn=Math.sqrt(u*u+2*B*ds[j]);
     }else{ // as above, with the load factor's dependence on speed (dn/du) and the gravity term (no offset dependence)
-      const n=loadAt(cth[j],kv[j],u,tn),dn=tn[1];tab3(L.alat,u,n,tl);
+      const n=loadAt(cth[j],kv[j],u,tn,L.nf),dn=tn[1];tab3(L.alat,u,n,tl,L.l0);
       const al=tl[0],dal=tl[1]+tl[2]*dn,up=al>0,q=up?u*u*ak/al:0; // up: not airborne without downforce (q = 0 there, as above)
       const dqv=up?2*u*ak/al-u*u*ak*dal/(al*al):0,dqk=up?sg*u*u/al:0;
-      gg3(L.ggB,u,q,n,tg);
+      gg3(L.ggB,u,q,n,tg,L.l0);
       B=tg[0]+kd*u*u+rr;dBv=tg[1]+tg[2]*dqv+tg[3]*dn+2*kd*u;dBk=tg[2]*dqk;
       const v2=u*u+2*B*ds[j]+2*G*dz[j];vn=v2>0?Math.sqrt(v2):0;
     }
@@ -198,10 +202,10 @@ export function lapEval(T,car,off,S,grad,tau,lim){
       gg2(ggT,u,q,_t2);tab2(drv,u,_t3);const grip=_t2[0],pw=_t3[0];
       if(grip<pw){A=grip;dAv=_t2[1]+_t2[2]*dqv;dAk=_t2[2]*dqk;}else{A=pw;dAv=_t3[1];dAk=0;}
     }else{
-      const n=loadAt(cth[i],kv[i],u,tn),dn=tn[1];tab3(L.alat,u,n,tl);
+      const n=loadAt(cth[i],kv[i],u,tn,L.nf),dn=tn[1];tab3(L.alat,u,n,tl,L.l0);
       const al=tl[0],dal=tl[1]+tl[2]*dn,up=al>0,q=up?u*u*ak/al:0; // up: not airborne without downforce (q = 0 there, as above)
       const dqv=up?2*u*ak/al-u*u*ak*dal/(al*al):0,dqk=up?sg*u*u/al:0;
-      gg3(L.ggT,u,q,n,tg);tab2(drv,u,_t3);const grip=tg[0],pw=_t3[0];
+      gg3(L.ggT,u,q,n,tg,L.l0);tab2(drv,u,_t3);const grip=tg[0],pw=_t3[0];
       if(grip<pw){A=grip;dAv=tg[1]+tg[2]*dqv+tg[3]*dn;dAk=tg[2]*dqk;}else{A=pw;dAv=_t3[1];dAk=0;}
     }
     const ad=A,dadv=dAv,dadk=dAk;

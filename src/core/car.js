@@ -65,17 +65,14 @@ export function gripTables(p,n,bisect=n===1){
 }
 
 // params: CarParams in UI units. Everything below reads the SI CarSpec p, stored as car.spec.
-// loads: also build the grip tables at every load factor n = l·NSTEP (l < NL) for hilly circuits (car.load: alat, kcrit,
-// kcF, kcR as NL×NT; ggB, ggT as NL×NT×NQ; slice l at offset l·NT or l·NT·NQ). The n = 1 slice is the flat car's own.
+// loads: also build the grip tables at every load factor n = l·NSTEP, l0 <= l < NL, for hilly circuits (car.load: alat,
+// kcrit, kcF, kcR as levels×NT; ggB, ggT as levels×NT×NQ; level l at offset (l − l0)·NT or (l − l0)·NT·NQ). The n = 1
+// slice is the flat car's own. The floor l0 <= 0 is where both axles carry nothing (downforce less the crest's unloading)
+// at every speed a lookup reads, up to the node above top speed (speed is capped at vTop, downhill too: review E-L1, so
+// revisit this if that cap goes): below it grip is exactly zero, so the clamp there is exact (review E-M1).
 export function buildCar(params,{loads=false}={}){
   const p=carSpec(params),g1=gripTables(p,1);
   const m=p.mass,wr=p.wr,wf=1-wr;
-  let load=null;
-  if(loads){
-    const S=[];for(let l=0;l<NL;l++)S.push(l*NSTEP===1?g1:gripTables(p,l*NSTEP));
-    const pack=(k,w)=>{const a=new Float64Array(NL*w);S.forEach((s,l)=>a.set(s[k],l*w));return a;};
-    load={alat:pack('alat',NT),kcrit:pack('kcrit',NT),kcF:pack('kcF',NT),kcR:pack('kcR',NT),ggB:pack('ggB',NT*NQ),ggT:pack('ggT',NT*NQ)};
-  }
   // Yaw: Izz = DI·m·a·b. Changing yaw rate needs a yaw moment, which only the spare grip on one axle can supply:
   // the front axle when tightening into a turn, the rear when unwinding. That turns into an effective curvature
   // |k| + l·|dk/ds| checked against that axle's own limit, with l = DI·(CG-to-axle distance).
@@ -87,6 +84,13 @@ export function buildCar(params,{loads=false}={}){
   let vTop=VSTEP;
   for(let i=1;i<NT;i++){const v=i*VSTEP;if(drv[i]>=res(v))vTop=v;else if(i>4&&drv[i-1]>=res(v-VSTEP)){const a=drv[i-1]-res(v-VSTEP),b=drv[i]-res(v);vTop=v-VSTEP+VSTEP*a/(a-b);break;}}
   vTop=Math.min(vTop,VMAX-1);
+  let load=null;
+  if(loads){
+    const vF=(Math.floor(vTop/VSTEP)+1)*VSTEP,DFF=0.5*RHO*p.cla*vF*vF,nZero=DFF*Math.max(p.aF/wf,(1-p.aF)/wr)/(m*G); // −n where the last axle unloads
+    const l0=-Math.ceil(nZero/NSTEP)|0,S=[];for(let l=l0;l<NL;l++)S.push(l*NSTEP===1?g1:gripTables(p,l*NSTEP));
+    const pack=(k,w)=>{const a=new Float64Array(S.length*w);S.forEach((s,i)=>a.set(s[k],i*w));return a;};
+    load={l0,nf:l0*NSTEP,alat:pack('alat',NT),kcrit:pack('kcrit',NT),kcF:pack('kcF',NT),kcR:pack('kcR',NT),ggB:pack('ggB',NT*NQ),ggT:pack('ggT',NT*NQ)};
+  }
   const shiftT=p.pt==='EV'?0:p.shiftT,{alat,brk,trc,ggB,ggT,kcrit,kcF,kcR,ayF,ayR,limF,brkF}=g1;
   return {spec:p,m,cda:p.cda,alat,brk,trc,ggB,ggT,kcrit,kcF,kcR,ayF,ayR,lF,lR,aCG,bCG,Izz:DI*m*aCG*bCG,limF,brkF,drv,gear:pt.gear,rpm:pt.rpm,gearF:pt.gearF,vTop,shiftT,load};
 }

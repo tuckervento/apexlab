@@ -25,7 +25,7 @@ export function plantStep(state,action,car,dc,line,idx,dt=DYN.dt){
   if(Fx<=0||car.shiftT<=0){const gb=car.gear[Math.min(NT-1,Math.round(vx*1.05/VSTEP))];if(gb<curG)curG=gb;}
   if(Fx>0){const eng=shiftLeft>0?0:tabAt(car.drv,vx)*m;Fx=Math.min(Fx,eng);}
   if(shiftLeft>0)shiftLeft-=dt;
-  const [Df,Dr]=axleCaps(dc,vx,axF,ayF,hs?Math.max(0,hc[idx]+vx*vx*hk[idx]/G):1);let [Fxf,Fxr]=splitFx(dc,Fx,Df,Dr,FyfP,FyrP);
+  const [Df,Dr]=axleCaps(dc,vx,axF,ayF,hs?hc[idx]+vx*vx*hk[idx]/G:1);let [Fxf,Fxr]=splitFx(dc,Fx,Df,Dr,FyfP,FyrP);
   // a tyre can't give more than its peak: excess longitudinal demand is wheelspin or lock-up
   if(Math.abs(Fxf)>Df*0.999)Fxf=Math.sign(Fxf)*Df*0.999;if(Math.abs(Fxr)>Dr*0.999)Fxr=Math.sign(Fxr)*Dr*0.999;
   const Dfl=Math.sqrt(Math.max(0,Df*Df-Fxf*Fxf)),Drl=Math.sqrt(Math.max(0,Dr*Dr-Fxr*Fxr));
