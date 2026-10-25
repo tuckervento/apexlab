@@ -35,7 +35,7 @@ The hilly physics and its adjoint are in very good shape:
 |---|---|---|---|---|
 | E-H1 | The snapshot's `warn` (stall / airborne / over-range) never reaches the page — **fixed**, `8db6b21` | app (`client.js`) | no | no |
 | E-M1 | n ≤ 0 is clamped to 0, so a downforce car keeps its downforce grip while it is really off the ground | core, dynamics | yes | hilly maybe; flat no |
-| E-M2 | Height editing reaches 125–158% grades and 16 m crests, far outside what the model and tests cover, with no guard | app | no | no |
+| E-M2 | Height editing reaches 125–158% grades and 16 m crests, far outside what the model and tests cover, with no guard — **fixed** (a warning, Q's choice) | app | no | no |
 | E-L1 | Speed is capped at the flat `vTop` even downhill (undocumented) | core | yes, if changed | hilly yes |
 | E-L2 | Deferred A10 is effectively already done, and its premise is wrong | docs | no | no |
 | E-L3 | `dynLap` scales lateral velocity by cos(grade) too | dynamics | yes | hilly yes |
@@ -98,7 +98,7 @@ The hilly physics and its adjoint are in very good shape:
   - The flat goldens are unchanged.
 - **Hash/goldens:** hash yes. Flat goldens no. Hilly goldens: none reaches n ≤ 0, but shifting the grid origin changes the floating-point level index (`z = (n − n0)/NSTEP`), so expect last-bit changes; regenerate and review.
 
-#### [ ] E-M2. The height editor reaches 125–158% grades and 16 m crests with no guard (VERIFIED)
+#### [x] E-M2. The height editor reaches 125–158% grades and 16 m crests with no guard (VERIFIED)
 
 - **Why it matters:**
   - The edit bar's slider allows −60…60 m per control point (`index.html:140`, applied in `src/app/controls.js:133`). Control points are ~100–200 m apart, so neighbouring points can be 120 m apart in height.

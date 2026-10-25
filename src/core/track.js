@@ -47,7 +47,19 @@ export function buildTrack(ctrl,width){
   for(let i=0;i<N;i++)kr[i]=(dz[i]-dz[(i-1+N)%N])/(ds*ds);
   for(let i=0;i<N;i++){let s=0;for(let d=-2;d<=2;d++)s+=kr[(i+d+N)%N];kv[i]=s/5;}
   const flat=dz.every(x=>x===0);
+  if(!issue&&!flat)issue=hillIssue({N,ds,dz,kv});
   return {N,L,ds,cx,cy,nx,ny,kc:ks,width,issue,minR,ctrl:ctrl.map(p=>p.slice()),z:cz,dz,cth,kv,flat};
+}
+// Hills past what the lap model is built for (elevation review E-M2): grade and vertical curvature come from the
+// centreline, lateral demand ignores the slope and the load tables clamp (ARCHITECTURE §4.7), so laps there aren't
+// real. Generated hills stay within 15 % and 400 m; hand-edited heights can reach 280 % and 9 m. null if within both.
+export const HILL_LIMITS=Object.freeze({grade:0.25,radius:50}); // grade: rise over plan distance; radius: m
+export function hillIssue(T){
+  let g=0,k=0;for(let i=0;i<T.N;i++){g=Math.max(g,Math.abs(T.dz[i])/T.ds);k=Math.max(k,Math.abs(T.kv[i]));}
+  const parts=[];
+  if(g>HILL_LIMITS.grade)parts.push(`a ${Math.round(100*g)}% grade`);
+  if(k*HILL_LIMITS.radius>1)parts.push(`a ${Math.round(1/k)} m crest or dip`);
+  return parts.length?`Steeper hills than the model is built for (${parts.join(' and ')}; it handles up to ${100*HILL_LIMITS.grade}% and ${HILL_LIMITS.radius} m)`:null;
 }
 
 // Unit height profile for a circuit's control points: smooth around the loop (three harmonics of the distance along

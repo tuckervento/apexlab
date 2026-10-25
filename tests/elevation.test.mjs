@@ -429,3 +429,20 @@ test('dynamics: dynLap follows a hilly lap as closely as the same lap flat', () 
   const gF = gap(flat, core.buildCar(core.CARS['GT racer'])), gH = gap(CREST.T, core.buildCar(core.CARS['GT racer'], { loads: true }));
   assert.ok(Math.abs(gH - gF) < 0.001, `gap to the target profile: hilly ${gH}, flat ${gF}`);
 });
+
+// Hills past what the lap model is built for (elevation review E-M2) are a circuit issue, shown over the map like a
+// corner tighter than the track. Measured: generated hills at the slider's 40 m stay at 6.6–14.8 % and 427–967 m;
+// alternating ±60 m by hand reaches 125–285 % and 9–29 m.
+test('track: hills steeper than the model is built for are a circuit issue', () => {
+  for (const tr of core.TRACKS) {
+    const c = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, c);
+    assert.equal(core.buildTrack(withZ(c, u.map(x => 40 * x)), WIDTH).issue, null, `${tr.name} at 40 m`);
+    const wild = core.buildTrack(withZ(c, c.map((_, i) => i % 2 ? 60 : -60)), WIDTH).issue;
+    assert.match(wild, /^Steeper hills than the model is built for \(a \d+% grade and a \d+ m crest or dip;/, `${tr.name} at ±60 m`);
+  }
+  const c = core.genCtrl(core.TRACKS[0].seed, WIDTH); // Harrow Ring at ±12 m: 31.5 %, 82 m
+  assert.match(core.buildTrack(withZ(c, c.map((_, i) => i % 2 ? 12 : -12)), WIDTH).issue, /\(a 32% grade; it handles up to 25% and 50 m\)/);
+  const T = { N: 3, ds: 4, dz: [0, 0.5, 0], kv: [0, -1 / 40, 0] }; // 12.5 %, a 40 m crest
+  assert.match(core.hillIssue(T), /\(a 40 m crest or dip;/);
+  assert.equal(core.hillIssue({ ...T, dz: [0, 1, 0], kv: [0, -1 / 50, 0] }), null, 'exactly at the limits is fine');
+});

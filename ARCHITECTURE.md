@@ -159,6 +159,7 @@ No banking: a station's height doesn't depend on where the line crosses the trac
 - **Corner speed** on a hilly station (`vCornerN`): `vCorner`'s search with each speed node read at the load the station gives at that speed, so crests unload faster cars more. It assumes that limit never rises with speed (pinned by a test over 271,998 node pairs). Within 0.03% of the closed form `v = √(μg / (k − μ·kv))` for a linear tyre.
 - **What the lap time hides is reported:** `Scratch.stall` (stations at the 0.1 m/s floor: a climb the car can't make), `.air` (steps read at n ≤ 0; a car with no downforce then has no grip and coasts), `.ntop` (n > 2). Carried on snapshots as `warn`, shown over the map.
 - **Simplifications:** grade and `kv` from the centreline, not the line driven (up to 44 ms of lap on 40 m hills); lateral demand uses the 3D speed (about 1.1% pessimistic at 15% grade); rolling resistance stays `g·CRR`; no banking.
+- **Beyond the model:** a hilly circuit steeper than 25 % or with a crest or dip tighter than 50 m (`HILL_LIMITS`, `hillIssue` in `track.js`) sets `T.issue`, shown over the map. Generated hills stay within 15 % and 400 m; hand-edited heights can reach 280 % and 9 m.
 - **Cost:** `lapEval` with gradient 366 µs on 40 m hills against 220 µs flat (Harrow Ring, GT racer).
 - **Dynamics** (§6) apply the same terms, so the dynamic check stays consistent with the lap model.
 
