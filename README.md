@@ -114,7 +114,6 @@ Golden values are per JavaScript runtime. After an intended physics change (or a
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): conventions, physics, optimiser, data shapes, the worker protocol, the pose contract, and the migration plan with its status.
 - [CLAUDE.md](CLAUDE.md): a short guide for working on the code, including the things that bite.
-- [investigations/](investigations/): write-ups of past investigations (e.g. why Node and Chrome converge to slightly different laps).
 
 ## TODO
 

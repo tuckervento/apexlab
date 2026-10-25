@@ -17,9 +17,9 @@ GT racer, Harrow Ring (seed 27), 12 m. Started 2026-10-18. Line numbers refer to
 
 - T1. **Second run.** The 78.29 came after "Search again" (or a slider wiggle → rescore) from an already converged line. Test: headless, re-`setup` from the converged line and run again.
 - T2. **Chaotic sensitivity + engine maths.** The optimiser's endpoint is sensitive to ulp-level differences. A browser whose `Math.exp/log1p/pow/sin` differ from Node's V8 (Safari/JSC uses system libm) lands elsewhere. Test: perturb the start by ~1 ulp headless and measure endpoint spread. If ~0.1 s, T2 is viable. If ≪0.087 s, it isn't.
-- T3. **Stale reference.** 78.29 was measured on an earlier version of the code (before a physics or optimiser change) and never re-measured. Test: only Q's memory, or a browser run of the current file.
+- T3. **Stale reference.** 78.29 was measured on an earlier version of the code (before a physics or optimiser change) and never re-measured. Test: only a browser run of the current file.
 - T4. **Display ≠ exactLap.** The readout shows something other than the converged exact lap. F5/F6 say the bias is ≥, so this can't produce a *faster* browser value on its own. Weak.
-- T5. **Different setup in the browser run.** Different width, preset or edited track (e.g. a dragged control point, `keepLine` path from a previous circuit, narrow screen doesn't matter per F4). Test: Q's recollection, or a fresh browser run.
+- T5. **Different setup in the browser run.** Different width, preset or edited track (e.g. a dragged control point, `keepLine` path from a previous circuit, narrow screen doesn't matter per F4). Test: a fresh browser run.
 - T6. **Harness differs from the page.** Extraction or context differs subtly (e.g. the presets slice, a global the page sets). F3 says the setup is the same; a browser run of the current file would show it.
 
 ## TESTS
@@ -35,10 +35,10 @@ GT racer, Harrow Ring (seed 27), 12 m. Started 2026-10-18. Line numbers refer to
 | E5 | Read-only: duplicate function/class declarations in the page script; app-region writes to `P`/CORE state at boot | T5/T6 | None. `P` is written only in user event handlers | No page-side override found. |
 | E6 | Stage fingerprint (snippet in the appendix) in Node v26.12.0 / V8 14.6.202.34 | localise the divergence | `{"ctrl":-1543.948446703365,"N":783,"track":44736.19302159477,"bounds":15785.805000000146,"alat":13992.476506664188,"ggB":330753.2366386127,"ggT":257637.70778531957,"drv":4750.868898350019,"lap0":85.78787570797407,"setupEvals":1,"f2000":78.80591405168128,"evals2000":3211,"stage2000":4}` | Reference for the Chrome run of the same snippet. |
 
-| E6b | Same snippet, Q's Chrome | localise | `ctrl`, `bounds`, `alat`, `ggB`, `ggT`, `drv` **identical**; `track` 44736.19302159354 (Node …477, rel 2.7e-14); `lap0` 85.78787570797387 (Node …407); `f2000` 78.65696577877716 (Node 78.806), evals 3629 vs 3211 | The split starts in `buildTrack`, after `genCtrl`. Everything after it is chaotic amplification. |
+| E6b | Same snippet, Chrome | localise | `ctrl`, `bounds`, `alat`, `ggB`, `ggT`, `drv` **identical**; `track` 44736.19302159354 (Node …477, rel 2.7e-14); `lap0` 85.78787570797387 (Node …407); `f2000` 78.65696577877716 (Node 78.806), evals 3629 vs 3211 | The split starts in `buildTrack`, after `genCtrl`. Everything after it is chaotic amplification. |
 | E7 | Bit-hash of `Math.hypot` over 200k pseudo-random pairs in ±500, Node vs headless Chrome 155 (the installed `/Applications/Google Chrome.app`) | `hypot` is the only library function in `buildTrack` beyond `sqrt` | **Identical** hashes (`7c16148e7ae36e0a`); `hypot ≠ sqrt(x²+y²)` in 76,632/200k in both | Theory "V8 versions differ in `hypot`" is refuted for this input range. Not exhaustive: `buildTrack`'s `hypot` inputs include ~0.25 m segments. |
 
-| E8 | Q's Chrome: `navigator.userAgent`, `location.href`, `buildTrack.toString().length`. Then the snippet appended to a scratch copy of the repo page, run in headless Chrome 155 | separate "Q's environment" from "Chrome vs Node" | Q: Chrome **153**, `file:///Users/tucker/code/apexlab/apex-lab.html`, length 2835 (Node: 2835). Headless 155: fingerprint **identical to Q's Chrome 153**, including `f2000 = 78.65696577877716` | Same file, same code. Chrome 153 = Chrome 155 ≠ Node 26 (V8 14.6.202.34). Rules out a stale copy, the Chrome version, and page state. |
+| E8 | Chrome: `navigator.userAgent`, `location.href`, `buildTrack.toString().length`. Then the snippet appended to a scratch copy of the repo page, run in headless Chrome 155 | separate from "Chrome vs Node" | Q: Chrome **153**, `file:///apexlab/apex-lab.html`, length 2835 (Node: 2835). Headless 155: fingerprint **identical to Chrome 153**, including `f2000 = 78.65696577877716` | Same file, same code. Chrome 153 = Chrome 155 ≠ Node 26 (V8 14.6.202.34). Rules out a stale copy, the Chrome version, and page state. |
 
 Q confirmed E3 was in **Chrome** (V8).
 

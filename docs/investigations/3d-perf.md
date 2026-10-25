@@ -42,9 +42,9 @@ Run by the coordinator on 2026-10-25 on merged `main` after Wave F batch 1 (`d3e
 with `--use-angle=swiftshader`, macOS, Node v26.12.1, viewport 1280×800 at DPR 1, ~12 s per mode, long-task observation
 supported. In 3D nearly every frame is a long task (81 of 81 running frames in overview): software rasterisation makes
 each render ~130 ms, so these numbers say nothing about the main thread's share on a GPU. They only show the
-measurement works end to end; the verdict rests on Q's hardware numbers below.
+measurement works end to end; the verdict rests on hardware numbers below.
 
-## Q's hardware procedure
+## hardware procedure
 
 1. Run `node serve.mjs`; open `http://localhost:8000/?perf` and the browser console.
 2. Note machine, CPU, GPU, OS, browser/version, screen size, DPR and power mode. Use DPR ≤ 2.
@@ -61,12 +61,12 @@ measurement works end to end; the verdict rests on Q's hardware numbers below.
    long tasks during search coincide with missed frames. Counts alone cannot establish causation. Record
    rebuild/edit-drag behaviour separately if assessing R10's track rebuild target; this scenario measures search/playback.
 
-Q ran it on 2026-10-25: a MacBook Air, Chrome. GPU, OS version, Chrome version and DPR weren't recorded. Each row is
+ran it on 2026-10-25: Each row is
 one 10 s window as logged (two per mode, plus TV, which 2.1 added before the run).
 
 **Run 1, on battery (a 30 Hz cap; not used for the verdict).** Every window, 2D included, had running p50 = 33.3 ms
 and p95 = 34.0–34.3 ms, with zero long tasks, running or idle. A constant 33.3 ms in every mode, with no long tasks,
-is a frame-rate cap (Chrome's Energy Saver or macOS Low Power Mode), not load. It hides any headroom, so it can't
+is a frame-rate cap, not load. It hides any headroom, so it can't
 answer R10.
 
 **Run 2, on mains power, Low Power Mode off:**
@@ -93,9 +93,8 @@ view being created or rebuilt (not traced). 3D (overview, chase, TV) is indistin
 If 3D's **running-frame p95** exceeds 16.7 ms **because of main-thread long tasks**, trigger P6 (render worker) and tell Q;
 otherwise P6 is not triggered. Unsupported long-task observation needs trace evidence before attributing a cause.
 
-**Verdict (2026-10-25, Q's run 2): P6 is not triggered.** 3D's running-frame p95 is 17.4–17.6 ms, which is vsync jitter
+**Verdict (2026-10-25, run 2): P6 is not triggered.** 3D's running-frame p95 is 17.4–17.6 ms, which is vsync jitter
 on a 60 Hz frame, not missed frames, and there are no main-thread long tasks during a search in any mode. **R10 (60 fps
 while the optimiser searches) is met on this machine**: p50 16.7 ms everywhere, and fewer than 5% of frames dropped
 at most. The main thread (T1) stays. Two things stay open, should they matter later:
 - R10's other target, a track mesh rebuild within one frame during an edit drag, isn't measured here (editing is 2D).
-- Measure with the browser's energy saver off: run 1 shows that a 30 Hz cap hides everything.
