@@ -75,6 +75,12 @@ The returned view owns GPU resources: `setTrack(T)`, `setLine(disp, mode, pal)`,
 `info()` reports depth strategy, triangles, geometries and programs; `forceLogDepth` tests the fallback.
 Context lost/restored events reach `onLost(event)`; `_debug.{renderer,scene}` supports browser checks.
 
+`main.js` imports that entry on the first 3D open, owns `S.scene3d`, and steps the camera in
+`S.cam3d = {mode: 'overview' | 'chase', state}` in replay time. Track/line/ghost/car keys gate rebuilds;
+paused, unchanged views skip rendering. Overview input and the stage's `#camera3d` selector are app wiring.
+Failures return to 2D with persistent `S.view3dMsg`; context loss disposes the scene and replaces its canvas.
+The inset uses `drawMap` with `scaleBar:false`; the default keeps the full 2D map unchanged.
+
 ### 3.1 Core
 
 | Function | Purpose | Notes |

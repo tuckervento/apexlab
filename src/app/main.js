@@ -8,7 +8,9 @@ import { bindButtons, bindRun, buildCarUI, buildTrackUI, carView, dynLap, fit, l
 import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
-import { pose, stationPose, raceClock } from '../playback/pose.js';
+import { pose, smoothPose, stationPose, raceClock } from '../playback/pose.js';
+import * as orbit from '../views/scene3d/cameras/orbit.js';
+import * as chase from '../views/scene3d/cameras/chase.js';
 import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
 
@@ -19,6 +21,7 @@ const cv=$('#view'),ctx=cv.getContext('2d'),cam=S.cam;
 // In 3D the canvas is the inset, sized and fitted for S.camMini; cam isn't resized then, and gets the stage back on the way to 2D.
 function resize(){
   if(S.view!=='3d'){cam.resize(cv,$('#stage').getBoundingClientRect(),window.devicePixelRatio);return;}
+  if(S.scene3d){S.scene3d.resize($('#view3d').getBoundingClientRect(),window.devicePixelRatio);dirty3d=true;}
   S.camMini.resize(cv,cv.getBoundingClientRect(),window.devicePixelRatio);if(S.T)S.camMini.fit(S.T,S.width);
 }
 const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy),zoomAt=(f,sx,sy)=>cam.zoomAt(f,sx,sy);
@@ -26,7 +29,84 @@ const SX=x=>cam.sx(x),SY=y=>cam.sy(y),WX=sx=>cam.wx(sx),WY=sy=>cam.wy(sy),zoomAt
 // Zooming out scales the current zoom (visible at once); zooming in raises S.followZ (cam.z never exceeds it).
 const zoomFollow=f=>{S.followZ=Math.max(0.05,Math.min(40,(f<1?cam.z:S.followZ)*f));},FOLLOW_MARGIN=40;
 $('#zFollow').onclick=()=>setFollow(!S.follow);$('#zView').onclick=()=>setView(S.view==='3d'?'2d':'3d');
-$('#zIn').onclick=()=>S.follow?zoomFollow(1.5):zoomAt(1.5,cam.cw/2,cam.ch/2);$('#zOut').onclick=()=>S.follow?zoomFollow(1/1.5):zoomAt(1/1.5,cam.cw/2,cam.ch/2);$('#zFit').onclick=()=>{setFollow(false);fit();};
+$('#zIn').onclick=()=>{if(S.view==='3d'){zoom3d(1/1.5);return;}S.follow?zoomFollow(1.5):zoomAt(1.5,cam.cw/2,cam.ch/2);};
+$('#zOut').onclick=()=>{if(S.view==='3d'){zoom3d(1.5);return;}S.follow?zoomFollow(1/1.5):zoomAt(1/1.5,cam.cw/2,cam.ch/2);};
+$('#zFit').onclick=()=>{if(S.view==='3d'){if(S.cam3d.mode==='overview'&&S.T&&S.disp)initCamera();return;}setFollow(false);fit();};
+
+// The renderer is the only import that pulls in three. Keep its pending promise across toggles.
+let opening3d=null,applied3d={},dirty3d=true,lastView3d='',cameraStart=0,cameraTrack=null,lastAnim3d=null;
+const aspect3d=()=>{const r=$('#view3d').getBoundingClientRect();return r.width/Math.max(1,r.height);};
+function cameraInput(){
+  const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],S.animT);
+  return {T:S.T,car:d.t>0?smoothPose(d,rt,S.info):null,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
+}
+function initCamera(input=cameraInput()){
+  S.cam3d.state=(S.cam3d.mode==='overview'?orbit:chase).init(input);cameraStart=S.animT;cameraTrack=S.T;dirty3d=true;
+}
+function zoom3d(f){if(S.cam3d.mode==='overview'&&S.cam3d.state){orbit.zoom(S.cam3d.state,f);dirty3d=true;}}
+function fail3d(reason){
+  S.view3dMsg=reason;setView('2d');
+  if(S.scene3d){S.scene3d.dispose();S.scene3d=null;}
+  const old=$('#view3d'),fresh=old.cloneNode(false);old.replaceWith(fresh);bind3dInput(fresh);
+  applied3d={};lastView3d='';lastAnim3d=null;S.cam3d.state=null;
+}
+async function open3d(){
+  if(opening3d||S.scene3d)return;
+  opening3d=(async()=>{
+    try{
+      const {createScene3d}=await import('../views/scene3d/index.js');
+      S.scene3d=createScene3d($('#view3d'),S.pal,{onLost:e=>{if(e.type==='webglcontextlost')fail3d('WebGL context lost');}});
+      S.scene3d.resize($('#stage').getBoundingClientRect(),window.devicePixelRatio);
+      S.view3dMsg=null;applied3d={};dirty3d=true;
+    }catch(e){fail3d(e.message||'Could not load 3D');}
+    finally{opening3d=null;}
+  })();
+}
+$('#camera3d').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;S.cam3d.mode=b.dataset.v;S.cam3d.state=null;
+  $('#camera3d').querySelectorAll('button').forEach(q=>q.setAttribute('aria-pressed',String(q===b)));setView(S.view);
+};
+function bind3dInput(canvas){
+  const points=new Map();let gesture=null;
+  const active=()=>S.view==='3d'&&S.cam3d.mode==='overview'&&S.cam3d.state;
+  const measure=()=>{const [a,b]=[...points.values()];return {x:(a.x+b.x)/2,y:(a.y+b.y)/2,d:Math.hypot(a.x-b.x,a.y-b.y)};};
+  canvas.addEventListener('contextmenu',e=>e.preventDefault());
+  canvas.addEventListener('wheel',e=>{if(!active())return;e.preventDefault();zoom3d(Math.exp(e.deltaY*0.0015));},{passive:false});
+  canvas.addEventListener('pointerdown',e=>{if(!active())return;canvas.setPointerCapture(e.pointerId);points.set(e.pointerId,{x:e.clientX,y:e.clientY});gesture=points.size===2?measure():null;});
+  canvas.addEventListener('pointermove',e=>{
+    const prev=points.get(e.pointerId);if(!prev||!active())return;
+    points.set(e.pointerId,{x:e.clientX,y:e.clientY});const r=canvas.getBoundingClientRect(),state=S.cam3d.state;
+    if(points.size===2){const next=measure();if(gesture){orbit.pan(state,(next.x-gesture.x)/r.width,-(next.y-gesture.y)/r.height);if(next.d>0&&gesture.d>0)orbit.zoom(state,gesture.d/next.d);}gesture=next;}
+    else if(e.shiftKey||(e.buttons&2))orbit.pan(state,(e.clientX-prev.x)/r.width,-(e.clientY-prev.y)/r.height);
+    else orbit.orbit(state,-(e.clientX-prev.x)*0.005,(e.clientY-prev.y)*0.005);
+    dirty3d=true;
+  });
+  const end=e=>{points.delete(e.pointerId);gesture=null;};
+  canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
+}
+bind3dInput($('#view3d'));
+function draw3d(dt){
+  if(S.view!=='3d')return;
+  if(!S.scene3d){open3d();return;}
+  try{
+    const api=S.scene3d,input=cameraInput(),d=S.disp,g=S.ghost,a=applied3d;
+    const track=a.T!==S.T||a.trackRev!==S.T.trackRev;
+    if(track){api.setTrack(S.T);a.T=S.T;a.trackRev=S.T.trackRev;S.cam3d.state=null;dirty3d=true;}
+    if(track||a.lineRev!==d.lineRev||a.mode!==S.colorMode){api.setLine(d,S.colorMode,S.pal);a.lineRev=d.lineRev;a.mode=S.colorMode;dirty3d=true;}
+    if(a.ghost!==g){api.setGhost(g);a.ghost=g;dirty3d=true;}
+    const dims={wb:S.P.wb,track:S.P.track,cg:S.P.cg,rear:S.P.rear},key=JSON.stringify(dims),hasGhost=!!g;
+    if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
+    const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
+    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&S.cam3d.mode==='chase'))initCamera(input);
+    else{
+      input.sample=t=>{const rt=raceClock(g?[d.t,g.t]:[d.t],cameraStart+t);return d.t>0?smoothPose(d,rt,S.info):null;};
+      (S.cam3d.mode==='overview'?orbit:chase).step(S.cam3d.state,input,dtAnim);
+    }
+    const view=(S.cam3d.mode==='overview'?orbit:chase).view(S.cam3d.state),keyView=JSON.stringify(view);
+    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({car:input.car,ghost:input.ghost,view});lastView3d=keyView;dirty3d=false;}
+    lastAnim3d=S.animT;
+  }catch(e){fail3d(e.message||'3D render failed');}
+}
 // The inset (3D showing) takes no map input: a click on it goes back to 2D.
 cv.addEventListener('click',()=>{if(S.view==='3d')setView('2d');});
 cv.addEventListener('wheel',e=>{if(S.view==='3d')return;e.preventDefault();const r=cv.getBoundingClientRect(),f=Math.exp(-e.deltaY*0.0015);if(S.follow)zoomFollow(f);else zoomAt(f,e.clientX-r.left,e.clientY-r.top);},{passive:false});
@@ -70,7 +150,7 @@ function endPtr(e){
 cv.addEventListener('pointerup',endPtr);cv.addEventListener('pointercancel',endPtr);
 
 // ---------- colours
-function refreshColors(){S.pal=readColors(document.documentElement);}
+function refreshColors(){S.pal=readColors(document.documentElement);if(S.scene3d){S.scene3d.setTheme(S.pal);dirty3d=true;}}
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshColors);
 new MutationObserver(refreshColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','class']});
 
@@ -82,7 +162,7 @@ function draw(){
   // each car against the other at the same place (both lines index the track's stations; a track change clears the ghost)
   const ghostHere=cs&&ghost?stationPose(ghost,cs.station,cs.frac):null,carHere=gs?stationPose(disp,gs.station,gs.frac):null;
   const tags=S.tagMode==='off'?null:{car:cs&&tagText(S.tagMode,cs,ghostHere),ghost:gs&&tagText(S.tagMode,gs,carHere)};
-  drawMap(ctx,mini?S.camMini:cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:mini?[]:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,tags:mini?null:tags});
+  drawMap(ctx,mini?S.camMini:cam,S.pal,{T,width:S.width,disp,colorMode:S.colorMode,ghost,ghostCar:gs,car:cs,carDims:{wb:S.P.wb,track:S.P.track},corners:mini?[]:S.corners,dyn:S.dynRes&&!S.dynStale?S.dynRes:null,editing:S.editing,ctrl:S.ctrl,sel:S.sel,scaleBar:!mini,tags:mini?null:tags});
   renderTelemetry(cs,S.deltaMode==='place'?ghostHere:gs,{ghost:!!ghost,ev:S.P.pt==='EV',hills:!T.flat,mode:ghost?S.deltaMode:'time',carLap:disp,ghostLap:ghost});
   if(ghost)$('#liveGap').textContent=cs?fmtDelta(disp.tc[cs.station]-ghost.tc[cs.station],2)+' s':'—';
   if(cs){S.carPos=cs.station;S.carV=cs.speed;}else S.carPos=-1;
@@ -117,7 +197,8 @@ function frameBody(ts){
   if(!T||!disp||!p)return; // nothing from the solver yet
   S.animT+=dt*S.replay;
   const st=$('#status'),s=S.editing?'editing':!S.running?(p.converged?'converged':'paused'):(p.polish?'refining':'searching');
-  const lbl=S.editing?'Editing track':!S.running?(p.converged?'Converged':'Paused'):p.polish?`Stage ${p.stage}/${p.of} · local polish`:`Stage ${p.stage}/${p.of} · ${p.knot} m spline`;
+  const label=S.editing?'Editing track':!S.running?(p.converged?'Converged':'Paused'):p.polish?`Stage ${p.stage}/${p.of} · local polish`:`Stage ${p.stage}/${p.of} · ${p.knot} m spline`;
+  const lbl=label+(S.view3dMsg?' · 3D off: '+S.view3dMsg:'');
   if(!S.frameErr){if(st.dataset.s!==s)st.dataset.s=s;if(st.textContent!==lbl)st.textContent=lbl;}
   $('#lapTime').textContent=fmtTime(disp.t);
   $('#deltaRef').textContent=fmtDelta(disp.t-S.refT,3)+' s';
@@ -125,6 +206,7 @@ function frameBody(ts){
   $('#evals').textContent=p.evals.toLocaleString()+' laps simulated';
   $('#legMin').textContent=Math.round(disp.vmin*3.6);$('#legMax').textContent=Math.round(disp.vmax*3.6);
   showWarn(T,disp.warn);
+  draw3d(dt);
   draw();
   const dpr=cam.dpr,pal=S.pal;
   if(frameN%2===0){drawSpeedChart($('#speedChart'),dpr,pal,{T,disp,refV:S.refV,ghost,carPos:S.carPos});if(!T.flat)drawElevChart($('#elevChart'),dpr,pal,{T,carPos:S.carPos});drawConv($('#convChart'),dpr,pal,S.hist);if(ghost)drawGapChart($('#gapChart'),dpr,pal,{T,disp,ghost,carPos:S.carPos});}

@@ -24,7 +24,7 @@ export function findCorners(T){
 }
 
 // sc: {T, width, disp, colorMode, ghost, ghostCar, car, carDims:{wb, track}, corners, dyn (null when none or stale),
-// editing, ctrl, sel (selected control point, -1 none), tags}. On a hilly circuit (T.flat false) the track surface is
+// editing, ctrl, sel (selected control point, -1 none), tags, scaleBar (default true)}. On a hilly circuit (T.flat false) the track surface is
 // tinted by height (pal.elev, low to high) and edit handles show their heights. ghostCar/car are playback poses or null. tags: null, or {car, ghost}, each null or
 // {main, delta?} text drawn in a small box beside that car (the car's on its right, the ghost's on its left).
 export function drawMap(ctx,cam,pal,sc){
@@ -138,5 +138,5 @@ export function drawMap(ctx,cam,pal,sc){
   if(editing){ctx.beginPath();ctrl.forEach((p,i)=>i?ctx.lineTo(SX(p[0]),SY(p[1])):ctx.moveTo(SX(p[0]),SY(p[1])));ctx.closePath();ctx.setLineDash([3,4]);ctx.strokeStyle=colors.accent;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
     ctrl.forEach((p,i)=>{ctx.beginPath();ctx.arc(SX(p[0]),SY(p[1]),7,0,Math.PI*2);ctx.fillStyle=i===sc.sel?colors.accent:colors.paper;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=colors.accent;ctx.stroke();});
     if(!T.flat||ctrl.some(p=>p[2])){ctx.font=`10px ${colors.mono}`;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle=colors.ink;ctrl.forEach(p=>ctx.fillText(`${Math.round(p[2]||0)} m`,SX(p[0])+10,SY(p[1])-9));ctx.textBaseline='alphabetic';}}
-  drawScaleBar();
+  if(sc.scaleBar!==false)drawScaleBar();
 }
