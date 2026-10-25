@@ -9,6 +9,7 @@ import { fmtTime, fmtDelta } from '../views/format.js';
 import { readColors } from '../views/map2d/colors.js';
 import { drawMap } from '../views/map2d/map.js';
 import { pose, smoothPose, stationPose, raceClock } from '../playback/pose.js';
+import { currentTrace, tracePoseAt, traceCars } from './trace3d.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
 import { renderTelemetry, tagText } from './telemetry.js';
@@ -38,7 +39,12 @@ let opening3d=null,applied3d={},dirty3d=true,lastView3d='',cameraStart=0,cameraT
 const aspect3d=()=>{const r=$('#view3d').getBoundingClientRect();return r.width/Math.max(1,r.height);};
 function cameraInput(){
   const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],S.animT);
-  return {T:S.T,car:d.t>0?smoothPose(d,rt,S.info):null,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
+  const dyn=currentTrace(S.dynRes,S.dynStale),lap=d.t>0?smoothPose(d,rt,S.info):null,trace=tracePoseAt(d,dyn,rt);
+  const follow=dyn&&S.traceShow==='dynamic',sample=t=>{
+    const rt=raceClock(g?[d.t,g.t]:[d.t],cameraStart+t);
+    return follow?tracePoseAt(d,dyn,rt):d.t>0?smoothPose(d,rt,S.info):null;
+  };
+  return {T:S.T,car:follow?trace:lap,lap,trace,dyn,sample,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
 }
 function initCamera(input=cameraInput()){
   S.cam3d.state=(S.cam3d.mode==='overview'?orbit:chase).init(input);cameraStart=S.animT;cameraTrack=S.T;dirty3d=true;
@@ -85,6 +91,11 @@ function bind3dInput(canvas){
   canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
 }
 bind3dInput($('#view3d'));
+function syncTrace3d(input){
+  const key=String(!!input.dyn)+S.traceShow;
+  if(applied3d.trace!==key||S.traceDirty){dirty3d=true;S.cam3d.state=null;applied3d.trace=key;S.traceDirty=false;}
+  $('#trace3d').hidden=!input.dyn;
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -94,16 +105,16 @@ function draw3d(dt){
     if(track){api.setTrack(S.T);a.T=S.T;a.trackRev=S.T.trackRev;S.cam3d.state=null;dirty3d=true;}
     if(track||a.lineRev!==d.lineRev||a.mode!==S.colorMode){api.setLine(d,S.colorMode,S.pal);a.lineRev=d.lineRev;a.mode=S.colorMode;dirty3d=true;}
     if(a.ghost!==g){api.setGhost(g);a.ghost=g;dirty3d=true;}
-    const dims={wb:S.P.wb,track:S.P.track,cg:S.P.cg,rear:S.P.rear},key=JSON.stringify(dims),hasGhost=!!g;
-    if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
+    const dims={wb:S.P.wb,track:S.P.track,cg:S.P.cg,rear:S.P.rear},key=JSON.stringify({...dims,trace:!!input.dyn}),hasGhost=!!g;
+    if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null,trace:input.dyn?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
+    syncTrace3d(input);
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
     if(!S.cam3d.state||cameraTrack!==S.T||(seek&&S.cam3d.mode==='chase'))initCamera(input);
     else{
-      input.sample=t=>{const rt=raceClock(g?[d.t,g.t]:[d.t],cameraStart+t);return d.t>0?smoothPose(d,rt,S.info):null;};
       (S.cam3d.mode==='overview'?orbit:chase).step(S.cam3d.state,input,dtAnim);
     }
     const view=(S.cam3d.mode==='overview'?orbit:chase).view(S.cam3d.state),keyView=JSON.stringify(view);
-    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({car:input.car,ghost:input.ghost,view});lastView3d=keyView;dirty3d=false;}
+    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view});lastView3d=keyView;dirty3d=false;}
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}
 }

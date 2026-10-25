@@ -24,6 +24,7 @@ export const S={
   // '2d' or '3d'; in 3D the 2D map is a corner inset drawn with camMini (fitted edge to edge: no overlays sit on it), and
   // cam keeps its framing for the way back
   view:'2d', cam3d:{mode:'overview',state:null}, scene3d:null, view3dMsg:null, camMini:Object.assign(new Camera(),{pads:()=>({padT:8,padB:8,padX:8})}),
+  traceShow:'lap', traceDirty:false,
   dynRes:null, dynStale:false, dynRunning:false,
 };
 export const $=s=>document.querySelector(s);
