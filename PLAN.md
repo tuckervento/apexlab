@@ -92,9 +92,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
     (`applied3d`: track, `lineRev`/colour mode, ghost identity, car dims), builds the camera contract input with
     `cameraInput()` (smooth poses at `raceClock`, `replay`, `aspect`), re-inits with `initCamera()` on a null state, a
     track change or (chase) a seek, adds `input.sample`, steps and views the camera, and renders unless paused with an
-    unchanged view (`dirty3d`, `lastView3d`). **The camera module is picked by a two-way ternary
-    (`mode==='overview'?orbit:chase`)**: the first task that adds a third camera (2.1–2.4) replaces it with a
-    mode→module table.
+    unchanged view (`dirty3d`, `lastView3d`). The camera module comes from the `CAMERAS` table at the top of `main.js`
+    (since 2.1; it replaced the 1.8 overview/chase ternary).
   - Failure: `fail3d(reason)` goes to 2D, disposes the scene and replaces `#view3d` with a fresh canvas. Any exception
     in `draw3d` goes there too. Theme: `refreshColors()` calls `S.scene3d.setTheme(S.pal)`.
   - Overview input (drag orbits, shift/right-drag or two fingers pan, wheel/pinch zoom) is bound by `bind3dInput` on
@@ -102,6 +101,22 @@ every not-yet-started P2–P5 task name the real functions and fields.
   - The scene's world (Wave E) builds itself from `T` in `setTrack`: ground and skirts (`meshes.js`, fog from the view
     in `fog.js`), kerbs (`kerbs.js`) and markings (`markings.js`, corners from `findCorners` inside the scene; there is
     no `setCorners`). New CSS tokens `--ground3d`, `--sky3d`.
+- **Wave F batch 1 (1.9, 2.1, 3.6, 5.3; done; the coordinator updated the Scope lines below).** What it added:
+  - Cameras: `const CAMERAS={overview:orbit,chase,tv}` in `main.js`; a new camera is a module plus a `#camera3d`
+    button plus a table entry. `setView` enables +/−/Fit only in overview (`mode!=='overview'` disables them).
+    Chase and TV re-init on a seek.
+  - `cameraInput()` now returns `{T, corners, car, lap, trace, dyn, sample, ghost, replay, aspect}`: `lap` and `trace`
+    are the two smooth poses, `car` is the one cameras follow (the trace in "Dynamic check" mode, else the lap car),
+    `sample(tAnim)` follows the same car, and `dyn` is the current dynamic result (`currentTrace`) or null.
+  - Scene API additions: `project([X,Y,Z], out) → out = {x, y, visible}` (CSS px, camera of the last `frame()`, no
+    allocation); `setFailMarker(station | null)`; a third car, `setCars({car, ghost, trace})` and
+    `frame({car, ghost, trace, view})` (trace car in `ink`, no shadow).
+  - App: `placeOverlays3d()` (corner labels, map tags, failure marker; one call after the render in `draw3d`) with
+    `#overlay3d` (`pointer-events: none`) and `cornerAnchor` in `src/views/scene3d/overlays.js`; `S.traceShow`
+    (`'lap' | 'dynamic' | 'both'`, the `#trace3d` control) and helpers in `src/app/trace3d.js`; "Replay failure" in
+    `#dynOut`; `?perf` (`src/app/perf.js`, one call in `frameBody`).
+  - The shadow camera's depth range (`fitShadow()` in `scene.js`) covers the whole shadow box down to the ground plane;
+    `scene3d.mjs` and `world.mjs` check all four box corners.
 
 ## Non-Goals
 
@@ -353,7 +368,7 @@ every not-yet-started P2–P5 task name the real functions and fields.
 - [ ] **2.2 — Helicopter and two-car framing cameras**
   - Scope: `cameras/heli.js` is a high, behind camera on springs that shows the line ahead. `cameras/pair.js` keeps the
     car and ghost both in shot (the 3D counterpart of `cam.frame([cs, gs])` in `main.js`); with no ghost it behaves like
-    heli. Both are new `S.cam3d.mode`s with `#camera3d` buttons and entries in `draw3d`'s mode→module table.
+    heli. Both are new `S.cam3d.mode`s with `#camera3d` buttons and entries in the `CAMERAS` table in `main.js`.
   - Depends on: 1.8
   - Acceptance: tests show that with a pinned ghost (two snapshots of different quality) both cars project inside NDC
     [−0.9, 0.9] for a whole race-clock cycle, and that the 1.5 determinism checks (a) and (b) hold for both. CDP
@@ -363,7 +378,7 @@ every not-yet-started P2–P5 task name the real functions and fields.
   - Scope: `cameras/bonnet.js` is fixed rigidly to the smooth pose (plus attitude from 2.6 when present), with near
     plane 0.1 m. Under reduced motion its `#camera3d` button is disabled with a note (§7.1). `cameras/free.js` is
     user-driven fly (drag to look, wheel or keys to move) for inspection; its input needs handlers beside `bind3dInput`
-    in `main.js`, which acts in overview only. Both are `S.cam3d.mode`s in `draw3d`'s mode→module table.
+    in `main.js`, which acts in overview only. Both are `S.cam3d.mode`s in the `CAMERAS` table in `main.js`.
   - Depends on: 1.8
   - Acceptance: tests show the bonnet camera stays at a fixed offset in the car frame at headings 0, 0.7 and −2 (and
     pitched on a 40 m hill), and that free fly is deterministic for a fixed input sequence. A CDP check confirms that
@@ -395,8 +410,9 @@ every not-yet-started P2–P5 task name the real functions and fields.
     the signs `car.js` uses; and spin over one lap equals `L / r` within 0.1%. Teeth.
 
 - [ ] **2.6 — Apply attitude to the cars, and say it's cosmetic**
-  - Scope: extend the scene's `frame({car, ghost, view})` with an optional per-car attitude, e.g.
-    `frame({car, ghost, view, attitude: {car, ghost}})`, each an `attitude.js` `view()` result
+  - Scope: extend the scene's `frame({car, ghost, trace, view})` with an optional per-car attitude, e.g.
+    `frame({car, ghost, trace, view, attitude: {car, ghost, trace}})`, each an `attitude.js` `view()` result
+    (the trace car from 5.3 takes its real `steer` from the trace, as 2.5's steer rule allows)
     `{roll, pitch, steer, spin}`. Apply it to the body and the wheel pivots from 1.3 (`wheelFL`… pivot groups; the spin
     child rotates about local Z). Use `group.userData.radius` as `attitude.js`'s wheel radius. `draw3d` in `main.js` keeps per-car attitude state (stepped with the
     camera's `dtAnim`, re-inited where the camera is) and passes it to `S.scene3d.frame`. The "How the model works" text in `index.html` says the
@@ -453,6 +469,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
     every slider move. `frame()` must place the cars at the scaled height. The Wave E world scales too (skirts, kerbs,
     start band, gantry, boards and posts), and `fitShadow()` in `scene.js` must use the scaled heights, or the ground
     falls past the shadow camera's far plane again (the dark-square bug fixed after Wave E; `world.mjs` checks it).
+    The overlays from 3.6 must follow too: `placeOverlays3d()` projects anchors built with unscaled `z` (corner labels
+    from `cornerAnchor`, the tags from the poses), and `setFailMarker` places its ring at the station's unscaled height.
   - Depends on: 1.8
   - Acceptance: a CDP scenario reads geometry through a debug accessor. At 3× a known crest's height above the ground
     is 3× its value at 1× (within 1%). The car's Y equals the ribbon's Y at its station at 3×. Switching to chase gives

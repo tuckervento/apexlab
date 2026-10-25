@@ -1,12 +1,13 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave E)_
+_Last updated: 2026-10-25 (Wave F batch 1)_
 
 ## Snapshot
 
-20 of 33 tasks done (Waves A–E), all merged to `main`. On `main`, 372/372 tests pass and all 13 scenarios exit 0
-(every reference compares at fraction 0; `view-toggle` is byte-identical to pre-wave `main` in 2D). The 3D view is
-live in the app: overview and chase cameras, ground, kerbs, markings, lighting and car shadow. Next: Wave F (11 tasks).
+23 of 33 tasks done (Waves A–E, plus 2.1, 3.6, 5.3), all merged to `main`; 1.9 is merged but blocked on Q's hardware
+numbers. On `main`, 382/382 tests pass and all 17 scenarios exit 0 (every reference compares at fraction 0;
+`view-toggle` is byte-identical to pre-Wave-E `main` in 2D). The 3D view now has overview, chase and TV cameras, corner
+labels and map tags, the dynamic-check failure marker and a trace car. Next: the rest of Wave F.
 
 ## Completed
 
@@ -88,12 +89,33 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   scenarios exit 0, every reference at fraction 0; `view-toggle` 2D byte-identical to pre-wave `main`;
   `git diff 251c0f5 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
 
+- [x] 2.1 TV trackside camera (Codex) — done 2026-10-25 — `3d/2.1` `e518a88` — verified: suite 376/376; `tv3d.mjs` 20/20
+  true (car inside the viewport, TV selected, zoom disabled, reference, on all four presets); coordinator's teeth
+  (cameras on the inside of the bend) fail the placement test (Codex's: no hysteresis gives 600 cuts against 4).
+- [x] 3.6 overlay parity (Codex) — done 2026-10-25 — `3d/3.6` `d7cc72b` — verified: suite 373/373; `overlay3d.mjs`
+  14/14 true, including a real failure (default setup: `fr` 0.975 at station 69) for the marker and stale-clearing
+  checks, and a drag through a label still orbiting; coordinator's teeth (screen Y flipped in `project`) fail only
+  `overviewReference` (see Deviations).
+- [x] 5.3 trace car in the 3D view (Codex; button class by the coordinator) — done 2026-10-25 — `3d/5.3` `0228691` —
+  verified: suite 375/375; `trace3d.mjs` 14/14 true (aligned within ±1 station, sideslip β 0.048 rad at the fastest
+  corner, "Dynamic check" hides the lap car and chase follows the trace, a car change hides the trace car and the
+  control, Replay failure lands within 2 s before `tc[fail.at]`); coordinator's teeth (raw lap clock instead of
+  `traceClock`) fail 1/3 trace tests.
+- Wave F batch 1 on merged `main` (merges `ab28c03`, `5e31dc7`, `2e0215a`, `489711f`; references `d3ee86d`): suite
+  382/382; all 17 scenarios exit 0, every reference at fraction 0, all 15 changed or new images reviewed;
+  `git diff e9df824 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
+
 ## In Progress
 
 ## Blocked
 
-
-
+- 1.9 frame-time measurement (Codex, one follow-up) — merged (`3d/1.9` `41af8ae`, headless numbers `0d1bbe8`) — blocked
+  on **Q's manual run on Q's hardware** (`investigations/3d-perf.md`, "Q's hardware procedure": `node serve.mjs`,
+  `/?perf`, Restart from centreline in each of 2D, 3D overview and 3D chase, copy the running-frame console lines and
+  the machine details). Everything else is done and verified: suite 374/374 on the branch; `perf3d.mjs` 9/9 true on the
+  branch and on merged `main` (≥ 30 running frames per mode, mode matches, no frame error); coordinator's teeth
+  (running and idle buckets swapped) fail the window test. When the numbers arrive: fill the table, write the verdict
+  (P6 triggered only if 3D's running-frame p95 > 16.7 ms because of main-thread long tasks), and move 1.9 to Completed.
 
 ## Deviations & Decisions
 
@@ -244,9 +266,44 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 - Noted, not acted on: `kerbs.js` has a third copy of the sRGB→linear conversion (after `meshes.js`, `line.js`); by the
   rule of three it's now worth extracting.
 
+- 2026-10-25: Wave F batch 1 ran as one parallel cycle of 4 Codex tasks (Q's request), from `e9df824`, and merged to
+  `main` (`--no-ff`, 1.9, 2.1, 3.6, 5.3). 1.9, 2.1 and 3.6 merged cleanly; 5.3 conflicted in `main.js`
+  (`cameraInput`, the step/view/frame lines, the helper block), `controls.js` (`setView`) and `index.html` (the
+  selector line), all keep-both. In the merged `draw3d`, the old `input.sample` line is gone: 5.3 moved `sample` into
+  `cameraInput()`. Decisions given in the prompts:
+  - Per-frame work in each task's own function with one call line; only 2.1 changes camera selection, only 5.3 the
+    `api.frame` call.
+  - 1.9: no flag, no overhead; the scenario navigates to `/?perf` itself (the shared driver is unchanged).
+  - 3.6: `project` and `setFailMarker` on the scene; labels are DOM (`#overlay3d`, under the inset). The fail ring
+    uses `depthTest: false`, so it shows through hills; accepted as a marker.
+  - 5.3: "Replay failure" seeks the **lap-model car** to `tc[fail.at] − 1.5 s`, because the stored trace is the
+    passing lap (`check.js:34`) and the failing fraction has no trace. The trace car is `ink`-coloured with no shadow; in
+    "Dynamic check" mode the shadow box stays with the (hidden) lap car's last position. Accepted.
+- **Shadow box, second fix** (`9c6aa42`, on `main` before the merges, Q approved): the Wave E fix (`065b6c1`) covered only
+  the light ray through the car. With the oblique sun, flat ground is up to ~12 m deeper across the 24 m box, so its far
+  side still rendered as shadowed: a grey patch beside the car in the flat overview (in the committed Wave E
+  `view3d-overview.png`; the coordinator reviewed that image and missed it), and in TV and chase views. Diagnosed in
+  a scratch scenario (shadow off or `far` 200 clear it; hiding the markings or the car doesn't; a raycast hits only
+  ground). `far` now adds the box's half-diagonal × tan(zenith); `scene3d.mjs` and `world.mjs` check all four box
+  corners (the old `far` fails the flat check, 51.9 > 45.8 m).
+- 1.9 review (follow-up sent, Q approved): every `perf3d` window reported "not running". A diagnostic showed a search
+  converges in ~9 s headless, so each 12 s window ended idle, and the window flag was all-or-nothing. The same flaw was
+  in the manual procedure (Q's hardware converges faster). Stats now cover running frames only; the scenario and the
+  procedure restart the search whenever it converges.
+- 2.1: `const CAMERAS` moved below the imports by the coordinator. Codex's placement: eyes 22 m past the edge and 5 m
+  up, pushed out to clear every station; straights ≥ 200 m get cameras ≤ 150 m apart; cuts need 0.75 s and a 20%
+  distance gain; FOV targets the car at 8% of the viewport height within 12–65°.
+- Findings not yet acted on (for Q):
+  - **3.6 has no direct check of where a label lands.** The flipped-Y teeth failed only the screenshot reference (DOM
+    labels move many pixels, so it was caught, but a few-pixel offset wouldn't be). A direct check would compare a
+    visible label's position with an independent projection of its anchor (camera rebuilt from the view).
+  - **Board backs show mirrored digits** (double-sided label planes), in most TV shots (`tv3d-0`, `-1`, `-3`). A small
+    3.2 follow-up: a blank back face, or single-sided panels with a plain back.
+  - In "Dynamic check" mode the map tag still sits at the hidden lap car's pose.
+
 ## Next Up
 
-- Wave F (needs 1.8, done): 1.9, 2.1, 2.2, 2.3, 2.4, 2.6, 3.5, 3.6, 4.1, 4.3, 5.3. PLAN.md warns that more than ~4 at
-  once costs more in rebases than it saves, and most touch `main.js`'s `draw3d` and `scene.js`. Suggested first batch:
-  1.9 (frame-time measurement; it decides P6, so it should come before more per-frame work lands), 2.1 (replaces the
-  camera ternary with the mode→module table the other camera tasks build on), 3.6 and 5.3.
+- The rest of Wave F (all need 1.8, done): 2.2, 2.3, 2.4, 2.6, 3.5, 4.1, 4.3; then 4.2 (needs 2.6) and 6.1 (needs
+  everything). Suggested next batch (≤ 4, by file overlap): 2.6 (attitude; unblocks 4.2), 2.2 and 2.4 (cameras, now
+  just table entries), and 3.5 (height scale; touches the scene's world, `fitShadow` and the overlays). 2.3 and 4.1/4.3
+  after, since 4.1 changes the views every camera produces.
