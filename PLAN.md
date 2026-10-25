@@ -81,7 +81,27 @@ every not-yet-started P2–P5 task name the real functions and fields.
   - `_debug` is for browser checks only.
   - `scene.js` and `index.js` import `three.module.js`, so Node tests must not import them. Test the pure modules
     instead.
-- **1.8 (to do):** fixes `S.cam3d`, the camera selector and the frame-loop hooks.
+- **1.8 (done; the coordinator updated the Scope lines below).** The app's real 3D hooks, all in `src/app/`:
+  - State: `S.cam3d = {mode, state}` (`mode` is `'overview' | 'chase'`; `state` is that camera's `init()` result,
+    `null` until the next frame re-inits it), `S.scene3d` (the scene API, or `null`), and `S.view3dMsg` (the fallback
+    reason, shown in the status chip as `· 3D off: <reason>` until the next successful open).
+  - Selector: `#camera3d` in `index.html`, a `.seg` of `data-v` buttons, shown only in 3D (`setView` in `controls.js`).
+    A click (`main.js`) sets `S.cam3d.mode`, nulls `state` and calls `setView`, which also sets the zoom buttons for
+    the mode (overview: +/−/Fit on; chase: off; Follow off in 3D).
+  - Frame loop: `draw3d(dt)` in `main.js`, called from `frameBody` before `draw()`. It applies the rebuild keys
+    (`applied3d`: track, `lineRev`/colour mode, ghost identity, car dims), builds the camera contract input with
+    `cameraInput()` (smooth poses at `raceClock`, `replay`, `aspect`), re-inits with `initCamera()` on a null state, a
+    track change or (chase) a seek, adds `input.sample`, steps and views the camera, and renders unless paused with an
+    unchanged view (`dirty3d`, `lastView3d`). **The camera module is picked by a two-way ternary
+    (`mode==='overview'?orbit:chase`)**: the first task that adds a third camera (2.1–2.4) replaces it with a
+    mode→module table.
+  - Failure: `fail3d(reason)` goes to 2D, disposes the scene and replaces `#view3d` with a fresh canvas. Any exception
+    in `draw3d` goes there too. Theme: `refreshColors()` calls `S.scene3d.setTheme(S.pal)`.
+  - Overview input (drag orbits, shift/right-drag or two fingers pan, wheel/pinch zoom) is bound by `bind3dInput` on
+    `#view3d` and does nothing in other modes.
+  - The scene's world (Wave E) builds itself from `T` in `setTrack`: ground and skirts (`meshes.js`, fog from the view
+    in `fog.js`), kerbs (`kerbs.js`) and markings (`markings.js`, corners from `findCorners` inside the scene; there is
+    no `setCorners`). New CSS tokens `--ground3d`, `--sky3d`.
 
 ## Non-Goals
 
@@ -321,8 +341,9 @@ every not-yet-started P2–P5 task name the real functions and fields.
   - Scope: `cameras/tv.js` takes `input.corners` (from `findCorners`). It places fixed cameras outside each corner's
     apex (`−sign` side, at width/2 + 15–30 m, a few metres above the local `T.z`) and along long straights. It switches
     to the nearest camera ahead of or beside the car, with hysteresis; these are cuts, not blends. The FOV narrows to
-    keep the car's on-screen size within a band. Above 4× replay it falls back to the chase view. It is added to the
-    camera selector.
+    keep the car's on-screen size within a band. Above 4× replay it falls back to the chase view. It is a new
+    `S.cam3d.mode` (`'tv'`) with a `#camera3d` button and an entry in `draw3d`'s mode→module table (whichever of
+    2.1–2.4 lands first replaces the overview/chase ternary with that table); `cameraInput()` adds `corners: S.corners`.
   - Depends on: 1.8
   - Acceptance: tests check that placement is deterministic for a track; that every camera is ≥ width/2 + 10 m from
     the centreline and above the local track height; that each corner has a camera on its outside; that cuts per lap at
@@ -332,7 +353,7 @@ every not-yet-started P2–P5 task name the real functions and fields.
 - [ ] **2.2 — Helicopter and two-car framing cameras**
   - Scope: `cameras/heli.js` is a high, behind camera on springs that shows the line ahead. `cameras/pair.js` keeps the
     car and ghost both in shot (the 3D counterpart of `cam.frame([cs, gs])` in `main.js`); with no ghost it behaves like
-    heli. Both are added to the selector.
+    heli. Both are new `S.cam3d.mode`s with `#camera3d` buttons and entries in `draw3d`'s mode→module table.
   - Depends on: 1.8
   - Acceptance: tests show that with a pinned ghost (two snapshots of different quality) both cars project inside NDC
     [−0.9, 0.9] for a whole race-clock cycle, and that the 1.5 determinism checks (a) and (b) hold for both. CDP
@@ -340,15 +361,18 @@ every not-yet-started P2–P5 task name the real functions and fields.
 
 - [ ] **2.3 — Bonnet and free-fly cameras**
   - Scope: `cameras/bonnet.js` is fixed rigidly to the smooth pose (plus attitude from 2.6 when present), with near
-    plane 0.1 m. Under reduced motion it is disabled with a note in the selector (§7.1). `cameras/free.js` is user-driven
-    fly (drag to look, wheel or keys to move) for inspection.
+    plane 0.1 m. Under reduced motion its `#camera3d` button is disabled with a note (§7.1). `cameras/free.js` is
+    user-driven fly (drag to look, wheel or keys to move) for inspection; its input needs handlers beside `bind3dInput`
+    in `main.js`, which acts in overview only. Both are `S.cam3d.mode`s in `draw3d`'s mode→module table.
   - Depends on: 1.8
   - Acceptance: tests show the bonnet camera stays at a fixed offset in the car frame at headings 0, 0.7 and −2 (and
     pitched on a 40 m hill), and that free fly is deterministic for a fixed input sequence. A CDP check confirms that
     with `prefers-reduced-motion` emulated (`Emulation.setEmulatedMedia`) the bonnet option is disabled.
 
 - [ ] **2.4 — Top-down and tilted orthographic camera (replaces deferred A1)**
-  - Scope: `cameras/ortho.js` uses the view's `ortho:{halfHeight}`; the scene renders it with an `OrthographicCamera`.
+  - Scope: `cameras/ortho.js` uses the view's `ortho:{halfHeight}`; the scene renders it with an `OrthographicCamera`
+    (the 1.7 `frame()` only drives a `PerspectiveCamera`, so extend it to switch on `view.ortho`). It is an
+    `S.cam3d.mode` with a `#camera3d` button; Fit and +/− get ortho meanings in `setView`/`main.js`.
     It frames like `Camera.fit`, has a 0–60° tilt slider, and follows like `Camera.frame`. In `docs/deferred.md`, mark A1
     as superseded by this camera, pending Q's confirmation of §13 Q2.
   - Depends on: 1.8
@@ -374,7 +398,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
   - Scope: extend the scene's `frame({car, ghost, view})` with an optional per-car attitude, e.g.
     `frame({car, ghost, view, attitude: {car, ghost}})`, each an `attitude.js` `view()` result
     `{roll, pitch, steer, spin}`. Apply it to the body and the wheel pivots from 1.3 (`wheelFL`… pivot groups; the spin
-    child rotates about local Z). Use `group.userData.radius` as `attitude.js`'s wheel radius. `main.js` keeps per-car attitude state. The "How the model works" text in `index.html` says the
+    child rotates about local Z). Use `group.userData.radius` as `attitude.js`'s wheel radius. `draw3d` in `main.js` keeps per-car attitude state (stepped with the
+    camera's `dtAnim`, re-inited where the camera is) and passes it to `S.scene3d.frame`. The "How the model works" text in `index.html` says the
     body motion, steer and wheel spin in 3D are cosmetic, not physics.
   - Depends on: 1.8, 2.5
   - Acceptance: a CDP scenario reads the car group's transforms through a debug accessor. Mid-corner in a right-hander
@@ -421,11 +446,13 @@ every not-yet-started P2–P5 task name the real functions and fields.
     (checked by inspecting `castShadow` across the scene).
 
 - [ ] **3.5 — Height exaggeration in the overview**
-  - Scope: a slider (1–5×), shown only for overview and ortho, scales the vertical axis of the track, line, ground and
-    the car *position* (not the car model's shape). The car's pitch uses the same scale. Car cameras (chase, heli, pair,
-    TV, bonnet) always run at 1×. This relies on an unconfirmed default (§13 Q4). The 1.7 scene has no height-scale
-    input, so add a scene method (e.g. `setHeightScale(e)`) rather than rebuilding geometry on every slider move.
-    `frame()` must place the cars at the scaled height.
+  - Scope: a slider (1–5×), shown only while `S.cam3d.mode` is overview or ortho, scales the vertical axis of the
+    track, line, ground and the car *position* (not the car model's shape). The car's pitch uses the same scale. Car
+    cameras (chase, heli, pair, TV, bonnet) always run at 1×. This relies on an unconfirmed default (§13 Q4). The 1.7
+    scene has no height-scale input, so add a scene method (e.g. `setHeightScale(e)`) rather than rebuilding geometry on
+    every slider move. `frame()` must place the cars at the scaled height. The Wave E world scales too (skirts, kerbs,
+    start band, gantry, boards and posts), and `fitShadow()` in `scene.js` must use the scaled heights, or the ground
+    falls past the shadow camera's far plane again (the dark-square bug fixed after Wave E; `world.mjs` checks it).
   - Depends on: 1.8
   - Acceptance: a CDP scenario reads geometry through a debug accessor. At 3× a known crest's height above the ground
     is 3× its value at 1× (within 1%). The car's Y equals the ribbon's Y at its station at 3×. Switching to chase gives
@@ -451,7 +478,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
     - shake from `T.kv`, `phys.nz`, braking `ax` and closeness to the track edge, scaled down above 1× replay.
 
     FOV and shake follow the car's real speed (§7.2). Under reduced motion everything is zero (base FOV). Wire it into
-    the chase view (and heli, if 2.2 has landed) in `main.js`, reading
+    the chase view (and heli, if 2.2 has landed) in `draw3d` in `main.js` (applied to the camera's `view()` before the
+    render-skip key `lastView3d` is computed, so a FOV or offset change renders), reading
     `matchMedia('(prefers-reduced-motion: reduce)')`.
   - Depends on: 1.8
   - Acceptance: tests check that FOV is monotone in speed and ≤ 72°; that reduced motion gives exactly the base FOV and
@@ -469,7 +497,7 @@ every not-yet-started P2–P5 task name the real functions and fields.
 
 - [ ] **4.3 — Speed streaks**
   - Scope: instanced streak particles near the camera, with density and length from the car's real speed, behind an
-    effects toggle in the selector area. Off under reduced motion. No post-processing passes (Non-Goals).
+    effects toggle beside `#camera3d`. Off under reduced motion. No post-processing passes (Non-Goals).
   - Depends on: 1.8
   - Acceptance: a pure spawn/length function is tested (zero at rest, monotone in speed, zero under reduced motion).
     In CDP, `renderer.info.memory.geometries` is constant while streaks run, and a chase screenshot at speed is within

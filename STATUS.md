@@ -1,11 +1,12 @@
 # STATUS
 
-_Last updated: 2026-10-25 (1.7)_
+_Last updated: 2026-10-25 (Wave E)_
 
 ## Snapshot
 
-15 of 33 tasks done (Waves A–C and 1.7), all merged to `main`; on `main` 320/320 tests pass and all 8 scenarios exit
-0. Next: 1.8, alongside 3.1–3.4.
+20 of 33 tasks done (Waves A–E), all merged to `main`. On `main`, 372/372 tests pass and all 13 scenarios exit 0
+(every reference compares at fraction 0; `view-toggle` is byte-identical to pre-wave `main` in 2D). The 3D view is
+live in the app: overview and chase cameras, ground, kerbs, markings, lighting and car shadow. Next: Wave F (11 tasks).
 
 ## Completed
 
@@ -65,6 +66,27 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   - Coordinator's teeth: no `geometry.dispose()` makes the geometry count grow 10→14 (`rebuildsStable` false), and
     `setTrack` building nothing fails `triangles`, `reference` and `logFallback`.
   - Full suite 320/320 and all 8 scenarios exit 0.
+- [x] 3.4 lighting, car-only shadow, themes (Codex) — done 2026-10-25 — `3d/3.4` `39cfb3f` — verified: suite 320/320;
+  `theme3d.mjs` all true (geometry count and identity unchanged by the theme switch, shadow map on, only the car's
+  meshes cast, shadow camera follows the car, background differs per theme); the chase render shows the car's shadow;
+  coordinator's teeth (the ghost casts too) fail `carOnly`.
+- [x] 3.3 kerbs (Codex) — done 2026-10-25 — `3d/3.3` `87f4870` — verified: suite 328/328; `kerbs.mjs` all true;
+  red/white kerbs on the inside of the bend in the chase render; coordinator's teeth (kerbs on the outside) fail 8/8.
+- [x] 3.1 ground plane and edge skirts (Codex, one follow-up) — done 2026-10-25 — `3d/3.1` `2979204` — verified: suite
+  328/328; `world.mjs` all true; the horizon fades softly in both themes; coordinator's teeth (fog `far` past the
+  camera's `far`) fail 8/8 at "full fog before camera clipping".
+- [x] 3.2 start line, braking boards, corner signs (Codex, one follow-up) — done 2026-10-25 — `3d/3.2` `9a69972` —
+  verified: suite 356/356; `markings.mjs` all true; boards and signs read as bordered panels on posts; coordinator's
+  teeth (board distances without the lap wrap) fail 20/36.
+- [x] 1.8 app integration (Codex; scenario timing fixed by the coordinator) — done 2026-10-25 — `3d/1.8` `5b8ca60` —
+  verified: suite 320/320; `view3d.mjs` all true in 3 consecutive runs (lazy load, missing-WebGL2 fallback and
+  reopen, overview/chase references, chase car moves on screen, Kart smaller, track change re-fits, paused render
+  skip, context loss and reopen, button states per mode, Fit after a drag, 390 px layout); `view-toggle.mjs` all true
+  with `unchanged2d1280`/`unchanged2d390` against a WebGL-mode `main` baseline; coordinator's teeth (3D Fit does
+  nothing) fail `fitRestores`.
+- Wave E on merged `main` (`12b9e71`, then `065b6c1` shadow fix and `0f4dd29` references): suite 372/372; all 13
+  scenarios exit 0, every reference at fraction 0; `view-toggle` 2D byte-identical to pre-wave `main`;
+  `git diff 251c0f5 HEAD` over physics, goldens, playback, `prototype/` and `vendor/` is empty.
 
 ## In Progress
 
@@ -173,7 +195,58 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
     self-references now read `PLAN.md`.
   - `CLAUDE.md`'s Views entry was rewritten by the coordinator for clarity.
 
+- 2026-10-25: Wave E ran as one parallel cycle of 5 Codex tasks (Q's request). It merged to `main` (`--no-ff`, 3.1, 3.3,
+  3.2, 3.4, then 1.8). Every `scene.js`/`scene3d.mjs`/`index.html`/`colors.js` conflict was keep-both by design; the
+  coordinator also removed a duplicate `findCorners` import the 3.3 + 3.2 merge produced (a SyntaxError) and ordered
+  `themeWorld()` after 3.4's background line in `setTheme`. Ownership splits given in the prompts (deviations from
+  PLAN.md's literal text):
+  1. **Corners come from inside the scene:** `setTrack` calls `findCorners(T)` (`map2d/map.js`, pure); there is no
+     `setCorners` (PLAN offered it only as an "e.g.").
+  2. **Tokens:** 3.1 owns `--ground3d` (ground and skirts), 3.4 owns `--sky3d` (background); fog copies the background.
+  3. **`refreshColors` → `setTheme` wiring went to 1.8**, not 3.4 (no scene in `main.js` before 1.8).
+  4. **New files instead of shared ones:** `kerbs.js` (not `meshes.js`), `markings.js`, `fog.js`; test files
+     `scene3d-world`, `-kerbs`, `-markings`. 3.4 has no Node test (all CDP).
+  5. Each 3.x task got its own scenario (`world`, `kerbs`, `markings`, `theme3d`), mounting `createScene3d` on its own
+     canvas: the mounting boilerplate is now copied 5 times. Worth a shared helper, or using the app's own 3D view
+     (possible since 1.8), in a later task.
+- **`cdp.mjs` teardown** (`37c1fec`, on `main`, Q approved): `world.mjs` reproducibly lost its result to
+  `ENOTEMPTY` from `rmSync` of the Chrome profile (Chrome under SwiftShader on 40 m hills took > the fixed 300 ms to
+  exit, and the `finally` error replaced the result). It now waits for Chrome's `exit` (5 s cap) and prints a cleanup
+  failure as a warning. All 8 scenarios of the time re-ran clean.
+- Review findings sent back to Codex (Q approved):
+  - 3.1: the ground was clipped by the overview camera's `far` (1.7 km) before fog began (2.3 km), a hard horizon line;
+    and `meshes.js` imported a camera for `fogRange`. Fog now lives in `fog.js` and follows the active view in
+    `frame()` (an O(2N) loop over road vertices per frame, no allocation): `far = min(view.far, 2·size)`, `near` past
+    the deepest road vertex. Chase horizons are a sharp line by geometry (the fog band is under a pixel at 4 m eye
+    height); accepted.
+  - 3.2: one label strip `128 px × labels` (Harrow Ring: 4224 px, over the 4096 many GPUs allow), and boards read as
+    floating numbers (paper panels against a near-paper sky, no posts). Now grid atlas pages ≤ 2048 px, ink borders,
+    merged ink posts to 0.25 m below the road.
+- 1.8:
+  - `fitRestores` failed once. Diagnosed (scratch scenario, nothing committed): Fit works; the scenario read the camera
+    state 50 ms after a selector click, but the click nulls the state until the next frame and SwiftShader frames take
+    ~97 ms. The coordinator replaced the four fixed waits after selector clicks with `settle()` (state set, then two
+    frames).
+  - `view-toggle.mjs` now runs with WebGL (a toggle loads the scene), so its 2D baseline must be taken with
+    `APEX_WEBGL=1` on `main`; `zoomDisabledIn3d` became `zoomOverviewIn3d` by design.
+  - Accepted as is: the orbit state keeps its `aspect` from `init` after a resize; `draw3d` keys the render skip on
+    `JSON.stringify(view)` each frame (main thread, not `scene.frame`).
+- **Dark-square bug, found only after the merge** (`065b6c1`, Q approved the fix): on 40 m hills the 3.1 ground plane lay
+  ~33 m under the car, past 3.4's shadow camera `far` (80 m), and ground past `far` rendered as shadowed, a 24 m dark
+  square following the car in the overview. Diagnosed in a scratch scenario (far 200 or no shadow: the patch matches
+  the ground; a raycast hits only the ground). `fitShadow()` in `setTrack` now reaches from the highest station to the
+  ground plane (95.9 m on the 40 m preset). `world.mjs` checks it geometrically and by pixel (teeth: far 80 fails
+  both). **The screenshot compare alone missed it**: ~0.05% of pixels, under its 1% tolerance.
+- The 1.8 API revision checkpoint was done by the coordinator: PLAN.md's Context now records the real hooks (`S.cam3d`,
+  `#camera3d`, `draw3d`, `fail3d`, `bind3dInput`, the Wave E world), and the Scope lines of 2.1, 2.2, 2.3, 2.4, 2.6,
+  3.5, 4.1 and 4.3 name them. `draw3d` picks the camera by a two-way ternary: the first of 2.1–2.4 to land replaces it
+  with a mode→module table. 3.5 must scale the world meshes and `fitShadow()` too.
+- Noted, not acted on: `kerbs.js` has a third copy of the sRGB→linear conversion (after `meshes.js`, `line.js`); by the
+  rule of three it's now worth extracting.
+
 ## Next Up
 
-- 1.8 app integration (needs 0.1, 1.5, 1.6, 1.7; browser-verified, so Codex implements and the coordinator runs the
-  scenarios). In parallel: 3.1, 3.2, 3.3 and 3.4, which each need only 1.7.
+- Wave F (needs 1.8, done): 1.9, 2.1, 2.2, 2.3, 2.4, 2.6, 3.5, 3.6, 4.1, 4.3, 5.3. PLAN.md warns that more than ~4 at
+  once costs more in rebases than it saves, and most touch `main.js`'s `draw3d` and `scene.js`. Suggested first batch:
+  1.9 (frame-time measurement; it decides P6, so it should come before more per-frame work lands), 2.1 (replaces the
+  camera ternary with the mode→module table the other camera tasks build on), 3.6 and 5.3.
