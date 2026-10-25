@@ -17,10 +17,12 @@ import * as attitude from '../views/scene3d/attitude.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
 import * as tv from '../views/scene3d/cameras/tv.js';
+import * as heli from '../views/scene3d/cameras/heli.js';
+import * as pair from '../views/scene3d/cameras/pair.js';
 import { renderTelemetry, tagText } from './telemetry.js';
 import { drawSpeedChart, drawConv, drawGapChart, drawForceChart, drawElevChart } from '../views/map2d/charts.js';
 
-const CAMERAS={overview:orbit,chase,tv}; // S.cam3d.mode → camera module (each: init, step, view)
+const CAMERAS={overview:orbit,chase,tv,heli,pair}; // S.cam3d.mode → camera module (each: init, step, view)
 
 connect({renderDerived,renderDyn,runLabel,showError,trackArrived,dynLap,loaded,loadFailed,refused,ghostDropped:updGhostUI});
 
@@ -51,7 +53,7 @@ function cameraInput(){
     const rt=raceClock(g?[d.t,g.t]:[d.t],cameraStart+t);
     return follow?tracePoseAt(d,dyn,rt):d.t>0?smoothPose(d,rt,S.info):null;
   };
-  return {T:S.T,corners:S.corners,car:follow?trace:lap,lap,trace,dyn,sample,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
+  return {T:S.T,corners:S.corners,car:follow?trace:lap,lap,trace,dyn,sample,sampleGhost:t=>g&&g.t>0?smoothPose(g,raceClock([d.t,g.t],cameraStart+t)):null,ghost:g&&g.t>0?smoothPose(g,rt):null,replay:S.replay,aspect:aspect3d()};
 }
 function initCamera(input=cameraInput()){
   S.cam3d.state=CAMERAS[S.cam3d.mode].init(input);cameraStart=S.animT;cameraTrack=S.T;dirty3d=true;
@@ -151,6 +153,11 @@ function stepAttitude3d(api,input,dtAnim,seek){
   }
   return attitudeView;
 }
+let pairGhost=null;
+function syncPair3d(){
+  if(S.cam3d.mode==='pair'&&pairGhost!==S.ghost)S.cam3d.state=null;
+  pairGhost=S.ghost;
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -163,8 +170,9 @@ function draw3d(dt){
     const dims={wb:S.P.wb,track:S.P.track,cg:S.P.cg,rear:S.P.rear},key=JSON.stringify({...dims,trace:!!input.dyn}),hasGhost=!!g;
     if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null,trace:input.dyn?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
     syncTrace3d(input);
+    syncPair3d();
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
-    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv'].includes(S.cam3d.mode)))initCamera(input);
+    if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv','heli','pair'].includes(S.cam3d.mode)))initCamera(input);
     else{
       CAMERAS[S.cam3d.mode].step(S.cam3d.state,input,dtAnim);
     }
