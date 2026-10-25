@@ -1,15 +1,14 @@
 # STATUS
 
-_Last updated: 2026-10-25 (Wave F batch 2)_
+_Last updated: 2026-10-25 (Wave F batch 3)_
 
 ## Snapshot
 
-28 of 33 tasks done (Waves A–E, plus Wave F's 1.9, 2.1, 2.2, 2.4, 2.6, 3.5, 3.6, 5.3), all merged to `main`, with
-the two batch 1 follow-ups (board backs, the tag in "Dynamic check" mode). On `main`, 414/414 tests pass and all 21 scenarios
-exit 0, every reference at fraction 0 (the 3D controls are a camera `<select>` and one stacked column since the layout
-job). `view-toggle` is byte-identical to pre-Wave-E `main` in 2D.
-The 3D view has six cameras (overview, chase, heli, pair, Map, TV), attitude, height exaggeration, overlays and a trace
-car. Next: Wave F batch 3 (2.3, 4.1, 4.3) on Q's go.
+31 of 33 tasks done (Waves A–F), all merged to `main`, with the batch 1 follow-ups and the layout job. On `main`,
+427/427 tests pass and all 24 scenarios exit 0, run twice, every reference at fraction 0. `view-toggle` is
+byte-identical to pre-Wave-E `main` in 2D. The 3D view has eight cameras (overview, chase, bonnet, free, heli, pair,
+Map, TV), attitude, height exaggeration, overlays, a trace car, speed-linked FOV, g response and shake, and speed
+streaks, all off under reduced motion. Next: Wave G, 4.2 (wheel blur) then 6.1 (documentation close-out).
 
 ## Completed
 
@@ -139,6 +138,21 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   images reviewed); `view3d`'s `phoneSelector` and new `desktopSelector` pass with camera, trace, height and tilt
   controls all visible (phone column 260–398 px, clear of the inset at 413 px and the legend at 474 px). The old layout
   failed `phoneSelector`.
+- [x] 2.3 bonnet and free-fly cameras (Codex; focus indicator by the coordinator) — done 2026-10-25 — `3d/2.3` `3c35f2e`,
+  focus `98b211e` — verified: suite 418/418 on the branch; `bonnet3d.mjs` all true twice, references at fraction 0
+  (near plane 0.1 m, camera within 2 m of the car, Bonnet disabled and active bonnet falling back to chase under
+  emulated reduced motion, free fly moved exactly as its input events predict, `keyboardFocused` and `quietRing`);
+  coordinator's teeth: an unrotated bonnet offset fails 2 tests; without the focus rules `quietRing` fails.
+- [x] 4.1 FOV, g response and road-driven shake (Codex) — done 2026-10-25 — `3d/4.1` `0886804` — verified: suite 420/420
+  on the branch; `effects3d.mjs` all true twice at fraction 0 (FOV 57.1° slow, 65.7° fast, capped; exactly the base
+  under emulated reduced motion); coordinator's teeth (`apply` ignoring reduced motion) fail.
+- [x] 4.3 speed streaks (Codex) — done 2026-10-25 — `3d/4.3` `4140cb0` — verified: suite 417/417 on the branch;
+  `streaks3d.mjs` all true twice at fraction 0 (geometry count constant while streaks run, zero when off or under
+  reduced motion); coordinator's teeth (count ignoring reduced motion) fail.
+- Wave F batch 3 on merged `main` (step 0 `eed5328`; merges `d06a9ed` 2.3, `947163e` 4.1, `2234998` 4.3; `98b211e`
+  focus; `99371ac` view3d; references `c6d3f49`): suite 427/427; all 24 scenarios exit 0 in two full passes, every
+  reference at fraction 0; 14 changed or new images reviewed; `git diff eed5328 HEAD` over physics, goldens,
+  playback, `prototype/` and `vendor/` is empty.
 
 ## In Progress
 
@@ -372,9 +386,24 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   `view3d` now waits up to 60 s (was 5 s) for the fallback message. `unchanged2d1280` couldn't be reproduced, so
   `view-toggle` now saves the actual image and the differing-pixel fraction on a mismatch. Main suspect for next time:
   its fixed `sleep(300)` after each viewport resize.
+- 2026-10-25: Wave F batch 3 ran as one parallel cycle of 3 Codex jobs (Q's request) after a coordinator step 0
+  (`S.reducedMotion`, one listener, so the three branches didn't each add one). Merged `--no-ff` 2.3, 4.1, 4.3. Both
+  later merges conflicted where 2.3 had moved `stepAttitude3d()` before the camera step: the other side still had the
+  call at its old place, and keeping both would have stepped the attitude twice per frame (double-speed springs). The
+  coordinator kept one call, before the camera.
+- **Focus ring (Q chose A):** 2.3 makes `#view3d` focusable for the free-fly keys, and the browser's ring framed the
+  whole view. A first fix (`:focus:not(:focus-visible){outline:none}`) didn't help: the key presses make it keyboard
+  focus (confirmed in the page). Now no outline on `:focus`, a 1 px accent inset on `:focus-visible`.
+- **`view3d` `missingWebgl` (the intermittent failure):** after the 60 s cap didn't stop it (the coordinator's first
+  theory was wrong), `view3d` recorded evidence on failure. It showed the app had fallen back correctly but no frame had
+  run in the fixed 100 ms after the asynchronous message, so the chip didn't show it yet. The check now waits two frames;
+  teeth: without the app's chip suffix it fails. 6 of 6 runs passed at load 8.6–9.7, and two full passes later.
+- Coordinator's commits now name their paths (`git commit -- <paths>`): Q committed to `main` during the batch, and a
+  plain `git commit` would have swept Q's staged files in. In zsh, pass path lists as arrays.
+- Open for Q (cosmetic): with reduced motion on, the camera `<select>` widens to fit "Bonnet (off: reduced motion)";
+  Streaks isn't offered in bonnet (4.3 listed chase, heli, pair and TV; bonnet ran in parallel). Still open: the 3.6
+  label-position check; pair framing ignores the inset; worktree cleanup.
 
 ## Next Up
 
-- After the layout job: Wave F batch 3, 2.3 (bonnet and free-fly cameras; bonnet uses 2.6's attitude), 4.1 (FOV, g
-  response, shake; wired for chase and heli) and 4.3 (speed streaks), on Q's go. Then Wave G: 4.2 (wheel blur, needs
-  2.6) and 6.1 (documentation close-out).
+- Wave G: 4.2 (wheel blur; needs 2.6, done), then 6.1 (documentation close-out; needs everything, so last).

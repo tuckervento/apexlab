@@ -134,6 +134,15 @@ every not-yet-started P2–P5 task name the real functions and fields.
     its recorded `steer`. The height slider shows for `heightModes` (`overview`, `ortho`); car cameras run at 1×.
   - Scenarios: tolerant screenshot compares hid nondeterminism and a vacuous check; references are generated twice
     and must compare at fraction 0, and meshes are found by name or `traverse`, never on the scene's top level.
+- **Wave F batch 3 (2.3, 4.1, 4.3; done; the coordinator updated the Scope lines below).** What it added:
+  - `S.reducedMotion` (`state.js`), kept current by one `matchMedia` listener in `main.js`; everything that moves
+    reads it. `CAMERAS` adds `bonnet` and `free`; the Bonnet `<option>` is disabled under reduced motion, and an
+    active bonnet falls back to chase. In `draw3d`, `stepAttitude3d()` now runs **before** the camera step and
+    `input.attitude` carries the followed car's attitude; `bindFree3dInput` handles free-fly input.
+  - `effects.js` (FOV, g response, shake) is applied by `applyEffects3d()` to chase and heli views, after `view()` and
+    before the render-skip key. Streaks: `frame({..., streaks: {speed, tAnim, on, reducedMotion}})`, one
+    `InstancedMesh`, toggled from `#streaksOn3d` in `#controls3d` for chase, heli, pair and TV.
+  - `#view3d` takes focus for the free-fly keys: no browser ring, a 1 px accent inset under `:focus-visible`.
 
 ## Non-Goals
 
@@ -526,7 +535,8 @@ every not-yet-started P2–P5 task name the real functions and fields.
 - [ ] **4.2 — Wheel blur**
   - Scope: above a threshold of *screen* wheel speed (real × replay), swap the wheels for a blurred disc so wheels
     don't strobe at 4–12× (§7.2). It is off under reduced motion only if it moves; a static disc is fine. The wheel
-    spin child is the one `applyAttitude` (`car-attitude.js`) rotates.
+    spin child is the one `applyAttitude` (`car-attitude.js`) rotates. The disc swap is per car in the scene (from the attitude's `spin`
+    rate and `S.replay`), read `S.reducedMotion`, and leave the `frame()` inputs owned by 2.6 and 4.3 as they are.
   - Depends on: 2.6
   - Acceptance: a pure threshold function is tested, including that the same car speed at 1× and 12× lands on
     different sides of the threshold. A CDP debug accessor shows the disc at 12× on a straight and the spoked wheel at
