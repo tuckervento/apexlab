@@ -46,6 +46,9 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 #overlay3d .tag3d{border:1px solid var(--rule);border-radius:3px;transform:translate(12px,-50%)}
 #overlay3d .ghost3d{color:var(--ghost);transform:translate(calc(-100% - 12px),-50%)}
 #view3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+/* #view3d takes focus for the free-fly keys: no browser ring around the whole view, a quiet 1 px accent inset while keyboard-focused */
+#view3d:focus{outline:none}
+#view3d:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
 .stage.v3d #view{inset:auto;right:max(16px,env(safe-area-inset-right,0px));bottom:16px;width:min(300px,36%);height:auto;aspect-ratio:4/3;
   outline:1px solid var(--rule);border-radius:4px;cursor:pointer} /* outline, not border: the canvas box stays the drawing's size */
 .panel{overflow-y:auto;background:var(--panel);padding-block:20px 32px;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
