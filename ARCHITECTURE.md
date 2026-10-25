@@ -348,7 +348,8 @@ A car, the circuit it ran on, the line it converged to and the lap that line gav
 {
   qss, frac,
   dyn: { t, trace: { x[], y[], v[] /* vx */, e[], t[], st[],          // every 6th 4 ms step
-                     psi[], vy[], r[], delta[], alf[], alr[], ax[], ay[], gear[], s[] } } | null,   // for pose()
+                     psi[], vy[], r[], delta[], alf[], alr[], ax[], ay[], gear[], s[],
+                     z[] /* track height under the car */ } } | null,   // for pose()
   fail: { fr, at, spun } | null,
   umax, uat, uaxle, uf[], ur[], iters
 }
@@ -469,7 +470,7 @@ As implemented in step 7 (`src/playback/pose.js`; `tests/playback.test.mjs`):
 
 ```ts
 pose(source: LapSnapshot | DynTrace, t: seconds, info?: CarInfo) → {
-  station, s, x, y, z /* 0: flat world */, heading /* rad, screen frame */, speed /* m/s */,
+  station, s, x, y, z /* height, 0 when flat; a trace without z gives 0 */, heading /* rad, screen frame */, speed /* m/s */,
   ax /* longitudinal */, ay /* lateral, signed like curvature */,       // m/s²
   gear?, rpm?,                                                          // with info; rpm = fraction of redline
   // Lap snapshot only: frac (0–1 through the station segment); phys (snapshot telemetry, §7, interpolated) if present
@@ -482,7 +483,7 @@ raceClock(lapTimes[], animT) → t   // both cars leave together; the quicker wa
 ```
 
 - **Lap snapshot** (the line, ghosts): interpolated within a station segment; heading from the segment, `ax`/`ay` from the lap model's speeds and curvature, `s` along the line. Bit for bit what the map and HUD computed before step 7. Lines index the same track stations, so `stationPose(ghost, car.station, car.frac)` is the ghost at the car's place: the telemetry's *Same place* Δ and the map tags compare the two cars this way.
-- **DynTrace** (`DynCheck.result.dyn.trace`, §7): true heading `psi`, steering and slip recorded by `dynLap`; `s` is distance travelled; the gear is the one the driver model was in. `rpm` comes from the best-gear table at that speed (no per-gear ratios in `CarInfo`). The trace starts where the dynamic lap starts (the straightest station), not at the start line. On the skidpad the recorded state is kinematically consistent with the car's own path: |ay| = v²κ within 0.6%, r + dβ/dt = vκ within 0.3%.
+- **DynTrace** (`DynCheck.result.dyn.trace`, §7): true heading `psi`, steering and slip recorded by `dynLap`; `s` is distance travelled; `z` is the centreline height under the car (stations `seg`, `seg+1` interpolated by the observed fraction; level cross-section, so it holds for any line); the gear is the one the driver model was in. `rpm` comes from the best-gear table at that speed (no per-gear ratios in `CarInfo`). The trace starts where the dynamic lap starts (the straightest station), not at the start line. On the skidpad the recorded state is kinematically consistent with the car's own path: |ay| = v²κ within 0.6%, r + dβ/dt = vκ within 0.3%.
 - Not yet: `pitch`, `roll` (no attitude model). Nothing in the UI plays back a dynamic trace yet.
 
 ### 10.3 Track model for elevation and 3D

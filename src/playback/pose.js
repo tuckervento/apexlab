@@ -44,13 +44,13 @@ export function lapExtremes(d){
   return o;
 }
 
-// Dynamic trace {t[], x[], y[], v[] (=vx), vy[], psi[], r[], delta[], alf[], alr[], ax[], ay[], gear[], st[], s[]}.
+// Dynamic trace {t[], x[], y[], v[] (=vx), vy[], psi[], r[], delta[], alf[], alr[], ax[], ay[], gear[], st[], s[], z[]? (height; absent in older traces: z = 0)}.
 function tracePose(tr,rt,info){
   const n=tr.t.length,t=Math.min(Math.max(rt,tr.t[0]),tr.t[n-1]);
   let lo=0,hi=n;while(hi-lo>1){const m=(lo+hi)>>1;if(tr.t[m]<=t)lo=m;else hi=m;}
   const j=Math.min(lo+1,n-1),f=j>lo?(t-tr.t[lo])/(tr.t[j]-tr.t[lo]):0,L=a=>a[lo]+(a[j]-a[lo])*f;
   const vx=L(tr.v),vy=L(tr.vy),dpsi=Math.atan2(Math.sin(tr.psi[j]-tr.psi[lo]),Math.cos(tr.psi[j]-tr.psi[lo])),psi=tr.psi[lo]+dpsi*f;
-  const p={station:tr.st[lo],s:L(tr.s),x:L(tr.x),y:L(tr.y),z:0,heading:Math.atan2(Math.sin(psi),Math.cos(psi)),speed:Math.hypot(vx,vy),
+  const p={station:tr.st[lo],s:L(tr.s),x:L(tr.x),y:L(tr.y),z:tr.z?L(tr.z):0,heading:Math.atan2(Math.sin(psi),Math.cos(psi)),speed:Math.hypot(vx,vy),
     ax:L(tr.ax),ay:L(tr.ay),steer:L(tr.delta),slipF:L(tr.alf),slipR:L(tr.alr),beta:Math.atan2(vy,vx),yawRate:L(tr.r),gear:tr.gear[lo]};
   if(info)p.rpm=info.curves.rpm[at(info,p.speed)];
   return p;

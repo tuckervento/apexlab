@@ -21,7 +21,7 @@ and delete or update it here when it lands.
 | A8 | Merge the flat and hilly code paths | maintainability | M | medium | must not |
 | A9 | Cosmetic: height tint, label collisions | low | S | none | no |
 | A10 | "Needs load tables" checked at the boundary — **already true**, pinned by a test (`385bbb2`) | robustness | — | none | no |
-| A11 | Dynamic traces have no height | low (until 3D) | S | none | no |
+| A11 | Dynamic traces have no height — **done**, `tr.z` (3D plan 0.2) | — | — | none | no |
 | B1 | Saved runs: show more of the comparison | medium (TODO #6) | S | none | no |
 | B2 | Ghost from a run whose station count changed | low | S–M | low | no |
 
@@ -243,11 +243,12 @@ Keep the `lapEval` check as the last line of defence.
 
 **Size.** S.
 
-## A11. Dynamic traces have no height
+## A11. Dynamic traces have no height — **done** (3D plan task 0.2)
 
-`pose()` gives `z` and `grade` for lap snapshots (from `pz`), but a dynamic-check trace has `z: 0`
-(`src/playback/pose.js`, `tracePose`). It doesn't matter until something plays back a trace in 3D (A1 or step 9). Then
-record z per trace sample in `dynLap` (from the station's height), as `pz` does for snapshots.
+`dynLap` (`src/dynamics/lap.js`) now pushes `tr.z` with every trace sample: the centreline height `T.z[seg]` to
+`T.z[seg+1]` interpolated by the observation's `f` (the cross-section is level, so it holds for every line). `tracePose`
+returns it as `z` (0 for a trace without `z`, e.g. an older one). Pinned by three tests in `tests/elevation.test.mjs`
+(`pose: … trace …`). Still no `grade` on a trace pose; add it when something needs it.
 
 ---
 
