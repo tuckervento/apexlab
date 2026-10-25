@@ -168,13 +168,23 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function makeCar(spec,ghost){
     if(!spec)return null;
     const group=buildCarModel(spec,{color:ghost?pal.colors.ghost:pal.colors.accent,opacity:ghost?0.4:1});
-    group.visible=false;group.traverse(o=>{if(o.isMesh){o.renderOrder=ghost?4:3;o.castShadow=!ghost;if(ghost)o.material.depthWrite=false;}});
+    group.name=ghost?'ghostCar':'lapCar';group.visible=false;group.traverse(o=>{if(o.isMesh){o.renderOrder=ghost?4:3;o.castShadow=!ghost;if(ghost)o.material.depthWrite=false;}});
     scene.add(group);return group;
   }
-  function setCars(specs){removeCar(car);removeCar(ghostCar);car=makeCar(specs.car,false);ghostCar=makeCar(specs.ghost,true);}
+  let traceCar=null;
+  function disposeTrace(){if(traceCar)traceCar.visible=false;removeCar(traceCar);traceCar=null;}
+  function buildTrace(spec){
+    disposeTrace();if(!spec)return;
+    traceCar=buildCarModel(spec,{color:pal.colors.ink,opacity:1});traceCar.name='traceCar';traceCar.visible=false;
+    scene.add(traceCar);
+  }
+  function frameTrace(p){if(traceCar){traceCar.visible=!!p;if(p)placeCar(traceCar,p);}}
+  function themeTrace(){tintCar(traceCar,pal.colors.ink);}
+  function setCars(specs){removeCar(car);removeCar(ghostCar);car=makeCar(specs.car,false);ghostCar=makeCar(specs.ghost,true);buildTrace(specs.trace);}
   function setTheme(value){
     pal=value;scene.background.setStyle(pal.colors.sky3d);
     themeWorld();
+    themeTrace();
     if(track){
       if(track.geometry.attributes.color)recolor(track,trackRibbon(T,stationFrames(T),{heightColors:true,pal}).color);
       else track.material.color.setStyle(pal.colors.track);
@@ -188,6 +198,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   }
   function resize(rect,dpr){cssWidth=rect.width;cssHeight=rect.height;renderer.setPixelRatio(Math.min(2,dpr));renderer.setSize(rect.width,rect.height,false);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();}
   function frame(input){
+    frameTrace(input.trace);
     if(car){car.visible=!!input.car;if(input.car){placeCar(car,input.car);sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}}
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
     const v=input.view;camera.position.fromArray(v.position);camera.up.fromArray(v.up);target.fromArray(v.target);camera.lookAt(target);
@@ -200,6 +211,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function info(){return {depth,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,programs:renderer.info.programs.length};}
   function dispose(){
     canvas.removeEventListener('webglcontextlost',lost);canvas.removeEventListener('webglcontextrestored',lost);
+    disposeTrace();
     disposeWorld();
     disposeKerbs();
     disposeMarkings();

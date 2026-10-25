@@ -1,6 +1,7 @@
 // Side panel and buttons: car and track setup, run/pause, ghost, colouring, replay, dynamic check, saved runs; the
 // actions they trigger (carChanged, rebuildTrack, setRunning) and the panel readouts the solver client redraws through
 // its hooks.
+import { currentTrace, failureReplayTime } from './trace3d.js';
 import { genCtrl } from '../core/index.js';
 import { CARS, TRACKS } from './presets.js';
 import { S, $, circuit, hillsFollow } from './state.js';
@@ -43,6 +44,7 @@ export function fit(){S.cam.fit(S.T,S.width);}
 // main.js supplies the active camera actions.
 export function setView(v){if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
   $('#camera3d').hidden=!on;
+  renderTraceUI();
   for(const b of ['#zIn','#zOut','#zFit'])$(b).disabled=on&&S.cam3d.mode!=='overview';$('#zFollow').disabled=on;}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too
 // The Hills slider drives the heights while every control point has its generator height; after a height is set by
@@ -73,7 +75,12 @@ export function trackArrived(){
     $('#legZmin').textContent=Math.round(lo);$('#legZmax').textContent=Math.round(hi);$('#elevCap').textContent=`${Math.round(hi-lo)} m range · steepest ${(gr*100).toFixed(1)}%`;}
 }
 function cornerAt(i){const T=S.T,corners=S.corners,N=T.N;for(let n=0;n<corners.length;n++){const c=corners[n],len=(c.e-c.s+N)%N,d=(i-c.s+N)%N;if(d<=len+12||d>=N-12)return 'T'+(n+1);}return (i*T.L/N/1000).toFixed(2)+' km';}
+export function renderTraceUI(){
+  $('#trace3d').hidden=S.view!=='3d'||!currentTrace(S.dynRes,S.dynStale);
+  setSeg($('#trace3d'),S.traceShow);
+}
 export function renderDyn(){
+  renderTraceUI();
   const out=$('#dynOut');if(!S.dynRes){out.hidden=true;$('#dynState').textContent='not run';return;}
   const R=S.dynRes,f=R.fail;out.hidden=false;
   $('#dynState').textContent=S.dynStale?'out of date':'';
@@ -81,6 +88,10 @@ export function renderDyn(){
     `<div>Dynamic lap at that pace<b>${R.dyn?fmtTime(R.dyn.t):'—'}</b></div>`+
     `<div>Peak tyre use on lap-model profile<b>${(R.umax*100).toFixed(1)}% · ${R.uaxle}</b></div>`+
     `<div>First trouble<b>${f?cornerAt(f.at)+' · '+(f.spun?'spins':'runs wide')+' at '+(f.fr*100).toFixed(1)+'%':'none'}</b></div>`;
+  if(f&&!S.dynStale){
+    const b=document.createElement('button');b.id='replayFailure';b.className='btn';b.textContent='Replay failure';out.append(b);
+    b.onclick=()=>{S.animT=failureReplayTime(S.disp,f);S.traceDirty=true;};
+  }
 }
 export function dynLap(n){$('#dynState').textContent='running · lap '+n;}
 
@@ -174,6 +185,7 @@ export function buildTrackUI(){
 }
 // Run/pause, restart, ghost, colouring, tags, telemetry Δ basis, replay and dynamic-check buttons.
 export function bindButtons(){
+  $('#trace3d').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.traceShow=b.dataset.v;S.traceDirty=true;renderTraceUI();};
   $('#runBtn').onclick=()=>{if(!S.running&&S.prog&&S.prog.converged){S.hist=[];setRunning(true,true);}else setRunning(!S.running);};
   $('#resetC').onclick=()=>{send({type:'setLine'});S.hist=[];setRunning(true);};
   // Pin is disabled until the display is settled (main.js), so the ghost, its circuit and its car are the ones shown
@@ -184,7 +196,7 @@ export function bindButtons(){
   $('#tagSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.tagMode=b.dataset.v;setSeg($('#tagSeg'),S.tagMode);};
   $('#deltaSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.deltaMode=b.dataset.v;setSeg($('#deltaSeg'),S.deltaMode);};
   $('#replaySeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.replay=+b.dataset.v;setSeg($('#replaySeg'),b.dataset.v);}; // 0 = Pause: the clock stops, the car and its readouts stay
-  $('#dynBtn').onclick=()=>{send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;$('#dynOut').hidden=true;$('#dynState').textContent='running';};
+  $('#dynBtn').onclick=()=>{send({type:'dynCheck'});S.dynRunning=true;S.dynRes=null;S.dynStale=false;renderTraceUI();$('#dynOut').hidden=true;$('#dynState').textContent='running';};
 }
 
 // ---------- saved runs (src/app/runfile.js): export the displayed car, circuit and line; load one back
