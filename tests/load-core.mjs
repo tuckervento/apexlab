@@ -8,7 +8,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SRC = process.env.APEX_SRC || fileURLToPath(new URL('../src', import.meta.url));
-const ENTRIES = ['core/index.js', 'dynamics/index.js', 'solver/solver.js', 'playback/pose.js', 'app/presets.js'];
+const ENTRIES = ['core/index.js', 'dynamics/index.js', 'drivers/index.js', 'solver/solver.js', 'playback/pose.js', 'app/presets.js'];
 
 export async function loadCore(srcDir = SRC) {
   const mods = await Promise.all(ENTRIES.map(e => import(pathToFileURL(join(srcDir, e)).href)));
@@ -27,10 +27,11 @@ const jsFiles = d => readdirSync(d, { withFileTypes: true }).flatMap(e => { cons
 // The physics source files and their combined SHA-256. Recorded in goldens for reference only. Includes the presets,
 // which the goldens build their cars and circuits from.
 export function coreSource(srcDir = SRC) {
-  return digest(srcDir, [...jsFiles(join(srcDir, 'core')), ...jsFiles(join(srcDir, 'dynamics')), join(srcDir, 'app/presets.js')]);
+  return digest(srcDir, [...jsFiles(join(srcDir, 'core')), ...jsFiles(join(srcDir, 'dynamics')), ...jsFiles(join(srcDir, 'drivers')), join(srcDir, 'app/presets.js')]);
 }
 
-// What a run file's physics hash covers (src/app/physics-version.js): everything that decides the numbers a run records,
+// Drivers are deliberately outside this hash; a dynamic result needs both identities.
+// What a run file's physics hash covers (src/app/physics-version.js): the rules and numerical models,
 // the solver included (it computes the published times and telemetry), and not the presets: a run file stores its car
 // and circuit in full, so retuning a preset can't change how an old file behaves.
 export function runSource(srcDir = SRC) {
@@ -45,4 +46,10 @@ export function setupPreset(core, carName, { seed = core.TRACKS[0].seed, width =
   const P = { ...params }, car = core.buildCar(P, { loads: hills > 0 }), c = core.genCtrl(seed, width), u = hills > 0 ? core.genElev(seed, c) : null;
   const T = core.buildTrack(u ? c.map((p, i) => [p[0], p[1], hills * u[i]]) : c, width), B = core.makeBounds(T, car);
   return { P, car, T, B };
+}
+
+// One driver's own source, independent of the plant it runs on. Shared physics imports are identified by runSource.
+// Add driver-owned helper files explicitly when a driver grows; never include other drivers in this list.
+export function driverSource(srcDir = SRC) {
+  return digest(srcDir, [join(srcDir, 'drivers/reference.js')]);
 }

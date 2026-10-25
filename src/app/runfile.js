@@ -1,9 +1,11 @@
 // Saved runs (ARCHITECTURE.md §7): a car, the circuit it ran on, the line it converged to, and the lap that line gave,
 // as one JSON file, so a run from an older version can be loaded into a newer one and compared. Pure functions, no DOM.
 // The reader refuses anything it can't use and says what: no defaults, no silent repair (a car with a field filled in
-// is a different car). A change to the car parameters or this layout bumps RUN_VERSION and adds an explicit migration.
+// is a different car). Required fields or changes to existing fields bump RUN_VERSION and add an explicit migration.
+// Optional additive top-level fields do not bump the version: older builds ignore unknown top-level keys.
 import { CARS } from './presets.js';
 
+// Optional driver identity is additive: older files read with driver = null (their physics hash included the driver).
 // v1: flat circuits. v2 (elevation): control points [x, y, z] and the recorded line's heights (snapshot.pz).
 export const RUN_FORMAT = 'apexlab-run', RUN_VERSION = 2, READS = [1, 2];
 export const CAR_KEYS = Object.keys(CARS['GT racer']);
@@ -24,7 +26,7 @@ export async function liveHash(files, fetchBytes) {
 // ---------- write
 // dyn: the current dynamic-check result, or null (a stale one must not be saved as if it described this line).
 // disp: the displayed snapshot (carries off, phys and the lap); prog: the latest progress event.
-export function makeRunFile({ P, ctrl, width, trackName, seed, disp, prog, refT, dyn, physics, exported, userAgent }) {
+export function makeRunFile({ P, ctrl, width, trackName, seed, disp, prog, refT, dyn, physics, driver = null, exported, userAgent }) {
   const num = (name, x) => { if (typeof x !== 'number' || !Number.isFinite(x)) throw new Error(`export: ${name} is ${x}, not a finite number`); return x; };
   const arr = (name, a) => Array.from(a, (x, i) => num(`${name}[${i}]`, x));
   const N = disp.off.length;
@@ -33,6 +35,7 @@ export function makeRunFile({ P, ctrl, width, trackName, seed, disp, prog, refT,
   snapshot.phys = Object.fromEntries(Object.entries(disp.phys).map(([k, a]) => [k, arr(`snapshot.phys.${k}`, a)]));
   return {
     format: RUN_FORMAT, version: RUN_VERSION, exported, userAgent, physics,
+    ...(driver ? { driver } : {}),
     car: Object.fromEntries(CAR_KEYS.map(k => [k, P[k]])),
     track: { name: trackName, seed, width: num('width', width), ctrl: ctrl.map((p, i) => [num(`ctrl[${i}][0]`, p[0]), num(`ctrl[${i}][1]`, p[1]), num(`ctrl[${i}][2]`, p.length > 2 ? p[2] : 0)]) },
     line: { N, off: arr('line.off', disp.off) },
@@ -91,10 +94,19 @@ export function readRunFile(o) {
   let dyn = null;
   if (res.dyn != null) { const d = need(res, 'dyn', 'result.dyn'); dyn = { frac: fin('result.dyn.frac', d.frac), t: d.t == null ? null : fin('result.dyn.t', d.t), umax: fin('result.dyn.umax', d.umax), uaxle: d.uaxle, fail: d.fail ?? null }; }
 
+  let driver = null;
+  if (o.driver != null) {
+    const d = need(o, 'driver', 'driver');
+    if (typeof d.name !== 'string' || !d.name) bad('driver.name', 'expected a nonempty string');
+    if (typeof d.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(d.sha256)) bad('driver.sha256', 'expected a SHA-256 hex digest');
+    if (d.live != null && (typeof d.live !== 'string' || !/^[a-f0-9]{64}$/.test(d.live))) bad('driver.live', 'expected a SHA-256 hex digest');
+    driver = { name: d.name, sha256: d.sha256, live: d.live ?? null };
+  }
   const ph2 = need(o, 'physics', 'physics');
   if (typeof ph2.sha256 !== 'string') bad('physics.sha256', 'expected a string');
   return {
     version: o.version, exported: typeof o.exported === 'string' ? o.exported : null, userAgent: typeof o.userAgent === 'string' ? o.userAgent : null,
+    driver,
     physics: { sha256: ph2.sha256, live: typeof ph2.live === 'string' ? ph2.live : null },
     car: { ...car }, track: { name: typeof tr.name === 'string' ? tr.name : '', seed: Number.isFinite(tr.seed) ? tr.seed : null, width, ctrl },
     line: { N, off },
