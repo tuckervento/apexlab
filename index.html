@@ -300,6 +300,7 @@ details p{margin:6px 0 0}
       <p><b>Yaw.</b> Changing yaw rate needs a yaw moment, which only spare grip on one axle can supply: the front when tightening into a turn, the rear when unwinding. That becomes an effective curvature, |k| + l·|dk/ds|, checked against that axle's limit, where l comes from wheelbase, weight distribution and yaw inertia.</p>
       <p><b>Powertrain.</b> Electric: one fixed reduction, full torque up to a base speed, constant power above it, and a cut at the motor's maximum speed. Combustion: an empirical engine power curve shaped by where torque peaks, through geometrically spaced gears; the best gear is used at every speed.</p>
       <p><b>Dynamic check.</b> A time-stepped bicycle model with Pacejka-style tyres, load-transfer lag and a steering-rate limit drives the line. Its driver applies the steering and drive force from the model solved backwards along the line, plus small corrections. A bisection finds the highest fraction of the lap model's speeds it completes on track without sliding. The driver isn't perfect, so treat the margin as a lower bound good to about half a percent.</p>
+      <p>The 3D body motion, steering and wheel spin are cosmetic, not part of the physics model.</p>
       <p><b>Not modelled yet.</b> Tyre temperature and wear, battery or thermal derating, track camber and elevation, aero changes with ride height.</p>
     </details>
   </aside>

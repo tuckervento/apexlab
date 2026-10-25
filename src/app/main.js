@@ -13,6 +13,7 @@ import { pose, smoothPose, stationPose, raceClock } from '../playback/pose.js';
 import { dataToThree } from '../views/scene3d/frame.js';
 import { cornerAnchor } from '../views/scene3d/overlays.js';
 import { currentTrace, tracePoseAt, traceCars, traceTagPose, traceTagText } from './trace3d.js';
+import * as attitude from '../views/scene3d/attitude.js';
 import * as orbit from '../views/scene3d/cameras/orbit.js';
 import * as chase from '../views/scene3d/cameras/chase.js';
 import * as tv from '../views/scene3d/cameras/tv.js';
@@ -124,6 +125,32 @@ function syncTrace3d(input){
   if(applied3d.trace!==key||S.traceDirty){dirty3d=true;S.cam3d.state=null;applied3d.trace=key;S.traceDirty=false;}
   $('#trace3d').hidden=!input.dyn;
 }
+// Each sampler is anchored at its own reset, independent of the active camera's target.
+let attitudeCars={},attitudeCamera=null,attitudeApi=null;
+const attitudeView={car:null,ghost:null,trace:null};
+function stepAttitude3d(api,input,dtAnim,seek){
+  const reset=seek||attitudeCamera!==S.cam3d.state||attitudeApi!==api,radii=api.carRadii();
+  attitudeCamera=S.cam3d.state;attitudeApi=api;
+  for(const name of ['car','ghost','trace']){
+    const source=name==='car'?S.disp:name==='ghost'?S.ghost:input.dyn?.trace;
+    const snapshot=name==='ghost'?S.ghost:S.disp;
+    const p=name==='car'?input.lap:input[name],radius=radii[name],wb=S.P.wb;
+    let entry=attitudeCars[name];
+    if(!source||!radius||!p){attitudeCars[name]=null;attitudeView[name]=null;continue;}
+    if(reset||!entry||entry.source!==source||entry.state.snapshot!==snapshot||entry.state.wb!==wb||entry.state.radius!==radius||entry.dims!==applied3d.dims||entry.info!==S.info){
+      // The trace uses its car's lap snapshot so both cars share the same peak acceleration scale.
+      entry=attitudeCars[name]={state:attitude.init(snapshot,{wb,radius}),source,start:S.animT,dims:applied3d.dims,info:S.info};dirty3d=true;
+    }else{
+      const sample=t=>{
+        const d=S.disp,g=S.ghost,rt=raceClock(g?[d.t,g.t]:[d.t],entry.start+t);
+        return name==='trace'?(tracePoseAt(d,input.dyn,rt)??p):smoothPose(snapshot,rt,name==='car'?S.info:undefined);
+      };
+      attitude.step(entry.state,p,dtAnim,sample);
+    }
+    attitudeView[name]=attitude.view(entry.state);
+  }
+  return attitudeView;
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -141,8 +168,9 @@ function draw3d(dt){
     else{
       CAMERAS[S.cam3d.mode].step(S.cam3d.state,input,dtAnim);
     }
+    const carAttitude=stepAttitude3d(api,input,dtAnim,seek);
     const view=CAMERAS[S.cam3d.mode].view(S.cam3d.state),keyView=JSON.stringify(view);
-    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view});lastView3d=keyView;dirty3d=false;}
+    if(S.replay!==0||dirty3d||lastView3d!==keyView||seek){api.frame({...traceCars(input.lap,input.trace,S.traceShow,!!input.dyn),ghost:input.ghost,view,attitude:carAttitude});lastView3d=keyView;dirty3d=false;}
     placeOverlays3d();
     lastAnim3d=S.animT;
   }catch(e){fail3d(e.message||'3D render failed');}
