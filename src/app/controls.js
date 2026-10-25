@@ -40,7 +40,9 @@ export function runLabel(){$('#runBtn').textContent=S.running?'Pause':(S.prog&&S
 export function showError(msg){S.frameErr=S.frameErr||new Error(msg);runLabel();const st=$('#status');st.dataset.s='paused';st.textContent='Error: '+msg;}
 export function fit(){S.cam.fit(S.T,S.width);}
 // 2D map or 3D view ('2d' | '3d'; always 2D while editing the track). main.js sizes the map canvas for it on the next frame.
-export function setView(v){if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));}
+// The zoom buttons drive the 2D camera, hidden in 3D, so they're disabled there (until the 3D view gives them meanings).
+export function setView(v){if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
+  for(const b of ['#zIn','#zOut','#zFit','#zFollow'])$(b).disabled=on;}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too
 // The Hills slider drives the heights while every control point has its generator height; after a height is set by
 // hand (or loaded from a run) it is disabled until Revert shape.
