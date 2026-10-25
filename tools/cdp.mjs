@@ -8,6 +8,13 @@
 // returns its value; the page's own modules are reachable with import('/src/app/state.js') and the like, the same
 // instances the app uses. The result is printed with the page's console errors.
 //
+// WebGL2 (task 0.5 of PLAN.md). --disable-gpu, the default, gives no WebGL2 at all (getContext('webgl2') is null). With
+// `--use-angle=swiftshader --enable-unsafe-swiftshader` (GL_FLAGS below; `--use-angle=swiftshader` alone also worked here, the
+// second flag is for Chrome versions that no longer fall back to SwiftShader without it) the page gets WebGL 2.0 (OpenGL ES 3.0
+// Chromium) on "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)", and
+// EXT_clip_control is available. tools/scenarios/webgl2.mjs checks this. tools/shot.mjs has the screenshot compare (tolerant: a
+// software rasteriser differs from a GPU). Ports: APEX_PORT / APEX_DEBUG_PORT override the defaults (8765 / 9333) per run.
+//
 // Exit codes: 0 pass; 1 the scenario failed (a page exception, an exception from the scenario, or a result of the form
 // {allTrue: false, checks}); 2 the driver couldn't run it (Chrome or serve.mjs didn't start, the page didn't load, the
 // DevTools socket failed: a DriverError, with its reason printed). Errors are always printed, never swallowed.
@@ -22,10 +29,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // The harness failed, not the app: Chrome, serve.mjs, the page load or the DevTools socket (exit 2).
 export class DriverError extends Error {}
 
-export async function withApp(fn, { port = 8765, debugPort = 9333, bootMs = 5000, callMs = 120000, chrome = process.env.CHROME || MAC_CHROME } = {}) {
+// WebGL2 is opt-in (webgl:true, or APEX_WEBGL=1, or a scenario module's `export const options = {webgl: true}`, which the CLI
+// passes to withApp); every other scenario keeps --disable-gpu. These flags are what worked, on Chrome 155.0.8059.85, macOS:
+const GL_FLAGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+
+export async function withApp(fn, { port = +process.env.APEX_PORT || 8765, debugPort = +process.env.APEX_DEBUG_PORT || 9333, bootMs = 5000, callMs = 120000,
+  chrome = process.env.CHROME || MAC_CHROME, webgl = process.env.APEX_WEBGL === '1' } = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'apexlab-cdp-')), exceptions = [], errors = [];
   const server = spawn('node', ['serve.mjs'], { env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'ignore', 'pipe'] });
-  const browser = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+  const browser = spawn(chrome, ['--headless=new', ...(webgl ? GL_FLAGS : ['--disable-gpu']), '--no-first-run', '--no-default-browser-check',
     `--user-data-dir=${profile}`, `--remote-debugging-port=${debugPort}`, 'about:blank'], { stdio: 'ignore' });
   let ws = null, serverErr = '', serverExit = null, chromeErr = null;
   server.stderr.on('data', d => { serverErr += d; });
@@ -88,7 +100,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const file = process.argv[2];
   if (!file) { console.error('usage: node tools/cdp.mjs <scenario.mjs>'); process.exit(2); }
   let out;
-  try { out = await withApp((await import(pathToFileURL(resolve(file)).href)).default); }
+  try { const mod = await import(pathToFileURL(resolve(file)).href); out = await withApp(mod.default, mod.options); }
   catch (e) {
     if (e instanceof DriverError) { console.error('DRIVER ERROR (exit 2): ' + e.message); process.exit(2); }
     console.error('SCENARIO FAILED (exit 1): ' + (e?.stack || e)); process.exit(1);
