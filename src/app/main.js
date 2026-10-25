@@ -124,6 +124,13 @@ function syncTrace3d(input){
   if(applied3d.trace!==key||S.traceDirty){dirty3d=true;S.cam3d.state=null;applied3d.trace=key;S.traceDirty=false;}
   $('#trace3d').hidden=!input.dyn;
 }
+const heightModes=new Set(['overview']);
+function syncHeight3d(){
+  const shown=heightModes.has(S.cam3d.mode),slider=$('#heightScale3d'),e=shown?Number(slider.value):1;
+  $('#height3d').hidden=!shown;
+  $('#heightValue3d').textContent=slider.value+'×';
+  if(applied3d.height!==e){S.scene3d.setHeightScale(e);applied3d.height=e;dirty3d=true;}
+}
 function draw3d(dt){
   if(S.view!=='3d')return;
   if(!S.scene3d){open3d();return;}
@@ -136,6 +143,7 @@ function draw3d(dt){
     const dims={wb:S.P.wb,track:S.P.track,cg:S.P.cg,rear:S.P.rear},key=JSON.stringify({...dims,trace:!!input.dyn}),hasGhost=!!g;
     if(a.info!==S.info||a.dims!==key||a.hasGhost!==hasGhost){api.setCars({car:dims,ghost:hasGhost?dims:null,trace:input.dyn?dims:null});a.info=S.info;a.dims=key;a.hasGhost=hasGhost;dirty3d=true;}
     syncTrace3d(input);
+    syncHeight3d();
     const dtAnim=dt*S.replay,seek=lastAnim3d!==null&&Math.abs(S.animT-lastAnim3d-dtAnim)>1e-6;
     if(!S.cam3d.state||cameraTrack!==S.T||(seek&&['chase','tv'].includes(S.cam3d.mode)))initCamera(input);
     else{

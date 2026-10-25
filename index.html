@@ -67,6 +67,9 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 
 .camera3d{position:absolute;left:16px;bottom:110px;background:var(--panel)}
 .camera3d[hidden]{display:none}
+.height3d{position:absolute;left:16px;bottom:150px;background:var(--panel);padding:4px 8px;font-size:11px}
+.height3d[hidden]{display:none}
+.height3d input{width:90px;vertical-align:middle}
 .trace3d{position:absolute;left:16px;bottom:146px;background:var(--panel)}
 .trace3d[hidden]{display:none}
 .zoom{position:absolute;top:16px;right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:6px}
@@ -151,6 +154,7 @@ details p{margin:6px 0 0}
     <canvas id="view" aria-label="Circuit map with the optimised racing line"></canvas>
     <div class="seg camera3d" id="camera3d" aria-label="3D camera" hidden><button data-v="overview" aria-pressed="true">Overview</button><button data-v="chase" aria-pressed="false">Chase</button>
       <button data-v="tv" aria-pressed="false">TV</button></div>
+    <label class="height3d" id="height3d" hidden>Height <input id="heightScale3d" type="range" min="1" max="5" step="0.1" value="1" aria-label="Height exaggeration"><output id="heightValue3d">1×</output></label>
     <div class="seg trace3d" id="trace3d" aria-label="3D cars" hidden><button data-v="lap" aria-pressed="true">Lap model</button><button data-v="dynamic" aria-pressed="false">Dynamic check</button><button data-v="both" aria-pressed="false">Both</button></div>
     <div class="zoom">
       <button id="zIn" aria-label="Zoom in">+</button>

@@ -26,7 +26,7 @@ export default async ctx=>{
     const pal=readColors(document.documentElement),api=createScene3d(canvas,pal);
     api.resize({width:800,height:600},1);api.setTrack(S.T);api.setLine(S.disp,'speed',pal);api.setCars({car:S.P});
     const input={car:smoothPose(S.disp,3),view:orbit.view(orbit.init({T:S.T,aspect:800/600}))};api.frame(input);
-    const scene=api._debug.scene,ground=scene.getObjectByName('ground'),road=scene.children.find(o=>o.geometry?.attributes.color);
+    const scene=api._debug.scene,ground=scene.getObjectByName('ground'),road=scene.getObjectByName('road');
     const minY=m=>{const p=m.geometry.attributes.position.array;let y=Infinity;for(let j=1;j<p.length;j+=3)y=Math.min(y,p[j]);return y;};
     window.worldCheck={api,input,readColors};
     // The ground plane can lie ~33 m under the car here, and ground past the shadow camera's far plane renders as shadowed

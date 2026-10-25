@@ -44,6 +44,7 @@ export function fit(){S.cam.fit(S.T,S.width);}
 // main.js supplies the active camera actions.
 export function setView(v){if(S.editing)v='2d';S.view=v;const on=v==='3d';$('#stage').classList.toggle('v3d',on);$('#view3d').hidden=!on;$('#zView').setAttribute('aria-pressed',String(on));
   $('#camera3d').hidden=!on;
+  $('#height3d').hidden=!on||!new Set(['overview']).has(S.cam3d.mode);
   renderTraceUI();
   for(const b of ['#zIn','#zOut','#zFit'])$(b).disabled=on&&S.cam3d.mode!=='overview';$('#zFollow').disabled=on;}
 export function setFollow(f){S.follow=f;$('#zFollow').setAttribute('aria-pressed',String(f));if(f)S.followZ=Math.max(S.cam.z,7);} // a paused car can be followed too

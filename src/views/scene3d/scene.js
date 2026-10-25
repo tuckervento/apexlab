@@ -1,4 +1,5 @@
 import * as THREE from '../../../vendor/three-0.186.1/build/three.module.js';
+import { scaledHeight, scaledPitch } from './heights.js';
 import { findCorners } from '../map2d/map.js';
 import { startBand, gantry, boardPlacements, signPlacements, labelPlanes, labelAtlas, markerPosts } from './markings.js';
 import { dataToThree, stationFrames } from './frame.js';
@@ -17,6 +18,8 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   const renderer=new THREE.WebGLRenderer({canvas,context,antialias:true,
     reversedDepthBuffer:depth==='reversed',logarithmicDepthBuffer:depth==='log'});
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(),target=new THREE.Vector3();
+  const world=new THREE.Group();world.name='heightWorld';scene.add(world);
+  let heightScale=1,heightBase=0;
   scene.background=new THREE.Color(pal.colors.sky3d);
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
   // Neutral fill keeps dark palettes readable; oblique sun separates slopes without washing out the road.
@@ -32,7 +35,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function fitShadow(){
     let top=-Infinity;for(const z of T.z)top=Math.max(top,z);
     const d=sunOffset.length(),c=sunOffset.y/d,box=Math.hypot(shadow.camera.right,shadow.camera.top)*Math.sqrt(1-c*c)/c;
-    shadow.camera.far=d+(top-groundHeight(T)+2)/c+box;shadow.camera.updateProjectionMatrix();
+    shadow.camera.far=d+((top-groundHeight(T))*heightScale+2)/c+box;shadow.camera.updateProjectionMatrix();
   }
   let track=null,line=null,ghostLine=null,car=null,ghostCar=null,T=null,disp=null,g=null,mode='speed';
   function geometry(data){
@@ -40,12 +43,12 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     for(const name of ['position','normal','color'])if(data[name])geo.setAttribute(name,new THREE.BufferAttribute(data[name],3));
     geo.setIndex(new THREE.BufferAttribute(data.index,1));return geo;
   }
-  function remove(mesh){if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}}
+  function remove(mesh){if(mesh){mesh.removeFromParent();mesh.geometry.dispose();mesh.material.dispose();}}
   function ribbon(data,ghost){
     const material=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,
       polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,
       transparent:ghost,opacity:ghost?0.4:1,depthWrite:!ghost,forceSinglePass:true});
-    const mesh=new THREE.Mesh(geometry(data),material);mesh.renderOrder=ghost?2:1;scene.add(mesh);return mesh;
+    const mesh=new THREE.Mesh(geometry(data),material);mesh.renderOrder=ghost?2:1;world.add(mesh);return mesh;
   }
   function recolor(mesh,colors){mesh.geometry.attributes.color.array.set(colors);mesh.geometry.attributes.color.needsUpdate=true;}
   function tintCar(group,color){if(group)group.traverse(o=>{if(o.isMesh&&o.name==='body')o.material.color.setStyle(color);});}
@@ -56,7 +59,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     size=worldSize(track.geometry.attributes.position.array);
     function mesh(data,name){
       const m=new THREE.Mesh(geometry(data),new THREE.MeshStandardMaterial({color:pal.colors.ground3d,flatShading:true,side:THREE.DoubleSide}));
-      m.name=name;m.receiveShadow=true;scene.add(m);return m;
+      m.name=name;m.receiveShadow=true;world.add(m);return m;
     }
     ground=mesh(groundPlane(T,8*size),'ground');skirt=mesh(skirts(T,stationFrames(T)),'skirts');
     scene.fog=new THREE.Fog(scene.background,size,2*size);scene.fog.color.copy(scene.background);
@@ -72,7 +75,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     kerbMesh=new THREE.Mesh(geometry(kerbs(T,stationFrames(T),corners,{pal})),
       new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,
         polygonOffset:true,polygonOffsetFactor:-0.5,polygonOffsetUnits:-0.5}));
-    kerbMesh.name='kerbs';kerbMesh.renderOrder=0.5;scene.add(kerbMesh);
+    kerbMesh.name='kerbs';kerbMesh.renderOrder=0.5;world.add(kerbMesh);
   }
   function recolorKerbs(){
     if(!kerbMesh)return;
@@ -82,7 +85,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   function disposeMarkings(){
     if(!markings)return;
     markings.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){o.material.map?.dispose();o.material.dispose();}});
-    scene.remove(markings);markings=null;
+    markings.removeFromParent();markings=null;
   }
   function paintLabels(mesh){
     const {canvas,labels,tiles}=mesh.userData,g=canvas.getContext('2d');
@@ -105,7 +108,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
   }
   function buildMarkings(){
     disposeMarkings();if(!T)return;
-    markings=new THREE.Group();scene.add(markings);
+    markings=new THREE.Group();world.add(markings);
     const corners=findCorners(T),f=stationFrames(T);
     for(const [name,data] of [['startBand',startBand(T,f)],['gantry',gantry(T,f)]]){
       const mesh=new THREE.Mesh(geometry(data),new THREE.MeshBasicMaterial({vertexColors:name==='startBand',side:THREE.DoubleSide}));
@@ -127,10 +130,44 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     }
     themeMarkings();
   }
+  let rigidHeights=[];
+  function rebuildHeights(){
+    heightBase=T?groundHeight(T):0;rigidHeights=[];
+    markings?.traverse(o=>{
+      if(!o.isMesh||(!o.userData.labels&&o.name!=='gantry'))return;
+      const a=o.geometry.attributes.position,source=a.array.slice(),anchors=new Float64Array(a.count);
+      for(let i=0;i<a.count;i++)anchors[i]=o.name==='gantry'?T.z[0]:(source[12*Math.floor(i/4)+1]+source[12*Math.floor(i/4)+7])/2;
+      rigidHeights.push({o,source,anchors});
+    });
+    applyHeights();
+  }
+  function applyHeights(){
+    world.scale.y=heightScale;world.position.y=heightBase*(1-heightScale);
+    for(const {o,source,anchors} of rigidHeights){
+      const a=o.geometry.attributes.position;
+      for(let i=0;i<a.count;i++)a.array[3*i+1]=anchors[i]+(source[3*i+1]-anchors[i])/heightScale;
+      a.needsUpdate=true;o.geometry.computeBoundingSphere();
+    }
+    if(T)fitShadow();
+  }
+  function setHeightScale(e){
+    if(!Number.isFinite(e)||e<1)throw new RangeError('Height scale must be finite and >= 1');
+    if(e===heightScale)return;heightScale=e;applyHeights();
+  }
+  function placeHeight(group){
+    if(group?.visible){
+      group.position.y=scaledHeight(group.position.y,heightScale,heightBase);
+      group.rotation.z=scaledPitch(group.rotation.z,heightScale);
+    }
+  }
+  function frameHeights(){
+    placeHeight(car);placeHeight(ghostCar);placeHeight(traceCar);
+    if(car?.visible){sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}
+  }
   const projected=new THREE.Vector3();
   let cssWidth=1,cssHeight=1;
   function project(point,out){
-    projected.fromArray(point).applyMatrix4(camera.matrixWorldInverse);
+    projected.fromArray(point);projected.y=scaledHeight(projected.y,heightScale,heightBase);projected.applyMatrix4(camera.matrixWorldInverse);
     const front=projected.z<0;projected.applyMatrix4(camera.projectionMatrix);
     out.x=(projected.x+1)*cssWidth/2;out.y=(1-projected.y)*cssHeight/2;
     out.visible=front&&Math.abs(projected.x)<=1&&Math.abs(projected.y)<=1&&Math.abs(projected.z)<=1;return out;
@@ -142,7 +179,7 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     failMarker=new THREE.Mesh(new THREE.RingGeometry(r-0.15,r+0.15,48),
       new THREE.MeshBasicMaterial({color:pal.colors.accent,side:THREE.DoubleSide,depthTest:false}));
     failMarker.name='failMarker';failMarker.rotation.x=-Math.PI/2;
-    failMarker.position.fromArray(dataToThree(T.cx[i],T.cy[i],T.z[i]));failMarker.renderOrder=5;scene.add(failMarker);
+    failMarker.position.fromArray(dataToThree(T.cx[i],T.cy[i],T.z[i]));failMarker.renderOrder=5;world.add(failMarker);
   }
   function themeFailMarker(){if(failMarker)failMarker.material.color.setStyle(pal.colors.accent);}
   function setTrack(value){
@@ -150,11 +187,11 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     T=value;remove(track);track=null;if(!T){disposeWorld();disposeKerbs();disposeMarkings();return;}
     const data=trackRibbon(T,stationFrames(T),{heightColors:!T.flat,pal});
     track=new THREE.Mesh(geometry(data),new THREE.MeshStandardMaterial({color:data.color?0xffffff:pal.colors.track,
-      vertexColors:!!data.color,flatShading:true,side:THREE.DoubleSide}));track.receiveShadow=true;scene.add(track);
+      vertexColors:!!data.color,flatShading:true,side:THREE.DoubleSide}));track.name='road';track.receiveShadow=true;world.add(track);
     buildWorld();
     buildKerbs();
     buildMarkings();
-    fitShadow();
+    rebuildHeights();
   }
   function setLine(value,colorMode=mode,palette=pal){
     disp=value;mode=colorMode;pal=palette;remove(line);line=null;
@@ -201,9 +238,10 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     frameTrace(input.trace);
     if(car){car.visible=!!input.car;if(input.car){placeCar(car,input.car);sun.target.position.copy(car.position);sun.position.copy(car.position).add(sunOffset);}}
     if(ghostCar){ghostCar.visible=!!input.ghost;if(input.ghost)placeCar(ghostCar,input.ghost);}
+    frameHeights();
     const v=input.view;camera.position.fromArray(v.position);camera.up.fromArray(v.up);target.fromArray(v.target);camera.lookAt(target);
     if(camera.fov!==v.fovDeg||camera.near!==v.near||camera.far!==v.far){camera.fov=v.fovDeg;camera.near=v.near;camera.far=v.far;camera.updateProjectionMatrix();}
-    if(scene.fog)fogRange(track.geometry.attributes.position.array,size,v,scene.fog);
+    if(scene.fog)fogRange(track.geometry.attributes.position.array,size,v,scene.fog,heightScale,heightBase);
     renderer.render(scene,camera);
   }
   function lost(event){event.preventDefault();onLost(event);}
@@ -218,5 +256,5 @@ export function createScene3d(canvas,pal,{onLost=()=>{},forceLogDepth=false}={})
     setFailMarker(null);
     remove(track);remove(line);remove(ghostLine);removeCar(car);removeCar(ghostCar);sun.shadow.dispose();renderer.dispose();
   }
-  return {project,setFailMarker,setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
+  return {setHeightScale,project,setFailMarker,setTrack,setLine,setGhost,setCars,setTheme,resize,frame,info,dispose,_debug:{renderer,scene}};
 }
