@@ -1,11 +1,11 @@
 # STATUS
 
-_Last updated: 2026-10-24 (Wave A: 0.1, 0.2, 0.3, 0.5, 1.6, 2.5, 5.2)_
+_Last updated: 2026-10-25 (Wave B: 0.4, 5.1)_
 
 ## Snapshot
 
-7 of 33 tasks done (Wave A), merged to `main` 2026-10-24: 281/281 tests, physics hash current, all 7 scenarios exit 0.
-Next: Wave B (0.4, 5.1).
+9 of 33 tasks done (Waves A and B), all merged to `main`; on `main` 285/285 tests pass and the physics hash is
+current. Next: Wave C (1.1–1.5).
 
 ## Completed
 
@@ -35,10 +35,18 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
   peak-roll check.
 - [x] 5.2 `traceClock` (Codex) — done 2026-10-24 — `3d/5.2` `f9158a7` — verified: `tests/trace-clock.test.mjs` 3 tests
   pass; full suite 266/266; teeth: no alignment subtraction / forced `ended:false` each fail.
+- [x] 0.4 world-frame helper and station frames (Codex) — done 2026-10-25 — `3d/0.4` `20bde7f` — verified:
+  `tests/scene3d-frame.test.mjs` 2 tests pass; full suite 283/283; coordinator's teeth (`[x,y,z]` in place of `[x,z,y]`
+  in a copy of `frame.js`, test copy pointed at it) fail 2/2.
+- [x] 5.1 `smoothPose` for traces (Codex) — done 2026-10-25 — `3d/5.1` `1970955` — verified:
+  `tests/smooth-pose.test.mjs` 6 tests pass; full suite 283/283; golden/playback diffs empty; skidpad mean radius error
+  at mid-samples 0.006 m smooth vs 0.488 m linear; coordinator's teeth (chord tangents, i.e. linear, in an `APEX_SRC`
+  copy) fail the skidpad-midpoint test.
 
 ## In Progress
 
 ## Blocked
+
 
 
 ## Deviations & Decisions
@@ -80,6 +88,20 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 - 2026-10-24: `.gitignore` added with `.claude/worktrees/` only (not all of `.claude/`, which may later hold project
   settings).
 
+- 2026-10-25: Wave B ran as one parallel cycle of 2 Codex tasks (Q's request). It merged to `main` (`--no-ff`, 0.4 then
+  5.1) with no conflicts, and the merged tree is identical to the tested trial tree.
+- 0.4 resolved what PLAN.md left open:
+  - Station frames use the **horizontal** plan tangent, not the grade.
+  - Unbanked `up` is world vertical, three `(0, 1, 0)`.
+  - Positive bank lowers the right (`+n`) edge, matching `attitude.js`'s roll, so a right-hand bend (k > 0) takes a
+    negative bank.
+  - Frames are packed `Float64Array`s, 3 per station.
+  - The function is named `dataToThree(x, y, z) → [x, z, y]`.
+  - The test uses a synthetic 3-station track; 1.1's mesh tests cover real presets.
+- 5.1: trace Hermites are in **time**: the x/y tangents are the recorded body velocity rotated by `psi`, the `psi`
+  tangent is `r`, and `z` tangents are time central differences of `tr.z`. A trace pose has `pitch` and `tangent` but
+  still no `grade`. `smooth-pose.test.mjs`'s "trace input throws" assertion was replaced by trace tests.
+
 ## Next Up
 
-- Wave B: 0.4 (frame helper; depends on 0.3) and 5.1 (smooth trace pose; depends on 0.1, 0.2). Both go to Codex.
+- Wave C: 1.1, 1.2, 1.3, 1.4 (each needs 0.4) and 1.5 (needs 0.1, 0.4). Codex by default.
