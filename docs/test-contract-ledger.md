@@ -452,3 +452,70 @@ Additional migration evidence: `src/app/runfile.js:88`, omit synthesized v1 pz s
 Validation: `node --test tests/` passed 540 tests in 30 suites: 540 passed, 0 failed, cancelled, skipped or todo.
 The focused run-file test passed 19 tests. `git diff --check` passed; `git diff -- src` was empty.
 Only `tests/runfile.test.mjs` and this ledger section changed; no production files, goldens or hashes changed.
+
+## 5.3 — fixed-line and dynamic-check contracts
+
+Original line numbers refer to the files before task 5.3. All original fixed-line property assertions
+(length, every offset bound, faster than centreline, fraction [0.85, 1], utilisation ≤ 1.15, clean final lap)
+remain over every one of the 30 immutable 4.1 cases. Skidpad `property` and solver revision/fraction/pause
+checks remain. Only the dynamic-check subtest in `solver.test.mjs` changed.
+
+- **Old:** `tests/golden.test.mjs:17–26`, runtime-gated exact centreline laps for all cars × circuits.
+  **Promise:** preset centreline laps remain finite, positive and usable; historical bits are incidental.
+  **Replacement:** `centreline laps: all preset cars × circuits` exercises the live flat/hilly preset matrix,
+  requiring finite geometry/speeds and a positive lap below the dynamic model's 900 s integration horizon.
+  Each immutable fixed-line case also checks its centreline under that ceiling.
+  **Fault shown:** `src/core/lap.js:154`, start the lap sum at 1000 instead of 0; fails
+  “Road car, Harrow Ring, hills 0: positive centreline lap within the dynamic lap horizon”.
+
+- **Old:** `tests/golden.test.mjs:50–54`, runtime-gated exact lap and full dynamic summary for each of 30 cases.
+  **Promise:** model/driver sanity across cars and circuits, including clean completion; exact historical
+  continuous errors, times and quantised endpoints are not requirements.
+  **Replacement:** `fixed line: <case>` retains every original property bound and requires termination within
+  eight probes, tracking error within the usable road span plus 0.5 m, edge overshoot ≤ 0.5 m, nominal sideslip
+  deviation ≤ 0.1 rad, positive completion within 900 s, and finite lap/geometry/speed/utilisation/nominal/trace
+  outputs. Solver snapshots must expose warning counts consistent with the lap's speed floor and pass load
+  factors, calculated from the documented floor and load equation without calling the production load helper.
+  **Fault shown:** `src/dynamics/check.js:24`, finish the first probe at fraction 1 before seeking a clean run;
+  fails “final lap at frac 1 not clean”. `src/drivers/reference.js:3`, scale all four steering feedback gains
+  by 0.3; fails “dynamic check fraction 0.828125 outside [0.85, 1]”. `src/solver/solver.js:152`, publish
+  `stall:S.stall+1`; fails “snapshot warnings describe the lap floor and pass load clamps”.
+
+- **Old:** `tests/solver.test.mjs:92–97`, dynamic-check runtime gate and exact `dynResultSummary` equality.
+  **Promise:** the protocol delivers a coherent passing result and, if present, a genuinely failing bracket.
+  **Replacement:** `clean bracket` requires integer iterations in [1, 8], a clean recorded final run,
+  clean replay at the reported fraction with matching recorded time and station speeds, and a failing bracket
+  above that fraction whose replay fails completion/no-spin/no-trouble and matches recorded spin/first-trouble
+  metadata. These are same-run consistency checks; no historical expected outputs are used.
+  **Fault shown:** premature completion at `src/dynamics/check.js:24` fails
+  “reported fraction has a clean recorded final run”. At `src/dynamics/check.js:34`, report `iters:this.iter+8`
+  → “dynamic check finishes within eight probes”; report `frac:this.lo-0.01`
+  → “recorded final run is at the reported fraction”; change the failing fraction to `this.lo+0.000001`
+  → “recorded failing bracket fails the clean-run criterion”.
+
+- **Old:** `tests/skidpad.test.mjs:19–23`, runtime-gated exact completion time/error summary at 90/95/98% v².
+  **Promise:** the reference driver cleanly tracks the circle with mean absolute error ≤ 0.2 m (§8.4).
+  **Replacement:** retain `property` unchanged; `clean tracking` also requires finite outputs and positive
+  completion within the 900 s dynamic horizon, with clean status and the existing 0.2 m mean-error limit.
+  **Fault shown:** `src/drivers/reference.js:3`, gains 15/2.5/0.3/0.01 → 4.5/0.75/0.09/0.003; at 98% v²,
+  fails “skidpad tracks cleanly within 0.2 m mean error” (also fails the retained clean-lap property).
+
+Budget rationale and observations (Node v26.12.1 / V8 14.6.202.34-node.40): eight probes come from two
+endpoint checks plus ceil(log2(0.20/0.004)) = six bisections, not measured effort. Road tracking allowance
+is width − (car track + 0.25 m) + 0.5 m: two positions within the usable road span, allowing the documented
+edge tolerance. Edge/sideslip thresholds come from ARCHITECTURE §6; pace/utilisation bounds are the unchanged
+§8.5/8.6 policies. The 900 s ceiling is the existing `dynLap` horizon, expressing supported-circuit usability,
+not padded observed laps. Observed fixture laps were 31.1772–109.5676 s, centrelines 36.1669–122.9899 s,
+fractions 0.9125–1 and utilisation 1.039–1.117; skidpad mean errors were 0.0590/0.0675/0.0766 m.
+The mutations above demonstrate out-of-budget iterations, lap duration, reduced pace and unclean tracking.
+No runtime gate is needed: fixture inputs and documented policy supply the expectations. Removing the gates
+has no separate fault; the replacements catch these faults without runtime errors.
+
+Standalone file timings on this runtime: old `golden.test.mjs` 4636.736125 ms; new `fixed-line.test.mjs`
+6188.114375 ms (about 33.5% longer, including live preset centrelines and snapshot warning/finite checks).
+Every mutation used a disposable `APEX_SRC` copy, removed in `finally`; production source was never edited.
+All reported failures were intended assertions, not syntax/import/runtime/hash failures.
+
+Validation: `node --test tests/` passed 510 tests in 0 suites: 510 passed, 0 failed, cancelled, skipped or todo
+(32353.947292 ms). Focused solver validation passed all 22 tests. `git diff --check` passed and
+`git diff -- src` was empty. Only the five authorized task paths changed; no commits were made.

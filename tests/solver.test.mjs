@@ -89,11 +89,22 @@ test(`solver: dynamic check through the protocol, ${CAR}, ${TRACK.name}`, async 
     assert.ok(r.result.frac >= 0.85 && r.result.frac <= 1, `frac ${r.result.frac}`);
     assert.equal(b.last('progress').running, false, 'dynCheck should leave the search paused');
   });
-  await t.test('golden', () => {
-    const g = loadGolden();
-    assertRuntime(g);
-    const { lap, off, N, centreLap, evals, steps, ...fx } = g.combos[comboKey(CAR, TRACK.name)];
-    assert.deepEqual(dynResultSummary(r.result), fx);
+  await t.test('clean bracket', () => {
+    const d = r.result.dyn, clean = x => x && x.complete && !x.spun && x.trouble.length === 0;
+    // Two endpoint probes, then ceil(log2(0.20/0.004)) = 6 halvings.
+    assert.ok(Number.isInteger(r.result.iters) && r.result.iters >= 1 && r.result.iters <= 8, 'dynamic check finishes within eight probes');
+    assert.ok(clean(d), 'reported fraction has a clean recorded final run');
+    const dc = new core.DynCheck(b.s.T, b.s.car, b.s.pub), pass = dc.lap(r.result.frac, true);
+    assert.ok(clean(pass), 'reported fraction replays cleanly');
+    assert.equal(d.t, pass.t, 'recorded final run is at the reported fraction');
+    assert.deepEqual(d.stV, pass.stV, 'recorded speeds are at the reported fraction');
+    if (r.result.fail) {
+      const f = r.result.fail, bad = dc.lap(f.fr, false);
+      assert.ok(f.fr > r.result.frac && f.fr <= 1, 'failing bracket is above the passing fraction');
+      assert.ok(!clean(bad), 'recorded failing bracket fails the clean-run criterion');
+      assert.equal(f.spun, bad.spun, 'failing bracket records spin status');
+      assert.equal(f.at, bad.trouble.length ? bad.trouble[0] : bad.endIdx, 'failing bracket records the first trouble station');
+    }
   });
 });
 

@@ -114,6 +114,9 @@ alongside.
 
 ## In Progress
 
+- Wave E (2026-10-25), plan approved by Q. Stage 1: 5.1 (budget measurements; **stops for Q's approval**) and 5.3, in
+  Codex. Stage 2: 5.2 after Q approves the numbers and 5.3 merges.
+
 ## Blocked
 
 ## Deviations & Decisions
