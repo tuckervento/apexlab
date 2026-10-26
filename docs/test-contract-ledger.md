@@ -213,3 +213,7 @@ guard found two matches, before executing a mutated test; it is not counted as m
 
 Validation: `node --test tests/` passed 452 tests in 30 suites, with 0 failed, cancelled, skipped or todo.
 `git diff -- src` was empty; no production files or goldens were changed.
+
+## 3.6 — describe adapter contract
+
+_(pending)_

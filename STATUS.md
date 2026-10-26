@@ -63,6 +63,9 @@ Next: wave C (3.1–3.6).
 
 ## In Progress
 
+- Wave C (2026-10-25): 3.1–3.6 in Codex (worktrees `../apexlab-wt/tc-3.x`, branches `tc/3.x`); plan approved by Q.
+  Six jobs at once (above PLAN's ~4): Node-only review is light.
+
 ## Blocked
 
 ## Deviations & Decisions
