@@ -216,4 +216,103 @@ Validation: `node --test tests/` passed 452 tests in 30 suites, with 0 failed, c
 
 ## 3.6 — describe adapter contract
 
-_(pending)_
+Replaced only the per-preset view-parity group; the property, freeze/ownership and rpm tests remain.
+All expectations below use hand-authored SI inputs in `describeCar synthetic units and table samples`
+(plus the named synthetic EV/ownership cases). Each former `same` call included its helper’s length and
+element assertions (`tests/describe.test.mjs:13–14`); its replacement checks shape and explicit samples.
+One live ICE and one live EV adapter case check shapes and finiteness, allowing NaN outside a gear’s rpm range.
+
+- **Old:** `tests/describe.test.mjs:22`, rounded power/weight matched renderer formula.
+  **Promise:** Unrounded power/weight is W/kg (= kW/t).
+  **Replacement:** Explicit 123.456 W/kg, with no rounding.
+  **Fault shown:** `src/core/describe.js:21`, `p.Pmax/p.mass` → `Math.round(p.Pmax/p.mass)`; fails “power/weight W/kg (kW/t), unrounded”.
+
+- **Old:** `tests/describe.test.mjs:23`, top speed matched car.vTop.
+  **Promise:** Top speed remains in m/s.
+  **Replacement:** Explicit 62.5 m/s.
+  **Fault shown:** `src/core/describe.js:21`, `vTop:car.vTop` → `vTop:car.vTop*3.6`; fails “top speed m/s”.
+
+- **Old:** `tests/describe.test.mjs:26`, lateral speed labels matched 100/200.
+  **Promise:** Lateral balance labels are 100 and 200 km/h.
+  **Replacement:** Explicit labels [100, 200] km/h.
+  **Fault shown:** `src/core/describe.js:9`, `LAT_REF_KMH=[100,200]` → `LAT_REF_KMH=[90,200]`; fails “lateral speed labels km/h”.
+
+- **Old:** `tests/describe.test.mjs:27`, lateral g matched renderer interpolation formula.
+  **Promise:** Lateral balance interpolates acceleration and reports g.
+  **Replacement:** Hand-set neighboring acceleration nodes interpolate to 2 g at 100 and 4 g at 200 km/h.
+  **Fault shown:** `src/core/describe.js:18`, `tabAt(car.alat,kmh/3.6)/G` → `tabAt(car.alat,kmh/3.6)`; fails “lateral g at 100 km/h”.
+
+- **Old:** `tests/describe.test.mjs:28`, lateral axle matched renderer rounded-index formula.
+  **Promise:** Lateral axle uses the nearest speed node and front/rear flag.
+  **Replacement:** Hand-set flags give [front, rear] at nearest nodes 56 and 111.
+  **Fault shown:** `src/core/describe.js:18`, `car.limF[ix(kmh)]` → `car.limF[Math.floor(kmh/3.6/VSTEP)]`; fails “nearest lateral limiting axle”.
+
+- **Old:** `tests/describe.test.mjs:31`, braking label matched 150.
+  **Promise:** Braking balance label is 150 km/h.
+  **Replacement:** Explicit 150 km/h label.
+  **Fault shown:** `src/core/describe.js:9`, `BRAKE_REF_KMH=150` → `BRAKE_REF_KMH=140`; fails “braking speed label km/h”.
+
+- **Old:** `tests/describe.test.mjs:32`, braking g matched renderer interpolation formula.
+  **Promise:** Braking balance interpolates acceleration and reports g.
+  **Replacement:** Hand-set acceleration nodes interpolate to 3 g at 150 km/h.
+  **Fault shown:** `src/core/describe.js:19`, `tabAt(car.brk,BRAKE_REF_KMH/3.6)/G` → `tabAt(car.brk,BRAKE_REF_KMH/3.6)`; fails “braking g at 150 km/h”.
+
+- **Old:** `tests/describe.test.mjs:33`, braking axle matched renderer rounded-index formula.
+  **Promise:** Braking reports the first axle to lock at the nearest speed node.
+  **Replacement:** Hand-set flag gives front at nearest node 83.
+  **Fault shown:** `src/core/describe.js:19`, `car.brkF[ix(BRAKE_REF_KMH)]` → `car.brkF[Math.ceil(BRAKE_REF_KMH/3.6/VSTEP)]`; fails “nearest braking locking axle”.
+
+- **Old:** `tests/describe.test.mjs:36`, drive array matched renderer mass-times-acceleration formula.
+  **Promise:** Drive acceleration becomes force in N.
+  **Replacement:** Explicit [2000, 4000] N from 1000 kg and [2, 4] m/s²; grid length 221.
+  **Fault shown:** `src/core/describe.js:15`, `drive[i]=car.drv[i]*m` → `drive[i]=car.drv[i]`; fails “drive acceleration converted to N”.
+
+- **Old:** `tests/describe.test.mjs:37`, traction array matched renderer mass-times-acceleration formula.
+  **Promise:** Traction acceleration becomes force in N.
+  **Replacement:** Explicit [3000, 5000] N from 1000 kg and [3, 5] m/s²; grid length 221.
+  **Fault shown:** `src/core/describe.js:15`, `traction[i]=car.trc[i]*m` → `traction[i]=car.trc[i]`; fails “traction acceleration converted to N”.
+
+- **Old:** `tests/describe.test.mjs:38`, resistance array matched renderer drag-plus-rolling formula.
+  **Promise:** Resistance combines rolling force and quadratic drag at grid speeds.
+  **Replacement:** Explicit 117.72, 240.22 and 607.72 N at 0, 10 and 20 m/s; grid length 221.
+  **Fault shown:** `src/core/describe.js:15`, `0.5*RHO*p.cda*(i*VSTEP)**2` → `0.5*RHO*p.cda*(i*VSTEP)`; fails “resistance at 10 m/s N”.
+
+- **Old:** `tests/describe.test.mjs:39`, gear line count matched renderer powertrain branch.
+  **Promise:** ICE exposes per-gear force lines.
+  **Replacement:** Explicit two ICE gear lines and zero EV gear lines.
+  **Fault shown:** `src/core/describe.js:16`, `p.pt==='EV'?[]:car.gearF.map(gf=>Float64Array.from(gf))` → `[]`; fails “ICE gear force lines”.
+
+- **Old:** `tests/describe.test.mjs:40`, gear force arrays matched CarModel tables.
+  **Promise:** Per-gear force samples stay in N and preserve unavailable-rpm NaNs.
+  **Replacement:** Explicit [NaN, 4000, 3200] N samples preserve unavailable-rpm NaN and force units; each gear grid length 221.
+  **Fault shown:** `src/core/describe.js:16`, `Float64Array.from(gf)` → `Float64Array.from(gf, v=>v*2)`; fails “gear force samples N and unavailable rpm”.
+
+- **Old:** `tests/describe.test.mjs:42`, selected gear array matched CarModel table.
+  **Promise:** Selected gear samples preserve zero and numbered gears.
+  **Replacement:** Explicit selected gears [0, 2]; grid length 221.
+  **Fault shown:** `src/core/describe.js:17`, `Int8Array.from(car.gear)` → `new Int8Array(NT)`; fails “selected gear samples”.
+
+- **Old:** `tests/describe.test.mjs:43`, vstep matched VSTEP.
+  **Promise:** Speed grid step is in m/s.
+  **Replacement:** Explicit 0.5 m/s grid step.
+  **Fault shown:** `src/core/describe.js:20`, `vstep:VSTEP` → `vstep:VSTEP*3.6`; fails “speed grid step m/s”.
+
+- **Old:** `tests/describe.test.mjs:43`, n matched NT.
+  **Promise:** Speed grid count includes its final node.
+  **Replacement:** Explicit 221 speed nodes.
+  **Fault shown:** `src/core/describe.js:20`, `n:NT` → `n:NT-1`; fails “speed grid sample count”.
+
+Additional teeth for EV availability, shape, rolling force and ownership:
+
+- `src/core/describe.js:16`, `p.pt==='EV'` → `p.pt==='NO_EV'`; fails “EV has no gear force lines”.
+- `src/core/describe.js:14`, `drive=new Float64Array(NT)` → `drive=new Float64Array(NT-1)`; fails “drive grid length”.
+- `src/core/describe.js:15`, `+m*G*CRR` → `+0`; fails “rolling resistance at rest N”.
+- `src/core/describe.js:17`, `Int8Array.from(car.gear)` → `car.gear`; fails “gear is a copy”.
+- `src/core/describe.js:16`, `gf=>Float64Array.from(gf)` → `gf=>gf`; fails “gear 1 is a copy”.
+
+All 21 mutations ran separately through an `APEX_SRC` temporary copy, each exited 1 with the named
+assertion failure (no syntax/import/runtime failure); the copy was deleted. Production source was never edited.
+
+
+Validation: `node --test tests/` passed 456 tests in 30 suites: 456 passed, 0 failed, cancelled, skipped or todo.
+`git diff -- src` was empty; only this ledger section and `tests/describe.test.mjs` changed.
