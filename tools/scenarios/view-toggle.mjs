@@ -2,25 +2,19 @@
 // inset drawn with S.camMini; S.cam comes back untouched; Edit forces 2D; at 390 px the inset clears the zoom buttons and
 // the lap readout. Every check should be true.
 //
-// 2D unchanged: with 3D never toggled, the page must be byte-identical to main's. The scenario first freezes the page
-// (solver paused on the centreline lap, replay paused at a fixed animT, the camera fitted, the search history and lap
-// count blanked, DPR 1) and screenshots it at 1280×800 and 390×844. VIEW_TOGGLE_SAVE=<prefix> writes <prefix>-1280.png
-// and <prefix>-390.png and stops (run it from a checkout of main: cdp.mjs serves the tree it is started in);
-// VIEW_TOGGLE_BASELINE=<prefix> compares against them byte for byte:
-//   git worktree add /tmp/apex-main main
-//   (cd /tmp/apex-main && VIEW_TOGGLE_SAVE=/tmp/main node "$OLDPWD/tools/cdp.mjs" "$OLDPWD/tools/scenarios/view-toggle.mjs")
-//   VIEW_TOGGLE_BASELINE=/tmp/main node tools/cdp.mjs tools/scenarios/view-toggle.mjs
-// The 3D toggle button itself is new pixels, so it is made invisible (visibility, not display: the zoom column keeps its
-// layout) for those screenshots. Without VIEW_TOGGLE_BASELINE the comparison is skipped and says so.
-import { readFileSync, writeFileSync } from 'node:fs';
-import { diffPng } from '../shot.mjs';
+// The reviewed 2D reference is captured at 1280×800 before opening 3D: solver paused on the centreline, replay paused
+// at a fixed animT, camera fitted, search history and lap count blanked, DPR 1. Keep the default tolerant comparison
+// for font rasterisation drift. The 3D button is invisible for this shot, preserving the zoom column's layout.
+import { fileURLToPath } from 'node:url';
+import { compareToReference, screenshot } from '../shot.mjs';
 
 export const options = {webgl:true};
 
 const frames = 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))';
+const ref = name => fileURLToPath(new URL('./ref/' + name, import.meta.url));
 
-export default async ({ run, sleep, call }) => {
-  const checks = {}, seen = {}, notes = {};
+export default async ctx => {
+  const { run, sleep, call } = ctx, checks = {}, seen = {};
   const metrics = (width, height) => call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
 
   // ---------- freeze the page into a state that doesn't depend on timing
@@ -37,26 +31,14 @@ export default async ({ run, sleep, call }) => {
     await document.fonts.ready;
     return { running: S.running, lineRev: S.disp.lineRev, lap: S.disp.t, status: q('#status').textContent };
   })()`);
-  // the viewport, at desktop and phone width (the document scrolls by body's 8 px margin, and at phone width by the
-  // panel below the stage; growing the viewport to capture beyond it would resize the stage and clear the map)
-  const shots = {};
+  // Capture the viewport: growing it to include the scrolling document would resize the stage and clear the map.
   await run(`(() => { const b = document.querySelector('#zView'); if (b) b.style.visibility = 'hidden'; })()`);
-  for (const [w, h] of [[1280, 800], [390, 844]]) {
-    await metrics(w, h); await sleep(300); await run(`document.querySelector('#zFit').click()`); await run(frames);
-    shots[w] = Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).result.data, 'base64');
-  }
+  await run(`document.querySelector('#zFit').click()`); await run(frames);
+  const { png } = await screenshot(ctx);
+  seen.reference2d = await compareToReference(ctx, png, ref('view-toggle-2d.png'));
+  checks.reference2d = seen.reference2d.ok && !seen.reference2d.wrote;
   await run(`(() => { const b = document.querySelector('#zView'); if (b) b.style.visibility = ''; })()`);
-  await metrics(1280, 800); await sleep(300); await run(`document.querySelector('#zFit').click()`);
-  const SAVE = process.env.VIEW_TOGGLE_SAVE, BASE = process.env.VIEW_TOGGLE_BASELINE; // path prefixes
-  if (SAVE) { for (const w in shots) writeFileSync(`${SAVE}-${w}.png`, shots[w]); return { diagnostic: true, saved: SAVE, bytes: Object.fromEntries(Object.entries(shots).map(([w, b]) => [w, b.length])), seen }; }
   checks.frozen = !seen.freeze.running;
-  if (BASE) for (const w in shots) {
-    const base = readFileSync(`${BASE}-${w}.png`);
-    checks['unchanged2d' + w] = base.equals(shots[w]); seen['bytes' + w] = { baseline: base.length, now: shots[w].length };
-    // On a mismatch keep the evidence: the actual image next to the baseline, and how many pixels differ.
-    if (!checks['unchanged2d' + w]) { const path = `${BASE}-${w}-actual-${Date.now()}.png`; writeFileSync(path, shots[w]);
-      seen['mismatch' + w] = { actual: path, fraction: await diffPng({ run }, base, shots[w], { threshold: 0 }) }; }
-  } else notes.unchanged2d = 'skipped: set VIEW_TOGGLE_BASELINE=<prefix of the pngs saved on main> (see the header)';
 
   // ---------- toggling: #view3d fills the stage, #view becomes the inset, S.cam survives the round trip
   Object.assign(checks, await run(`(async () => {
@@ -120,5 +102,5 @@ export default async ({ run, sleep, call }) => {
     seen['w390h' + h] = r;
     checks['phoneInsetClear' + h] = r.clear.zoom && r.clear.lap && r.clear.legend && r.inStage;
   }
-  return { allTrue: Object.values(checks).every(Boolean), checks, notes, seen };
+  return { allTrue: Object.values(checks).every(Boolean), checks, seen };
 };

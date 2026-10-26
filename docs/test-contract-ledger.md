@@ -649,3 +649,15 @@ additive wall-time savings. Reference searches in tests/tools and all remaining 
 ledger section changed. No commits were made. Execution slips corrected: a trailing blank line in this section
 and an unmatched shell glob when confirming that temporary directories were already absent. A later explicit
 scan confirmed none remained; optional process inspection was denied by the sandbox.
+
+## 6.3 — view-toggle old-checkout PNG workflow
+
+- **Old:** `tools/scenarios/view-toggle.mjs:55`, `unchanged2d1280`: optional byte equality with a 1280×800 PNG from an old checkout of main.
+  **Promise:** preserve the paused, fitted 2D appearance before opening 3D; PNG byte identity to the completed migration's main checkout is incidental.
+  **Replacement:** required `reference2d` compares the deterministic 1280×800 shot with reviewed `ref/view-toggle-2d.png` through `compareToReference`, using default tolerance (`maxFraction: 0.01`) and requiring `ok && !wrote`. Missing references and update runs fail verification. Camera survival, inset click, edit fallback and inset sizing/fit checks remain.
+  **Fault shown:** DID NOT RUN: coordinator generates/reviews the reference with `APEX_UPDATE_REFS=1 node tools/cdp.mjs tools/scenarios/view-toggle.mjs` (expected non-zero), then runs twice without update mode. Browser execution is unavailable to this task.
+
+- **Old:** `tools/scenarios/view-toggle.mjs:55`, `unchanged2d390`: optional byte equality with a 390×844 PNG from an old checkout of main.
+  **Promise:** none unique; exact phone PNG identity was completed-migration evidence. Phone inset control clearance remains a behavioral contract.
+  **Replacement:** no second visual reference needed under §5 / task 6.3's one-reference policy. Retain `phoneInsetClear844` and `phoneInsetClear520`, requiring the inset inside the stage and clear of zoom controls, lap readout and legend at 390 px.
+  **Fault shown:** DID NOT RUN: coordinator temporarily adds `.stage.v3d #view{top:16px;bottom:auto}` inside `index.html`'s existing `@media (max-width:820px)` block (at line 154); the inset then overlaps the zoom column. Expect `"check phoneInsetClear844 is false"` and `"check phoneInsetClear520 is false"`. Restore `index.html` exactly after the run. This is a proposed mutation, not demonstrated evidence.
