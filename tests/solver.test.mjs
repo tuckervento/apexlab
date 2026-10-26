@@ -17,17 +17,14 @@ function boot(hook) {
   return { s, ev, of: type => ev.filter(e => e.type === type), last: type => ev.filter(e => e.type === type).at(-1) };
 }
 const noErrors = ev => assert.deepEqual(ev.filter(e => e.type === 'error'), [], 'solver emitted errors');
-// The line on screen must be one the optimiser accepted: during the polish stage, Optimizer.step() leaves `off`
-// holding the last candidate tried, even when it rejects it and restores the spline coefficients `c`. This observer
-// checks every snapshot published before convergence against the accepted spline, as it is emitted; the test
-// 'publishes only lines the optimiser accepted' reads the tally from the shared converged run.
+// Observe the accepted-line boundary in the same tick as each snapshot, including the clamped final line.
 function acceptedObserver() {
-  const acc = { checked: 0, polish: 0, bad: [] };
+  const acc = { checked: 0, polish: 0, rejected: 0, bad: [] };
   const hook = (e, s) => {
-    if (e.type !== 'snapshot' || s.opt.converged) return;
-    const o = s.opt, N = s.T.N;
+    if (e.type !== 'snapshot') return;
+    const o = s.opt, line = o.current(new Float64Array(s.T.N));
     acc.checked++; if (o.polish) acc.polish++;
-    for (let i = 0; i < N; i++) if (s.pub[i] !== o.spl(i, o.c)) { acc.bad.push({ lineRev: e.lineRev, polish: !!o.polish, station: i }); break; }
+    if (e.line.off.length !== line.length || e.line.off.some((x, i) => !Object.is(x, line[i]))) acc.bad.push({ lineRev: e.lineRev, polish: !!o.polish });
   };
   return { acc, hook };
 }
@@ -39,7 +36,14 @@ function converged() {
   if (!conv) {
     const { acc, hook } = acceptedObserver();
     conv = boot(hook); conv.accepted = acc;
-    conv.s.handle({ type: 'run' }); while (conv.s.tick(20));
+    conv.s.handle({ type: 'run' });
+    const o = conv.s.opt, step = o.step;
+    o.step = function () {
+      const polish = !!this.polish, accepted = step.call(this);
+      if (polish && !accepted && !this.converged) acc.rejected++;
+      return accepted;
+    };
+    while (conv.s.tick(20));
   }
   return conv;
 }
@@ -257,10 +261,12 @@ test('solver: setCar and setTrack with resume start the search; without it they 
 
 // The line on screen must be one the optimiser accepted (see acceptedObserver). Tallied during the shared converged run.
 test('solver: publishes only lines the optimiser accepted', { timeout: 10 * 60 * 1000 }, t => {
-  const { checked, polish, bad } = converged().accepted;
-  t.diagnostic(`snapshots checked=${checked} (polish ${polish})  not accepted=${bad.length} (outside polish ${bad.filter(b => !b.polish).length})`);
+  const b = converged(), { checked, polish, rejected, bad } = b.accepted;
+  t.diagnostic(`snapshots checked=${checked} (polish ${polish}, rejected trials ${rejected})  not accepted=${bad.length} (outside polish ${bad.filter(b => !b.polish).length})`);
   assert.ok(polish > 0, 'no snapshot was published during the polish stage');
-  assert.deepEqual(bad.slice(0, 3), [], `${bad.length} of ${checked} snapshots showed a line the optimiser had not accepted`);
+  assert.equal(checked, b.of('snapshot').length, 'every snapshot was checked, including convergence');
+  assert.ok(rejected > 0, 'the real run rejected a polish candidate');
+  assert.deepEqual(bad, [], 'every snapshot line equals Optimizer.current() at publication');
 });
 
 // Hills through the protocol (elevation P5): a hilly circuit gets a car with load tables (the same params, so the same
@@ -342,7 +348,20 @@ test('solver: a car change mid-polish re-scores from the published line, not a r
   s.handle({ type: 'run' });
   for (let k = 0; k < 2000 && !s.opt.polish; k++) s.tick(20);
   assert.ok(s.opt.polish && !s.opt.converged, 'in the polish stage');
-  let k = 0; while (s.opt.step() && k++ < 5000); // until a candidate is turned down
+  let accepted = 0, rejected = null;
+  for (let k = 0; k < 5000 && !s.opt.converged; k++) {
+    const before = s.opt.current(new Float64Array(s.T.N));
+    if (s.opt.step()) accepted++;
+    else if (accepted && !s.opt.converged && s.opt.off.some((x, i) => x !== before[i])) { rejected = before; break; }
+  }
+  assert.ok(accepted > 0, 'the targeted sequence accepts a polish candidate');
+  assert.ok(rejected, 'the targeted sequence rejects a distinct polish candidate after acceptance');
+  assert.deepEqual(s.opt.current(new Float64Array(s.T.N)), rejected, 'rejection preserves the previously accepted line');
+  const trial = Float64Array.from(s.opt.off);
+  assert.ok(Number.isFinite(core.lapEval(s.T, s.car, trial, core.makeScratch(s.T.N))), 'the rejected trial has a valid lap score');
+  s.publish(true);
+  assert.deepEqual(b.last('snapshot').line.off, rejected, 'publication after rejection shows the previously accepted line');
+  assert.notDeepEqual(b.last('snapshot').line.off, trial, 'publication after rejection excludes the valid rejected trial');
   const shown = Float64Array.from(s.pub);
   assert.ok(s.opt.off.some((x, i) => x !== shown[i]), 'precondition: the working line is not the line on screen');
   s.handle({ type: 'setCar', rev: 3, params: { ...core.CARS[CAR], mass: core.CARS[CAR].mass + 50 } });

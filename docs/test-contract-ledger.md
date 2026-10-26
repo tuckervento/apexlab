@@ -316,3 +316,25 @@ assertion failure (no syntax/import/runtime failure); the copy was deleted. Prod
 
 Validation: `node --test tests/` passed 456 tests in 30 suites: 456 passed, 0 failed, cancelled, skipped or todo.
 `git diff -- src` was empty; only this ledger section and `tests/describe.test.mjs` changed.
+
+
+## 5.4 — accepted-line publication through the boundary
+
+- **Old:** `tests/solver.test.mjs:263` (original), no pre-convergence snapshot differed from the accepted spline,
+  tallied by comparing `Solver.pub` with private `Optimizer.spl(i, c)` in `acceptedObserver`.
+- **Promise:** a published search line is one the optimiser accepted, never a rejected working trial.
+- **Replacement:** `solver: publishes only lines the optimiser accepted` compares every snapshot's `line.off`
+  exactly with `Optimizer.current(out)` in the emission tick, including convergence. Retain the polish-snapshot
+  assertion and require a real polish rejection. The mid-polish car-change test now drives acceptance followed
+  by a distinct rejection, saves the accepted line before the rejected step, and requires both `current()` and
+  the next published payload to preserve it exactly and exclude the rejected trial. Independently scoring the
+  trial confirms it has a finite lap score; a score-only check would not protect this promise. Existing published-
+  and loaded-line car-change seed checks remain.
+- **Fault shown:** `src/solver/solver.js:137`, replace `this.opt.current(new Float64Array(N))` with
+  `Float64Array.from(this.opt.off)` in `publish(true)`. Both targeted tests fail with assertion messages
+  "every snapshot line equals Optimizer.current() at publication" and
+  "publication after rejection shows the previously accepted line". The in-place edit was restored byte for byte
+  in `finally`; `git diff -- src` was empty. Additional fault: in a disposable `APEX_SRC` copy,
+  `src/core/optimiser.js:71`, make `current(out)` immediately copy `off` and return; the targeted sequence fails
+  "rejection preserves the previously accepted line". The copy was deleted. All failures were intended assertion
+  failures, not hash, runtime, syntax or import failures.
