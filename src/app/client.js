@@ -66,13 +66,15 @@ solver.onerror=e=>{
 function onSnapshot(m){
   const d=S.disp;
   if(d&&(m.carRev<d.carRev||m.trackRev<d.trackRev))return; // never step back to an older car or track
-  if(pendingT&&m.trackRev===pendingT.trackRev){
-    S.T=pendingT;pendingT=null;ui.trackArrived();
-    if(S.ghost&&S.ghost.trackRev!==m.trackRev){S.ghost=null;ui.ghostDropped();} // its stations are another circuit's
-  }
+  const arrived=pendingT&&m.trackRev===pendingT.trackRev;
+  if(arrived){S.T=pendingT;pendingT=null;}
   if(!S.T||m.trackRev!==S.T.trackRev)return;
   if(m.ref){S.refT=m.ref.t;S.refV=m.ref.v;}
   S.disp={...m.line,t:m.lap,vmin:m.vmin,vmax:m.vmax,warn:m.warn,carRev:m.carRev,trackRev:m.trackRev,lineRev:m.lineRev};
+  if(arrived){
+    ui.trackArrived();
+    if(S.ghost&&S.ghost.trackRev!==m.trackRev){S.ghost=null;ui.ghostDropped();} // its stations are another circuit's
+  }
   const st=!!S.dynRes&&!dynCurrent();if(st!==S.dynStale){S.dynStale=st;ui.renderDyn();}
 }
 // A dynamic result is current only while the car, track and line it was computed on are the ones displayed.

@@ -6,13 +6,16 @@ import assert from 'node:assert/strict';
 
 const sent = [], calls = [];
 let worker = null;
+let observeTrack = () => {};
+let recordDyn = false;
 globalThis.Worker = class { constructor() { worker = this; } postMessage(m) { sent.push(m); } };
 globalThis.document = { querySelector: () => ({}), querySelectorAll: () => [] };
 
 const { S } = await import('../src/app/state.js');
 const client = await import('../src/app/client.js');
 client.connect({
-  renderDerived() {}, renderDyn() {}, runLabel: () => calls.push(['runLabel']), trackArrived() {},
+  renderDerived() {}, renderDyn() { if (recordDyn) calls.push(['renderDyn', S.dynStale]); },
+  runLabel: () => calls.push(['runLabel']), trackArrived() { observeTrack(); },
   showError: msg => calls.push(['showError', msg]), dynLap: n => calls.push(['dynLap', n]),
   loaded: m => calls.push(['loaded', m.rev]), loadFailed: () => calls.push(['loadFailed']),
   refused: (kind, msg, view) => calls.push(['refused', kind, msg, view]),
@@ -152,6 +155,44 @@ test('client: a queued resume is dropped if the circuit is being edited by the t
   land();
 });
 
+test('client: settled waits for matching snapshots after car, track and load answers', () => {
+  mark();
+  const snap = (carRev, trackRev) => deliver({ type: 'snapshot', carRev, trackRev, lineRev: 1,
+    lap: 80, line: { px: [1] }, vmin: 1, vmax: 2, warn: {} });
+  const initial = load();
+  answerLoad(initial); snap(initial, initial);
+  assert.equal(client.settled(), true, 'an installed load is ready to export and pin');
+  client.sendState('setCar', { params: {} });
+  const carRev = of('setCar').at(-1).rev;
+  assert.equal(client.settled(), false, 'a pending car blocks export and pin');
+  deliver({ type: 'carInfo', carRev, info: {} });
+  assert.equal(client.settled(), false, 'carInfo alone does not install the matching line');
+  snap(initial, initial);
+  assert.equal(client.settled(), false, 'another old-car snapshot cannot make the edit ready');
+  snap(carRev, initial);
+  assert.equal(client.settled(), true, 'the matching car snapshot makes the edit ready');
+  client.sendState('setTrack', { ctrl: [], width: 12 });
+  const trackRev = of('setTrack').at(-1).rev;
+  assert.equal(client.settled(), false, 'a pending track blocks export and pin');
+  deliver({ type: 'track', trackRev, N: 1 });
+  assert.equal(client.settled(), false, 'a track answer alone does not install its line');
+  snap(carRev, initial);
+  assert.equal(client.settled(), false, 'another old-track snapshot cannot make the edit ready');
+  snap(carRev, trackRev);
+  assert.equal(client.settled(), true, 'the matching track snapshot makes the edit ready');
+  const rev = load();
+  assert.equal(client.settled(), false, 'a pending load blocks export and pin');
+  deliver({ type: 'carInfo', carRev: rev, info: {} });
+  deliver({ type: 'track', trackRev: rev, N: 1 });
+  assert.equal(client.settled(), false, 'car and track answers do not release a load');
+  deliver({ type: 'loaded', rev, N: 1, clamped: { n: 0, max: 0 } });
+  assert.equal(client.settled(), false, 'loaded alone does not install the matching snapshot');
+  snap(carRev, trackRev);
+  assert.equal(client.settled(), false, 'a pre-load snapshot cannot make the load ready');
+  snap(rev, rev);
+  assert.equal(client.settled(), true, 'the matching loaded snapshot is ready to export and pin');
+});
+
 // The snapshot's warn (stations at the speed floor, airborne steps, loads past the tables) is a sibling of line, not part
 // of it; the map's warning line reads it from S.disp (review E-H1: it was dropped, so no lap warning ever showed).
 test('client: a snapshot keeps its warn on S.disp', () => {
@@ -196,4 +237,91 @@ test('client: a new circuit drops a ghost pinned on another one', () => {
   deliver({ type: 'snapshot', carRev: 950, trackRev: 950, lineRev: 2, lap: 89, line: {}, vmin: 1, vmax: 2, warn: {} });
   assert.deepEqual(S.ghost, { trackRev: 950 }, 'a ghost on the shown circuit stays');
   S.ghost = null;
+});
+
+test('client: a track and its snapshot swap together at every observable point', () => {
+  mark();
+  const snap = (trackRev, px) => ({ type: 'snapshot', carRev: 1000, trackRev, lineRev: 1,
+    lap: 80, line: { px, py: px.map(() => 0) }, vmin: 1, vmax: 2, warn: {} });
+  deliver({ type: 'track', trackRev: 1000, N: 2 });
+  deliver(snap(1000, [10, 20]));
+  const oldT = S.T, oldDisp = S.disp, seen = [];
+  observeTrack = () => seen.push([S.T.trackRev, S.T.N, S.disp.trackRev, [...S.disp.px]]);
+  try {
+    deliver({ type: 'track', trackRev: 1001, N: 3 });
+    assert.equal(S.T, oldT, 'a track event keeps the displayed track until its snapshot');
+    assert.equal(S.disp, oldDisp, 'a track event keeps the displayed line until its snapshot');
+    assert.deepEqual(seen, [], 'the pending track is not announced as displayed');
+    deliver(snap(1001, [30, 40, 50]));
+    assert.deepEqual([S.T.trackRev, S.T.N, S.disp.trackRev, S.disp.px],
+      [1001, 3, 1001, [30, 40, 50]], 'the matching snapshot installs both new station arrays');
+    assert.deepEqual(seen, [[1001, 3, 1001, [30, 40, 50]]],
+      'trackArrived observes the new track together with its matching line');
+  } finally {
+    observeTrack = () => {};
+  }
+});
+
+const snapshot = (carRev, trackRev, lineRev, px = [10, 20]) => ({ type: 'snapshot', carRev, trackRev, lineRev,
+  lap: 80, line: { px, py: px.map(() => 0) }, vmin: 1, vmax: 2, warn: {} });
+
+test('client: older car and track snapshots cannot replace the displayed run', () => {
+  mark();
+  deliver({ type: 'track', trackRev: 1100, N: 2 });
+  deliver(snapshot(1101, 1100, 1));
+  const newerCar = S.disp;
+  deliver({ ...snapshot(1100, 1100, 2, [90, 99]), ref: { t: 999, v: [99] } });
+  assert.equal(S.disp, newerCar, 'an older car snapshot cannot replace the displayed line');
+  assert.deepEqual(S.disp.px, [10, 20], 'the rendered car line keeps the newer coordinates');
+  deliver({ type: 'track', trackRev: 1102, N: 3 });
+  deliver({ ...snapshot(1101, 1102, 3, [30, 40, 50]), ref: { t: 75, v: [3, 4, 5] } });
+  const newerTrack = S.T, newerDisp = S.disp;
+  // Even a delayed track event must not let its delayed snapshot roll the display back.
+  deliver({ type: 'track', trackRev: 1100, N: 2 });
+  deliver({ ...snapshot(1101, 1100, 4, [90, 99]), ref: { t: 999, v: [99] } });
+  assert.equal(S.disp, newerDisp, 'an older track snapshot cannot replace the displayed line');
+  assert.equal(S.T, newerTrack, 'an older track snapshot cannot replace the displayed track');
+  assert.deepEqual([S.disp.px, S.refT, S.refV], [[30, 40, 50], 75, [3, 4, 5]],
+    'the rendered track line and reference remain the newer run');
+});
+
+test('client: dynamic currency follows car, track and line revisions at the display boundary', () => {
+  mark();
+  recordDyn = true;
+  const result = (carRev, trackRev, lineRev) => deliver({ type: 'dynResult', carRev, trackRev, lineRev,
+    result: { pace: 0.95 } });
+  const current = (carRev, trackRev, lineRev) => {
+    result(carRev, trackRev, lineRev);
+    assert.equal(S.dynStale, false, 'a result matching all displayed revisions is current');
+    assert.deepEqual(calls.at(-1), ['renderDyn', false], 'the result renders as current');
+  };
+  const stale = dimension => {
+    assert.equal(S.dynStale, true, `${dimension} revision change makes the displayed result stale`);
+    assert.deepEqual(calls.at(-1), ['renderDyn', true], `${dimension} revision change renders the stale result`);
+  };
+  try {
+    deliver({ type: 'track', trackRev: 1200, N: 2 });
+    deliver(snapshot(1200, 1200, 10));
+    current(1200, 1200, 10);
+    client.send({ type: 'view', tyreUse: true });
+    const beforeView = calls.length;
+    deliver({ ...snapshot(1200, 1200, 10), line: { px: [10, 20], py: [0, 0], u: [0.4, 0.6] } });
+    assert.deepEqual(S.disp.u, [0.4, 0.6], 'the unchanged-line view snapshot is installed');
+    assert.equal(S.dynStale, false, 'an unchanged-line view snapshot keeps the result current');
+    assert.equal(calls.length, beforeView, 'an unchanged-line view does not render a stale transition');
+    deliver(snapshot(1201, 1200, 10)); stale('car');
+    current(1201, 1200, 10);
+    deliver({ type: 'track', trackRev: 1202, N: 2 });
+    deliver(snapshot(1201, 1202, 10)); stale('track');
+    current(1201, 1202, 10);
+    deliver(snapshot(1201, 1202, 11)); stale('line');
+    current(1201, 1202, 11);
+    for (const [dimension, revs] of [['car', [1200, 1202, 11]], ['track', [1201, 1200, 11]], ['line', [1201, 1202, 10]]]) {
+      result(...revs); stale(dimension);
+      current(1201, 1202, 11);
+    }
+  } finally {
+    recordDyn = false;
+    S.dynRes = null; S.dynStale = false;
+  }
 });

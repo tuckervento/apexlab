@@ -1,17 +1,18 @@
 # STATUS
 
-_Last updated: 2026-10-25 (wave B)_
+_Last updated: 2026-10-25 (wave C)_
 
 ## Snapshot
 
-10 of 31 tasks done. Waves A and B are merged to `main`, completing phases 1 and 2. On `main`:
-- 457/457 tests pass;
+16 of 31 tasks done. Waves A–C are merged to `main`, completing phases 1–3: the independent coverage that parity and
+the goldens will be replaced by now exists. On `main`:
+- 506/506 tests pass;
 - `check-race-mutations` rejects all 22 mutations;
-- the browser scenarios last passed twice at wave A; wave B changed no scenario or tool;
-- `src/` and the goldens are unchanged;
-- the deletion ledger (`docs/test-contract-ledger.md`) has the 2.1–2.5 entries.
+- all 26 scenarios exit 0 in two passes (Mac in dark mode);
+- the goldens and `tools/` are unchanged;
+- `src/` differs only by the Q-approved `client.js` reorder (3.5).
 
-Next: wave C (3.1–3.6).
+Next: wave D (4.1 and 5.4, then 4.2, 4.3 and 5.5).
 
 ## Completed
 
@@ -60,11 +61,30 @@ Next: wave C (3.1–3.6).
 - Wave B on merged `main` (`5899dfb`): suite 457/457; race mutations 22/22 rejected;
   `git diff daaf7f7 HEAD -- src tests/golden.json prototype vendor tools` is empty; ledger complete for 2.1–2.5 (no
   placeholders).
+- [x] 3.1 `track.test.mjs` (Codex) — done 2026-10-25 — `db1db8d` — verified: Codex's mutations (normal sign, fold
+  limit, half-width); the coordinator's (fold limit loosened on one side) fails "positive bound reserves car width and
+  inside fold clearance".
+- [x] 3.2 `units.test.mjs` (Codex) — done 2026-10-25 — `8705cd8` — verified: Codex's (km/h factor 3.5, % left
+  unconverted); the coordinator's (slip angle ×π/90) fails "slipPeak: 30 degrees is π/6 radians".
+- [x] 3.3 `flat-model.test.mjs` (Codex) — done 2026-10-25 — `65318fa` — verified: Codex's (drag 0, CRR halved); the
+  coordinator's (`RHO` 1.2) fails the drag test and the downforce corner-speed test.
+- [x] 3.4 seeded perturbations in `gradient.test.mjs` (Codex) — done 2026-10-25 — `6ba0bb9` — verified: +124 ms;
+  Codex's (one adjoint term dropped) fails all eight new checks; the coordinator's (a different term, `gk[b]`) fails
+  36 gradient checks.
+- [x] 3.5 client consuming boundary (Codex; `client.js` fix by Q's decision) — done 2026-10-25 — `bcc1796`, merge
+  `ac7b75f` — verified:
+  - the old-snapshot guard removed fails "an older car snapshot cannot replace the displayed line";
+  - `trackRev` dropped from currency fails "track revision change makes the displayed result stale";
+  - the old hook order fails "trackArrived observes the new track together with its matching line";
+  - all 26 scenarios pass twice on `main` after the reorder.
+- [x] 3.6 `describe` adapter contract (Codex) — done 2026-10-25 — `3dee41b` — verified: Codex's (mass dropped from
+  the force conversion); the coordinator's (traction not ×mass) fails "traction acceleration converted to N"; ledger
+  filled.
+- Wave C on merged `main` (`ac7b75f`): suite 506/506; race 22/22;
+  `git diff 9ed63cc HEAD -- src tests/golden.json tools prototype vendor` = `src/app/client.js` only (+6/−4); all 26
+  scenarios exit 0 in two passes.
 
 ## In Progress
-
-- Wave C (2026-10-25): 3.1–3.6 in Codex (worktrees `../apexlab-wt/tc-3.x`, branches `tc/3.x`); plan approved by Q.
-  Six jobs at once (above PLAN's ~4): Node-only review is light.
 
 ## Blocked
 
@@ -101,7 +121,22 @@ Next: wave C (3.1–3.6).
     surprises about the code or the task. Future prompts say this up front.
   - 2.3 split the finish test into four cases (windows 3 and 4 × before/after the finish). Only window 4 rejects the
     crossing-reset mutation; both windows are kept, as the task required.
+- **Wave C:**
+  - Ran as six Codex jobs at once (above PLAN's ~4); Node-only review kept that manageable.
+  - **3.5 found a real ordering issue** and Q chose to fix it, a deliberate exception to PLAN's "nothing under
+    `src/`". `onSnapshot` called `trackArrived()` (and the ghost drop) after installing `S.T` but before `S.disp`, so
+    the hook saw a new track with the old line. Nothing rendered in that gap, and the hooks read only `S.T` and
+    `S.ghost`, but the order is now: install both, then run the hooks. `client.js` is outside both hashes.
+- **Recurring flake (open):** a small second-run drift in a screenshot reference, now seen three times:
+  - `view-toggle`/`view3d` (panel text) at wave A;
+  - `trace3d` (8 px) at wave A;
+  - `streaks3d` (0.001) at wave C.
+
+  It's always on the second run, always within tolerance, and always 0 on rerun. It looks like one cause (the web
+  font or text rasterisation is the leading theory) and deserves an investigation before 6.3 decides `view-toggle`'s
+  byte comparison.
 
 ## Next Up
 
-- Wave C: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6 (independent coverage; no dependencies).
+- Wave D: 4.1 (input fixtures out of `golden.json`) and 5.4 (accepted-line publication), then 4.2, 4.3 and 5.5 (all
+  need 4.1).
