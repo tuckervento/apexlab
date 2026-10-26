@@ -14,7 +14,7 @@ const { CARS } = core;
 const BASES = Object.keys(CARS);
 
 test('simple: centred knobs reproduce every preset bit for bit', () => {
-  assert.equal(BASES.length, 6);
+  assert.ok(BASES.length > 0, 'the base catalog is nonempty');
   for (const base of BASES) {
     const p = deriveParams(defaults(base));
     assert.deepEqual(p, { ...CARS[base] }, base);
@@ -34,8 +34,11 @@ function* grid() {
 
 test('simple: every knob setting gives a valid car inside the slider ranges', () => {
   const { carSpec, SPEC } = core;
+  const dims = { base: BASES, ...Object.fromEntries(SIMPLE.map(s => [s.k, s.opts ? s.opts.map(o => o[0]) : [s.min, 0, s.max]])) };
+  const seen = Object.fromEntries(Object.keys(dims).map(k => [k, new Set()]));
   let n = 0;
   for (const s of grid()) {
+    for (const k of Object.keys(dims)) seen[k].add(s[k]);
     const p = deriveParams(s), at = JSON.stringify(s);
     assert.deepEqual(Object.keys(p).sort(), Object.keys(CARS[s.base]).sort(), at);
     assert.doesNotThrow(() => carSpec(p), at);
@@ -46,7 +49,8 @@ test('simple: every knob setting gives a valid car inside the slider ranges', ()
     }
     n++;
   }
-  assert.equal(n, 6 * 2 * 2 * 5 * 4 * 3 ** 4);
+  for (const [k, vs] of Object.entries(dims)) for (const v of vs) assert.ok(seen[k].has(v), `matrix covers ${k}=${v}`);
+  assert.equal(n, Object.values(dims).reduce((n, vs) => n * vs.length, 1), 'matrix has the full Cartesian size');
 });
 
 test('simple: a missing, unknown or out-of-range knob throws, naming it', () => {

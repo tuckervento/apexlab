@@ -65,7 +65,38 @@ Camera fixtures used a temporary `APEX_SRC` copy, deleted afterward. `git diff -
 
 ## 2.2 — simple and elevation incidental assertions
 
-_(pending)_
+- **Old:** `tests/simple.test.mjs:17`, `BASES.length === 6`.
+  **Promise:** a nonempty catalog; six presets itself is incidental.
+  **Replacement:** require a nonempty catalog; retain centred identity for every declared base.
+  **Fault shown:** an empty `CARS` in an `APEX_SRC` copy (`app/presets.js:3`) fails
+  "the base catalog is nonempty". Adding a seventh base copied from Road car before freezing (`:12`) passes all
+  13 simple tests without test edits.
+- **Old:** `tests/simple.test.mjs:49`, the fixed Cartesian count `6 * 2 * 2 * 5 * 4 * 3 ** 4`.
+  **Promise:** a complete validation matrix.
+  **Replacement:** derive the expected size independently from `CARS` and each `SIMPLE`
+  choice list or numeric ends/centre, and require every base and option value in the generated matrix.
+  **Fault shown:** temporarily filtering `grid()`'s yield (`tests/simple.test.mjs:32`, restored exactly), while using
+  an `APEX_SRC` copy, fails "matrix covers base=Road car" when omitting Road car, "matrix covers pt=ICE" when
+  omitting ICE, and "matrix has the full Cartesian size" when omitting just the Road car/minimum-weight slice
+  (which leaves every individual option covered).
+- **Old:** `tests/elevation.test.mjs:497`, the generated preset warning contains `a 32% grade`.
+  **Promise:** warn beyond the documented 25% limit and identify grade/radius with a useful rounded number;
+  the preset's observed rounding is incidental.
+  **Replacement:** authored 24.9% and 25.1% grades produce no warning and a grade warning respectively;
+  a 31.6% grade reports 32%. Retain radius identification and the exact-limit check.
+  **Fault shown:** in `APEX_SRC` copies, `core/track.js:56` changing 25% to 26% fails
+  "25.1% grade exceeds the 25% limit"; changing it to 24% fails "24.9% grade is within the 25% limit".
+  At `:60`, replacing `Math.round(100*g)` with `Math.floor(100*g)` fails "31.6% grade rounds to 32%".
+- **Old:** `tests/elevation.test.mjs:539`, the Open-wheeler has `load.l0 < -15`.
+  **Promise:** the floor reaches zero grip while the next level retains grip, including negative load levels;
+  the preset's historical floor index is incidental.
+  **Replacement:** retain the floor/next-level properties for every preset and apply them to an explicitly authored
+  high-downforce car, requiring its floor below zero. Index slices as `(l - l0)` and speed levels with `Math.floor`.
+  **Fault shown:** in `APEX_SRC` copies, `core/car.js:90` replacing the floor's `Math.ceil` with `Math.floor` fails
+  "Road car alat: not zero at the floor n = 0"; subtracting another level from the floor fails
+  "Road car: the floor is lower than it needs to be". Setting only the constructed car's floor to zero
+  (`params.mass===1000 && params.cla===4`) fails "constructed downforce needs negative load levels".
+  All source copies were deleted; `git diff -- src` is empty.
 
 ## 2.3 — race station goldens
 

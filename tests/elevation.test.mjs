@@ -493,8 +493,10 @@ test('track: hills steeper than the model is built for are a circuit issue', () 
     const wild = core.buildTrack(withZ(c, c.map((_, i) => i % 2 ? 60 : -60)), WIDTH).issue;
     assert.match(wild, /^Steeper hills than the model is built for \(a \d+% grade and a \d+ m crest or dip;/, `${tr.name} at ±60 m`);
   }
-  const c = core.genCtrl(core.TRACKS[0].seed, WIDTH); // Harrow Ring at ±12 m: 31.5 %, 82 m
-  assert.match(core.buildTrack(withZ(c, c.map((_, i) => i % 2 ? 12 : -12)), WIDTH).issue, /\(a 32% grade; it handles up to 25% and 50 m\)/);
+  const grade = dz => core.hillIssue({ N: 3, ds: 100, dz: [0, dz, 0], kv: [0, 0, 0] });
+  assert.equal(grade(24.9), null, '24.9% grade is within the 25% limit');
+  assert.match(grade(-25.1), /\(a \d+% grade;/, '25.1% grade exceeds the 25% limit');
+  assert.match(grade(31.6), /\(a 32% grade; it handles up to 25% and 50 m\)/, '31.6% grade rounds to 32%');
   const T = { N: 3, ds: 4, dz: [0, 0.5, 0], kv: [0, -1 / 40, 0] }; // 12.5 %, a 40 m crest
   assert.match(core.hillIssue(T), /\(a 40 m crest or dip;/);
   assert.equal(core.hillIssue({ ...T, dz: [0, 1, 0], kv: [0, -1 / 50, 0] }), null, 'exactly at the limits is fine');
@@ -527,14 +529,16 @@ test('car: Illinois takes 0 as valid, as bisection does, where the margin first 
 // (up to the node above top speed): there every limit is exactly 0, and one level up some speed still has grip.
 test('car: load tables reach down to zero grip, and no further', () => {
   const { NT, NQ, NSTEP, VSTEP } = core;
-  for (const [name, P] of Object.entries(core.CARS)) {
+  const nameDF = 'Constructed downforce', df = {mass:1000,cg:0.3,track:1.6,wb:3,rear:50,rollF:50,power:400,pt:'ICE',gears:6,
+    v1:100,vTopG:300,nT:60,nRed:110,evBase:100,evMax:300,drive:'AWD',cla:4,aeroF:50,cda:1,brakeF:50,mu:1.5,sens:0.15,shiftT:0.1,yawDI:1,slipPk:6};
+  for (const [name, P] of [...Object.entries(core.CARS), [nameDF, df]]) {
     const car = core.buildCar(P, { loads: true }), L = car.load, top = Math.floor(car.vTop / VSTEP) + 1;
     assert.ok(Number.isInteger(L.l0) && L.l0 <= 0 && !Object.is(L.l0, -0), `${name}: l0 ${L.l0}`);
+    if (name === nameDF) assert.ok(L.l0 < 0, 'constructed downforce needs negative load levels');
     if (P.cla === 0) { assert.equal(L.l0, 0, `${name}: no downforce, floor at n = 0`); continue; }
     const at = (k, l, w) => L[k].subarray((l - L.l0) * w, (l - L.l0 + 1) * w);
     for (const [k, w, from] of [['alat', NT, 0], ['kcrit', NT, 1], ['ggB', NT * NQ, 0], ['ggT', NT * NQ, 0]]) // kcrit = alat/v² is ∞ at v = 0
       assert.ok(at(k, L.l0, w).subarray(from, (top + 1) * (w / NT)).every(x => x === 0), `${name} ${k}: not zero at the floor n = ${L.l0 * NSTEP}`);
     assert.ok(at('alat', L.l0 + 1, NT).subarray(0, top + 1).some(x => x > 0), `${name}: the floor is lower than it needs to be`);
   }
-  assert.ok(core.buildCar(core.CARS['Open-wheeler'], { loads: true }).load.l0 < -15, 'the Open-wheeler reaches far below 0');
 });
