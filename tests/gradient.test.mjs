@@ -59,6 +59,57 @@ for (const name of CAR_NAMES) {
   }
 }
 
+// The former parity test's input recipe: draw the track seeds before perturbing the continuous car parameters.
+const rnd = core.mulberry32(31337), SEEDS = Array.from({ length: 4 }, () => 1 + Math.floor(rnd() * 1e6));
+const DISCRETE = new Set(['pt', 'drive', 'gears']);
+const CARS = Array.from({ length: 4 }, () => {
+  const names = Object.keys(core.CARS), base = core.CARS[names[Math.floor(rnd() * names.length)]], p = {};
+  for (const [k, v] of Object.entries(base)) p[k] = DISCRETE.has(k) || typeof v !== 'number' ? v : v * (0.9 + 0.2 * rnd());
+  return p;
+});
+const tracks = SEEDS.map(seed => core.buildTrack(core.genCtrl(seed, 12), 12)), cars = CARS.map(p => core.buildCar(p));
+for (const [ti, seed] of SEEDS.entries()) {
+  for (const [ci, car] of cars.entries()) {
+    const T = tracks[ti], N = T.N, B = core.makeBounds(T, car);
+    const off = smoothField(core.mulberry32(seed + ci), N, 0.1 * B.hw);
+    for (let i = 0; i < N; i++) off[i] = Math.min(0.5 * B.hi[i], Math.max(0.5 * B.lo[i], off[i]));
+    test(`seeded perturbation: finite feasible laps, seed ${seed}, car ${ci}`, () => {
+      for (const [line, x] of [['centreline', new Float64Array(N)], ['offset', off]]) {
+        for (let i = 0; i < N; i++) {
+          assert.ok(x[i] >= B.lo[i] && x[i] <= B.hi[i], `${line} within line bounds at ${i}`);
+          assert.ok(Math.abs(x[i]) + (CARS[ci].track + 0.25) / 2 <= T.width / 2, `${line} leaves car-width clearance at ${i}`);
+        }
+        for (const tau of [0, 0.5]) {
+          const S = core.makeScratch(N), lap = core.lapEval(T, car, x, S, null, tau);
+          assert.ok(Number.isFinite(lap) && lap > 0, `${line}, tau=${tau}: finite positive lap`);
+          assert.ok(S.v.every(v => Number.isFinite(v) && v > 0), `${line}, tau=${tau}: finite positive speeds`);
+        }
+      }
+    });
+    if (ti >= 2 || ci >= 2) continue;
+    for (const tau of [0, 0.5]) {
+      test(`gradient, seeded perturbation: seed ${seed}, car ${ci}, tau=${tau}`, t => {
+        const d = smoothField(core.mulberry32(2002), N, 1), dmax = d.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+        for (let i = 0; i < N; i++) d[i] /= dmax;
+        const S = core.makeScratch(N), grad = new Float64Array(N), lap = core.lapEval(T, car, off, S, grad, tau);
+        let Da = 0, scale = 0;
+        for (let i = 0; i < N; i++) { Da += grad[i] * d[i]; scale += Math.abs(grad[i] * d[i]); }
+        const S2 = core.makeScratch(N), xp = new Float64Array(N), xm = new Float64Array(N);
+        for (let i = 0; i < N; i++) {
+          xp[i] = off[i] + H * d[i]; xm[i] = off[i] - H * d[i];
+          assert.ok(xm[i] >= B.lo[i] && xm[i] <= B.hi[i] && xp[i] >= B.lo[i] && xp[i] <= B.hi[i], `FD probes feasible at ${i}`);
+        }
+        const Dfd = (core.lapEval(T, car, xp, S2, null, tau) - core.lapEval(T, car, xm, S2, null, tau)) / (2 * H);
+        const rel = Math.abs(Da - Dfd) / scale;
+        t.diagnostic(`lap=${lap.toFixed(4)} s  D_a=${Da.toPrecision(10)}  D_fd=${Dfd.toPrecision(10)}  err/scale=${rel.toExponential(2)}`);
+        assert.ok(grad.every(Number.isFinite) && Number.isFinite(Da) && Number.isFinite(Dfd) && scale > 0,
+          `degenerate derivative: D_a=${Da}, D_fd=${Dfd}, scale=${scale}`);
+        assert.ok(rel < SCALE_TOL, `seed ${seed}, perturbed car ${ci}, tau=${tau}: error/scale ${rel.toExponential(3)} ≥ ${SCALE_TOL} (D_a=${Da}, D_fd=${Dfd}, Σ|g·d|=${scale})`);
+      });
+    }
+  }
+}
+
 // Elevation (migration step 8): the same check on Harrow Ring with hills at the slider's maximum (40 m), cars built
 // with load tables. On top of the flat coverage it asserts that the hilly branches are exercised: corner speeds read
 // at a load factor (one at a crest, n < 1), and forward- and brake-limited steps that include gravity's work.
