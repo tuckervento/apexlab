@@ -135,6 +135,10 @@ PNG workflow).
 
 ## In Progress
 
+- Wave F (2026-10-25), plan approved by Q. Stage 1: 6.1 and 6.3 in Codex (code only), plus the coordinator's
+  second-run drift investigation. Stage 2: 6.2 (coordinator: helper cleanup and the guidance rewrite; Q reviews the
+  guidance diff before commit).
+
 ## Blocked
 
 ## Deviations & Decisions

@@ -546,3 +546,106 @@ Budget evidence and rationale (Q approval in `docs/investigations/search-budgets
 
 Task validation timings: focused direct flat 8.527 s, direct hilly 17.818 s (17.619 s timed search), protocol search 8.619 s; 28 focused tests pass. The added hilly run therefore costs 17.818 s in this focused run. All task mutations use deleted disposable source copies; `git diff -- src` is empty.
 Full suite: `node --test tests/` — 513 tests, 0 suites; 513 passed, 0 failed, 0 cancelled, 0 skipped, 0 todo; 39,301.265625 ms. Under full-suite/mutation contention the added hilly run took 22.805 s (22.397 s timed search). `git diff --check` passes. Protocol convergence helper instrumentation is necessary to count and bound the existing shared run; the dynamic-check subtest and all other test bodies are unchanged.
+
+## 6.1 — prototype parity
+
+Original line numbers refer to the deleted files. Every group below compared bits with the frozen prototype;
+that historical equality is retired by design under §2 and PLAN: “the deleted historical tests need no permanent
+second implementation”. The four track seeds and four perturbed cars survive in `gradient.test.mjs`; independent
+contracts below protect their promises without preserving prototype outputs. No new assertions or budgets are added.
+
+- **Old:** `tests/parity.test.mjs:39–44`, bit equality of generated control points, track scalars
+  (`N`, `L`, `ds`, `width`, `issue`, `minR`) and geometry arrays (`cx`, `cy`, `nx`, `ny`, `kc`).
+  **Promise:** usable periodic geometry, signed curvature and correctly oriented normals; no promise that a seed
+  forever generates the historical coordinates or station count.
+  **Replacement:** `tests/track.test.mjs`: `circle orientation <sign>: geometry and periodic stations`,
+  `stadium orientation <sign>: straight and bend curvature`, `rigid transforms preserve length, curvature and
+  bounds and rotate normals`, and `tight and overlapping circuits report issues; zero length throws`.
+  `tests/gradient.test.mjs`: `seeded perturbation: finite feasible laps, seed <seed>, car <ci>` retains all 16
+  seeded combinations. No replacement for historical seed/output identity itself.
+  **Fault shown:** `src/core/track.js:34`, reverse both normal components; circle orientation 1 fails
+  “circle normal points to the documented side”.
+
+- **Old:** `tests/parity.test.mjs:47–52`, bit equality of all listed car limit/powertrain tables and derived
+  scalars (`lF`, `lR`, `aCG`, `bCG`, `Izz`, `vTop`, `shiftT`, `m`, `cda`).
+  **Promise:** correct SI inputs and physical force/speed laws, usable model and view data; no independent promise
+  that every historical intermediate table/scalar bit is fixed.
+  **Replacement:** `tests/units.test.mjs`: `units: km/h becomes m/s under renamed fields`, `units: kW becomes
+  watts`, `units: every percentage becomes a fraction`, `units: degrees become radians`, and `units: SI and
+  categorical fields keep their values`. `tests/flat-model.test.mjs`: `flat drag: force is ½ρCdA v²`,
+  `flat rolling loss: CRR m g, independent of speed and downforce`, `flat EV: constant torque, constant wheel
+  power, motor speed cutoff`, and `flat lateral limit: 50 m radius, CLA <cla> m²`.
+  `tests/describe.test.mjs`: `describeCar synthetic units and table samples` and `describeCar live adapter: <pt>`
+  protect the consuming adapter; fixed-line and seeded-lap contracts exercise the assembled car model.
+  No replacement for exhaustive historical internal-table equality itself.
+  **Fault shown:** `src/core/units.js:12`, power multiplier 1000 → 100, fails “Pmax: 250 kW is 250000 W”.
+  `src/core/describe.js:15`, drag coefficient 0.5 → 1, fails
+  “drag at 20 m/s: 392 ≈ 196.00000000000003”.
+
+- **Old:** `tests/parity.test.mjs:58`, bit equality of lower and upper line bounds.
+  **Promise:** reserve car-width clearance and limit the inside offset before a bend folds.
+  **Replacement:** `tests/track.test.mjs`: `bounds reserve half the car width and limit only the inside of each
+  bend`; `tests/gradient.test.mjs`: `seeded perturbation: finite feasible laps, seed <seed>, car <ci>` checks
+  line bounds and body clearance for both centreline and offset inputs.
+  **Fault shown:** `src/core/track.js:90`, subtract one quarter instead of one half of body width, fails
+  “road half-width 10 minus car half-width 1: 9.5 vs 9 (±1e-12)”.
+
+- **Old:** `tests/parity.test.mjs:64–65`, bit equality of lap time and every speed for hard and soft laps.
+  **Promise:** positive finite feasible laps and usable speeds across seeded perturbations and presets;
+  historical lap/speed identity itself has no replacement.
+  **Replacement:** `tests/gradient.test.mjs`: `seeded perturbation: finite feasible laps, seed <seed>, car <ci>`;
+  `tests/fixed-line.test.mjs`: `centreline laps: all preset cars × circuits` and `fixed line: <case>` protect
+  supported lap horizons, finite model outputs and the retained physical/dynamic limits.
+  **Fault shown:** `src/core/lap.js:154`, initialise the time sum to −1000 instead of 0; seeded finite-lap tests
+  fail “centreline, tau=0: finite positive lap”.
+
+- **Old:** `tests/parity.test.mjs:65`, bit equality of every adjoint gradient component, tau 0 and 0.5.
+  **Promise:** the adjoint differentiates the evaluated lap in hard and soft modes.
+  **Replacement:** `tests/gradient.test.mjs`: `gradient, seeded perturbation: seed <seed>, car <ci>, tau=<tau>`
+  covers the selected 2×2×2 matrix with central finite differences; existing `gradient: <name>, tau=<tau>`
+  retains preset, yaw and shift coverage, alongside the existing hilly/load-clamp cases.
+  **Fault shown:** `src/core/lap.js:251`, write zero gradient components; first seeded gradient test fails
+  “degenerate derivative: D_a=0, D_fd=0.040655173449977156, scale=0”.
+
+- **Old:** `tests/parity.test.mjs:72–73`, bit equality of objective, evaluation count, stage and every offset
+  after exactly 300 optimiser steps on the four diagonal cases.
+  **Promise:** none for intermediate trajectory/count/stage identity; useful completed search is the lasting promise.
+  **Replacement:** no replacement for the 300-step state itself. `tests/convergence.test.mjs`:
+  `convergence: GT racer, Harrow Ring, 12 m` (also `, hills 25 m`), `search contract`;
+  `tests/solver.test.mjs`: `solver: converges through the protocol, GT racer, Harrow Ring`, `search contract`
+  require feasible, freshly scored results, bounded completion and gain >= 0.9987.
+  **Fault shown:** `src/core/optimiser.js:21`, mark done immediately after starting stage 0; direct flat search
+  fails “search gain >= 0.9987” (also the retained polish property).
+
+- **Old:** `tests/parity.test.mjs:74`, deep bit equality of `dynSummary`: lap, qss, fraction, peak utilisation,
+  limiting station/axle, iterations, failing bracket and final dynamic time/status/error summaries.
+  **Promise:** useful dynamically attainable pace, clean completion, bounded errors/utilisation and coherent
+  passing/failing results; historical quantised endpoints, labels and continuous summary bits are incidental.
+  **Replacement:** `tests/fixed-line.test.mjs`: `fixed line: <case>` for all 30 immutable inputs;
+  `tests/solver.test.mjs`: `solver: dynamic check through the protocol, GT racer, Harrow Ring`, `clean bracket`.
+  No replacement for exact historical summary identity or the four partially optimised diagonal lines themselves.
+  **Fault shown:** `src/dynamics/check.js:25`, accept fraction 1 on the first probe without checking cleanliness;
+  `fixed line: GT racer|Harrow Ring` fails “final lap at frac 1 not clean”.
+
+- **Old:** `tests/parity.test.mjs:25–27`, the shared comparison helper also pinned array lengths and Object.is
+  semantics (including −0/NaN); `tests/load-prototype.mjs` extracted ordered unique markers, checked DOM-free
+  blocks and executed the historical implementation in a VM.
+  **Promise:** none beyond making the retired comparison meaningful. The loader supplied no standalone test.
+  **Replacement:** none needed: prototype extraction, cross-realm comparison and historical representation
+  identity are retired with their only consumer. `prototype/apex-lab.html` remains frozen.
+  **Fault shown:** not applicable; no retained promise or production replacement is claimed for this machinery.
+
+Teeth: all eight faults above were run against separate disposable `APEX_SRC` copies with targeted test names.
+Every run exited 1 with `ERR_ASSERTION` and the quoted intended message, not an import, syntax, hash or runtime
+error. Every copy was removed in `finally`; production source was never edited. `git diff -- src` is empty.
+
+Validation: before deletion, `node --test tests/` passed 513 tests in 0 suites, 0 failed/cancelled/skipped/todo,
+in 44,753.971 ms. After deletion it passed 495 tests in 0 suites: 495 passed, 0 failed, 0 cancelled, 0 skipped,
+0 todo, in 48,497.922583 ms. These single full-suite runs measured 3,743.951583 ms (8.4%) slower after deletion;
+no speedup is established. The four expensive diagonal parity cases individually took 4,891.143917,
+4,898.639208, 6,432.963541 and 7,185.699042 ms before deletion; these concurrent-suite measurements are not
+additive wall-time savings. Reference searches in tests/tools and all remaining .mjs files returned no matches.
+`git diff --check` passes; `git diff -- src` is empty. Only the two deletions, the gradient comment and this
+ledger section changed. No commits were made. Execution slips corrected: a trailing blank line in this section
+and an unmatched shell glob when confirming that temporary directories were already absent. A later explicit
+scan confirmed none remained; optional process inspection was denied by the sandbox.

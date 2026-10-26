@@ -59,7 +59,7 @@ for (const name of CAR_NAMES) {
   }
 }
 
-// The former parity test's input recipe: draw the track seeds before perturbing the continuous car parameters.
+// Seeded circuits and ±10% continuous car parameters exercise feasible laps and hard/soft finite differences.
 const rnd = core.mulberry32(31337), SEEDS = Array.from({ length: 4 }, () => 1 + Math.floor(rnd() * 1e6));
 const DISCRETE = new Set(['pt', 'drive', 'gears']);
 const CARS = Array.from({ length: 4 }, () => {
