@@ -30,10 +30,13 @@ test('interpolated lap times sum to total',()=>{
 test('scripted steering gives exactly one incident at a repeatable station',()=>{
   const {T,car,dc,line,v}=scenario();
   const driver={init:ctx=>core.referenceDriver.init(ctx),step(s,o){return o.t>1?{steer:0.6,fx:0}:core.referenceDriver.step(s,o);}};
-  const r=race(T,car,dc,line,v,{driver,incidentPolicy:'dnf'});
-  assert.equal(r.dnf,true);
-  assert.equal(r.incidents.length,1);
-  assert.equal(r.incidents[0].station,53); // V8 runtime golden (like golden.json); steering lock after one second
+  const runs=Array.from({length:2},()=>race(T,car,dc,line,v,{driver,incidentPolicy:'dnf'}));
+  for(const r of runs){
+    assert.equal(r.dnf,true,'steering incident ends the race as a DNF');
+    assert.equal(r.incidents.length,1,'steering lock produces exactly one incident');
+    assert.ok(r.incidents[0].t>1,'steering incident follows the lock at one second');
+  }
+  assert.equal(runs[0].incidents[0].station,runs[1].incidents[0].station,'identical steering repeats the incident station');
 });
 test('known edge excursions count entries, with warnings and penalties',()=>{
   const T={N:4,width:12,cx:[0,100,200,300],cy:[0,0,0,0],nx:[0,0,0,0],ny:[1,1,1,1]};
@@ -61,19 +64,40 @@ test('reset informs driver once and charges the incident penalty',()=>{
   assert.ok(Math.abs(r.lapTimes.reduce((a,b)=>a+b,0)-r.total)<1e-10);
 });
 
-for(const window of [3,4])test(`default reset across finish scores the lap and reports incidents once (${window})`,()=>{
+for(const window of [3,4])for(const side of ['before','after'])test(`default reset across finish accounts once (${window}, ${side})`,()=>{
   const {T,car,dc,line,v}=scenario(),summaries=[];
-  let kicked=false;
+  let kicked=false,lock=null;
   const driver={init:ctx=>core.referenceDriver.init(ctx),lap(s,summary){summaries.push(summary);},step(s,o){
     if(o.incident)kicked=true;
-    return !kicked&&o.lap>=2&&o.station>=T.N-window&&o.station<T.N-1?{steer:0.6,fx:0}:core.referenceDriver.step(s,o);
+    const near=side==='before'?o.station>=T.N-window&&o.station<T.N-1:o.station>=window&&o.station<window+2;
+    if(!kicked&&o.lap===2&&near){
+      lock??={t:o.t,station:o.station};
+      return {steer:0.6,fx:0};
+    }
+    return core.referenceDriver.step(s,o);
   }};
   const r=race(T,car,dc,line,v,{driver,laps:3});
-  assert.equal(r.incidents.length,1);
-  assert.equal(r.incidents[0].station,T.N-(window===3?2:3));
+  assert.equal(r.incidents.length,1,'finish fixture produces exactly one incident');
+  const incident=r.incidents[0];
+  assert.ok(lock&&incident.t>lock.t,'finish incident follows the scripted lock');
+  if(side==='before'){
+    assert.ok(incident.station>=T.N-window&&incident.station<T.N,'incident is before the finish');
+    assert.ok(incident.station+3>=T.N,'default reset reaches or crosses station zero');
+    assert.equal(r.crossings[2],incident.t,'reset crossing is scored at incident time');
+  }else{
+    assert.ok(incident.station>=window&&incident.station<T.N/2,'incident is after the finish');
+    assert.ok(incident.station+3<T.N,'after-finish reset does not cross station zero');
+    assert.ok(r.crossings[1]<incident.t&&incident.t<r.crossings[2],'after-finish incident stays inside lap two');
+  }
+  assert.equal(r.complete,true,'finish reset completes the race');
   assert.equal(r.lapTimes.length,3);
-  assert.ok(r.lapTimes.every(t=>t>r.lapTimes[0]-2&&t<r.lapTimes[0]+r.penalties+1));
+  assert.equal(r.crossings.length,4,'formation plus exactly three timed crossings');
+  assert.ok(r.lapTimes.every(t=>t>r.lapTimes[0]-2&&t<r.lapTimes[0]+r.penalties+1),'finish lap times exclude duplicate crossings');
+  assert.equal(r.penalties,5+5*Math.floor(r.violations/3),'finish incident charges the configured penalties');
+  const penalties=r.lapTimes.map((t,i)=>t-(r.crossings[i+1]-r.crossings[i]));
+  assert.ok(penalties.every((p,i)=>Math.abs(p-(i===1?r.penalties:0))<1e-10),'finish penalties belong only to lap two');
   assert.ok(Math.abs(r.lapTimes.reduce((a,b)=>a+b,0)-r.total)<1e-10);
+  assert.deepEqual(summaries.map(s=>s.lap),[1,2,3],'lap callback fires exactly once per lap');
   assert.deepEqual(summaries.map(s=>s.incidents.length),[0,1,0]);
 });
 

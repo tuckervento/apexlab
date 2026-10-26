@@ -100,7 +100,16 @@ Camera fixtures used a temporary `APEX_SRC` copy, deleted afterward. `git diff -
 
 ## 2.3 — race station goldens
 
-_(pending)_
+- **Old:** `tests/race.test.mjs:36`, scripted steering's `station === 53`.
+- **Promise:** repeatable incident location and an incident caused after the scripted lock; the literal station was a runtime detail.
+- **Replacement:** `scripted steering gives exactly one incident at a repeatable station` runs the same input twice, retains DNF and exactly one incident on both runs, compares their incident stations, and requires incident time greater than the hand-authored one-second lock time.
+- **Fault shown:** `src/race/judge.js:24`, increment the recorded station on every call → "identical steering repeats the incident station"; record time zero → "steering incident follows the lock at one second". Retained promises: duplicate incidents at `judge.js:25` → "steering lock produces exactly one incident"; force false DNF at `src/race/race.js:81` → "steering incident ends the race as a DNF".
+
+- **Old:** `tests/race.test.mjs:73`, finish incident's `station === T.N-(window===3?2:3)` (both windows).
+- **Promise:** a default reset reaching/passing zero scores one crossing and one callback, with the incident and penalties charged to the correct lap; the exact observed station offset was incidental.
+- **Replacement:** `default reset across finish accounts once` retains windows 3 and 4 and adds after-finish cases for each. Authored steering windows arrange lap-two incidents. Assert the intended station side, that the before-finish reset reaches/crosses zero and scores at incident time, and that the after-finish reset stays inside lap two. Require completion, three timed laps, four crossings including formation, default-policy penalties (5 seconds per incident plus 5 per three excursions), penalties only on lap two, callbacks numbered exactly `[1,2,3]`, and incident summaries `[0,1,0]`. Existing lap-time bounds and total accounting remain.
+- **Fault shown:** `src/race/judge.js:24`, report station zero for before cases → "incident is before the finish"; report station `T.N-1` for after cases → "incident is after the finish". `src/race/race.js:76`, delay reset crossing by one step → "reset crossing is scored at incident time"; also score nonwrapping resets → "after-finish incident stays inside lap two"; omit reset crossings → "reset crossing is scored at incident time". Existing crossing-ready defect at `race.js:42`, leave readiness true → "finish lap times exclude duplicate crossings" (the before-finish window 4 rejects it; before-finish window 3 passes this mutation, and both windows remain). Double incident penalties at `race.js:71` → "finish incident charges the configured penalties"; clear penalty baseline at `race.js:49` → "finish penalties belong only to lap two"; duplicate callback at `race.js:48` → "lap callback fires exactly once per lap". All mutations use disposable `APEX_SRC` copies, with cleanup in `finally`.
+
 
 ## 2.4 — camera fit: the copied function
 
