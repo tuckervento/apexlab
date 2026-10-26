@@ -113,7 +113,21 @@ Camera fixtures used a temporary `APEX_SRC` copy, deleted afterward. `git diff -
 
 ## 2.4 — camera fit: the copied function
 
-_(pending)_
+- **Old:** `tests/camera.test.mjs:24` (original), `deepEqual([a.x, a.y, a.z], [b.x, b.y, b.z])`
+  at desktop and phone sizes against the copied `fitOld` implementation.
+- **Promise:** fit the whole road inside the area clear of overlays, centred and tight at the documented padding;
+  historical bit identity adds no independent promise.
+- **Replacement:** `fit() at 1200x800: road edges fit, centred, tight and idempotent` and its `390x760` counterpart.
+  Authored centreline bounds `[10,210] × [-30,170]`, width 20 m, give road bounds `[0,220] × [-40,180]`.
+  Desktop clear bounds are `[60,1140] × [40,760]`, centre `[600,400]`, tight vertically; phone clear bounds
+  are `[20,370] × [150,690]`, centre `[195,420]`, tight horizontally. Expectations never call `pads()`.
+  Added inverse round trips and zoom anchoring (including clamps); retained all four `frame()` tests.
+- **Fault shown:** `src/views/map2d/camera.js:17`, change `(ch-padT-padB)` to `(ch-padT)` in `fit()`:
+  assertion failed with "1200x800: road edges inside clear area". At `camera.js:18`, replace the bounding-box
+  midpoint with `x0,y0` (keeping the overlay offset): assertion failed with
+  "1200x800: track centred in clear area: 927.2727272727273,727.2727272727273 vs 600,400";
+  the phone centring assertion also failed. Each mutation was applied in place for the direct import, restored
+  byte-for-byte in a `finally` block, and followed by an empty `git diff -- src`.
 
 ## 2.5 — playback: copied logic
 

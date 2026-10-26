@@ -1,34 +1,62 @@
 // 2D map camera (src/views/map2d/camera.js): fit() and the follow framing frame(). The camera is a pure view module,
-// so it is imported directly. fit() must match its pre-frame() version (copied below) bit for bit.
+// so it is imported directly. Authored road bounds check fit padding; transforms preserve world points.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadCore } from './load-core.mjs';
 import { Camera } from '../src/views/map2d/camera.js';
 
-const core = await loadCore();
-const T = core.buildTrack(core.genCtrl(core.TRACKS[0].seed, 12), 12);
-
-// Pre-frame() Camera.fit, verbatim.
-function fitOld(cam,T,width){
-  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(let i=0;i<T.N;i++){x0=Math.min(x0,T.cx[i]);x1=Math.max(x1,T.cx[i]);y0=Math.min(y0,T.cy[i]);y1=Math.max(y1,T.cy[i]);}
-  const cw=cam.cw,ch=cam.ch,narrow=cw<560,padT=narrow?150:40,padB=narrow?70:40,padX=narrow?20:60;
-  cam.z=Math.min((cw-padX*2)/(x1-x0+width),(ch-padT-padB)/(y1-y0+width));
-  cam.x=(x0+x1)/2;cam.y=(y0+y1)/2-((padT-padB)/2)/cam.z;
-}
 const sized = (cw, ch) => Object.assign(new Camera(), { cw, ch });
-
-test('fit() matches the pre-frame() version on wide and narrow canvases', () => {
-  for (const [cw, ch] of [[1200, 800], [390, 760]]) {
-    const a = sized(cw, ch), b = sized(cw, ch);
-    a.fit(T, 12); fitOld(b, T, 12);
-    assert.deepEqual([a.x, a.y, a.z], [b.x, b.y, b.z], `${cw}x${ch}`);
-  }
-});
 
 // Screen position of a world point, and the centre of the area clear of the overlays.
 const scr = (c, p) => [c.sx(p.x), c.sy(p.y)];
 const centre = c => { const { padT, padB } = c.pads(); return [c.cw / 2, padT + (c.ch - padT - padB) / 2]; };
 const near = (a, b, msg) => a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-9, `${msg}: ${a} vs ${b}`));
+
+// Centreline bounds [10,210] × [-30,170], width 20: road envelope [0,220] × [-40,180].
+const rect = { N: 4, cx: [10, 210, 210, 10], cy: [-30, -30, 170, 170] };
+for (const [cw, ch, bounds, mid, tight] of [
+  [1200, 800, [60, 1140, 40, 760], [600, 400], 'y'],
+  [390, 760, [20, 370, 150, 690], [195, 420], 'x'],
+]) test(`fit() at ${cw}x${ch}: road edges fit, centred, tight and idempotent`, () => {
+  const c = sized(cw, ch), tag = `${cw}x${ch}`;
+  c.fit(rect, 20);
+  near(scr(c, { x: 110, y: 70 }), mid, `${tag}: track centred in clear area`);
+  const [left, right, top, bottom] = bounds;
+  for (const x of [0, 220]) for (const y of [-40, 180]) {
+    const [sx, sy] = scr(c, { x, y });
+    assert.ok(sx >= left-1e-9 && sx <= right+1e-9 && sy >= top-1e-9 && sy <= bottom+1e-9,
+      `${tag}: road edges inside clear area`);
+  }
+  near(tight === 'x' ? [c.sx(0), c.sx(220)] : [c.sy(-40), c.sy(180)],
+    tight === 'x' ? [left, right] : [top, bottom], `${tag}: tight at intended padding`);
+  const before = [c.x, c.y, c.z];
+  c.fit(rect, 20);
+  near([c.x, c.y, c.z], before, `${tag}: fit is idempotent`);
+});
+
+test('world/screen inverse round trips preserve points after fit and zoom', () => {
+  for (const [cw, ch] of [[1200, 800], [390, 760]]) {
+    const c = sized(cw, ch);
+    c.fit(rect, 20);
+    for (const f of [1, 2.5, 0.2]) {
+      c.zoomAt(f, 83, 217);
+      for (const [x, y] of [[0, 0], [-123.4, 56.7], [110, 70], [1000, -2000]])
+        near([c.wx(c.sx(x)), c.wy(c.sy(y))], [x, y], `${cw}x${ch}: inverse round trip`);
+    }
+  }
+});
+
+test('zoomAt() keeps the anchored screen point on the same world point, including zoom clamps', () => {
+  for (const [cw, ch] of [[1200, 800], [390, 760]]) {
+    const c = sized(cw, ch), anchor = [83, 217];
+    c.fit(rect, 20);
+    const world = [c.wx(anchor[0]), c.wy(anchor[1])];
+    for (const f of [2, 0.5, 1e6, 1e-6]) {
+      c.zoomAt(f, ...anchor);
+      near([c.wx(anchor[0]), c.wy(anchor[1])], world, `${cw}x${ch}: anchored world point`);
+      near([c.sx(world[0]), c.sy(world[1])], anchor, `${cw}x${ch}: anchored screen point`);
+    }
+  }
+});
 
 test('frame() with one point: zoom zMax, point at the centre of the clear area', () => {
   for (const [cw, ch] of [[1200, 800], [390, 760], [390, 250]]) {
