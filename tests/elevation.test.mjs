@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore, setupPreset } from './load-core.mjs';
-import { stadium, loadGolden, comboKey } from './golden-util.mjs';
+import { stadium } from './golden-util.mjs';
+import { loadFixedLines, fixtureCase } from './fixture-util.mjs';
 
 const core = await loadCore(), WIDTH = 12;
 const withZ = (ctrl, z) => ctrl.map((p, i) => [p[0], p[1], typeof z === 'number' ? z : z[i]]);
@@ -287,14 +288,17 @@ test('dynamics: axle loads sum to m·g·n plus downforce', () => {
 // The dynamic check on hills meets the same sanity bounds as on flat circuits (fraction in [0.85, 1], peak tyre use on
 // the lap model's profile <= 1.15, clean final lap). Harrow Ring at 25 m on each car's converged flat line (a good line
 // on the same plan view). Measured when written: fractions 91.6-100% (flat 91.3-99.1%), peak use <= 1.117.
-test('dynamics: the dynamic check on a hilly circuit stays within the flat-circuit bounds', t => {
-  const g = loadGolden(), tr = core.TRACKS[0], ctrl = core.genCtrl(tr.seed, WIDTH), u = core.genElev(tr.seed, ctrl), T = core.buildTrack(withZ(ctrl, u.map(x => 25 * x)), WIDTH);
-  for (const name of Object.keys(core.CARS)) {
-    const fx = g.combos[comboKey(name, tr.name)], car = core.buildCar(core.CARS[name], { loads: true });
-    assert.equal(fx.N, T.N, 'hills keep the plan view, so the flat line fits');
-    const dc = new core.DynCheck(T, car, Float64Array.from(fx.off)); while (!dc.done) dc.step();
+test('dynamics: the dynamic check on a hilly circuit stays within the flat-circuit bounds', async t => {
+  const f = loadFixedLines();
+  for (const [key, input] of Object.entries(f.cases)) {
+    if (input.trackName !== 'Harrow Ring' || input.hills !== 0) continue;
+    const fx = await fixtureCase(key, input), name = fx.carName, hillKey = `${name}|Harrow Ring · hills 25 m`;
+    const h = await fixtureCase(hillKey, f.cases[hillKey]), T = h.T, car = core.buildCar(fx.car, { loads: true });
+    assert.deepEqual(h.ctrl.map(p => p.slice(0, 2)), fx.ctrl.map(p => p.slice(0, 2)), `${name}: hills keep the control-point plan view`);
+    assert.equal(fx.off.length, T.N, 'hills keep the plan view, so the flat line fits');
+    const dc = new core.DynCheck(T, car, fx.off); while (!dc.done) dc.step();
     const r = dc.result, d = r.dyn;
-    t.diagnostic(`${name}: ${(r.frac * 100).toFixed(1)}% (flat ${(fx.frac * 100).toFixed(1)}%), peak use ${r.umax.toFixed(3)}`);
+    t.diagnostic(`${name}: ${(r.frac * 100).toFixed(1)}%, peak use ${r.umax.toFixed(3)}`);
     assert.ok(r.frac >= 0.85 && r.frac <= 1, `${name}: fraction ${r.frac}`);
     assert.ok(r.umax <= 1.15, `${name}: peak tyre use ${r.umax}`);
     assert.ok(d && d.complete && !d.spun && d.trouble.length === 0, `${name}: final lap not clean`);

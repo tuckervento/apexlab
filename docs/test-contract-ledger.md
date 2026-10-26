@@ -338,3 +338,7 @@ Validation: `node --test tests/` passed 456 tests in 30 suites: 456 passed, 0 fa
   `src/core/optimiser.js:71`, make `current(out)` immediately copy `off` and return; the targeted sequence fails
   "rejection preserves the previously accepted line". The copy was deleted. All failures were intended assertion
   failures, not hash, runtime, syntax or import failures.
+
+## 4.3 — saved-file compatibility
+
+_(pending)_
