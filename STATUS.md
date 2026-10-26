@@ -86,6 +86,10 @@ Next: wave D (4.1 and 5.4, then 4.2, 4.3 and 5.5).
 
 ## In Progress
 
+- Wave D (2026-10-25), plan approved by Q. Stage 1: 4.1 and 5.4 in Codex (`tc/4.1`, `tc/5.4`). Stage 2 (4.2, 4.3,
+  5.5) branches from `main` after 4.1 merges. 4.1's fixture API is fixed in the plan: `tests/fixtures/fixed-lines.json`,
+  `tests/make-fixtures.mjs`, `tests/fixture-util.mjs` (`loadFixedLines`, `fixtureCase`).
+
 ## Blocked
 
 ## Deviations & Decisions
