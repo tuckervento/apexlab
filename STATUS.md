@@ -1,16 +1,17 @@
 # STATUS
 
-_Last updated: 2026-10-25 (wave A)_
+_Last updated: 2026-10-25 (wave B)_
 
 ## Snapshot
 
-5 of 31 tasks done. Wave A (1.1, 1.2, 1.3, 1.4, 2.6) is merged to `main`. Phase 1 is complete: browser results are
-now trustworthy. On `main`:
-- 449/449 tests pass;
-- all 26 scenarios exit 0 in two full passes, with the Mac in dark mode;
-- `src/` and the goldens are unchanged.
+10 of 31 tasks done. Waves A and B are merged to `main`, completing phases 1 and 2. On `main`:
+- 457/457 tests pass;
+- `check-race-mutations` rejects all 22 mutations;
+- the browser scenarios last passed twice at wave A; wave B changed no scenario or tool;
+- `src/` and the goldens are unchanged;
+- the deletion ledger (`docs/test-contract-ledger.md`) has the 2.1–2.5 entries.
 
-Next: wave B (2.1–2.5).
+Next: wave C (3.1–3.6).
 
 ## Completed
 
@@ -42,11 +43,25 @@ Next: wave B (2.1–2.5).
   - `simple` with a never-logged expectation exits 1 naming it.
 - Wave A on merged `main` (`e45ca09`), with the Mac in dark mode: suite 449/449; 26 scenarios exit 0 in two passes;
   `git diff 76b8477 HEAD -- src tests/golden.json prototype vendor` is empty.
+- [x] 2.1 scene3d incidental assertions (Codex) — done 2026-10-25 — `tc/2.1` `dbabd9c` — verified: Codex's 12 named
+  mutations; the coordinator's own (the margin dropped from `cornerAnchor`) fails "anchor distance from centreline".
+- [x] 2.2 simple and elevation incidental assertions (Codex) — done 2026-10-25 — `tc/2.2` `5bdae4c` — verified:
+  - Codex's 11 mutations, including a seventh `CARS` base passing with no test edit;
+  - the coordinator's own (grade limit 0.24) fails "24.9% grade is within the 25% limit".
+- [x] 2.3 race station goldens (Codex) — done 2026-10-25 — `tc/2.3` `3185965` — verified: `check-race-mutations`
+  rejects all 22 mutations (10 new, each tied to its assertion message), including the crossing-reset defect
+  (caught by before-finish window 4).
+- [x] 2.4 camera fit (Codex) — done 2026-10-25 — `tc/2.4` `a104b89` — verified:
+  - the expected bounds are hand-derived from the padding policy;
+  - Codex's mutations (`padB` ignored, corner-centred) fail;
+  - the coordinator's own (half the side padding) fails "390x760: road edges inside clear area".
+- [x] 2.5 playback known examples (Codex) — done 2026-10-25 — `tc/2.5` `c600954` — verified: Codex's 15 mutations each
+  fail a quoted assertion; the coordinator's own (`ay` sign flipped) fails "right bend ay is +2 m/s²".
+- Wave B on merged `main` (`5899dfb`): suite 457/457; race mutations 22/22 rejected;
+  `git diff daaf7f7 HEAD -- src tests/golden.json prototype vendor tools` is empty; ledger complete for 2.1–2.5 (no
+  placeholders).
 
 ## In Progress
-
-- Wave B (2026-10-25): 2.1–2.5 in Codex (worktrees `../apexlab-wt/tc-2.x`, branches `tc/2.x`), plan approved by Q.
-  Ledger skeleton `docs/test-contract-ledger.md` on `main` first, one section per task, to keep the merges apart.
 
 ## Blocked
 
@@ -75,7 +90,15 @@ Next: wave B (2.1–2.5).
     and the scenario passed, but it breaks the run-twice-at-0 discipline. Like the earlier `view-toggle`/`view3d`
     panel-text drift, it's a candidate flake to pin down; not acted on.
   - **`webgl2`'s 0.0117** is its deliberate shifted-image self-test.
+- **Wave B:**
+  - The ledger was created on `main` before the wave, with one placeholder section per task, so five parallel branches
+    could fill it without conflicts.
+  - Three Codex jobs stopped under an over-broad "stop if surprised" prompt line (2.1 on its own mistyped path, 2.5
+    on an optional mutation, 2.3 on an error in its own ledger entry) and were resumed with the rule narrowed to
+    surprises about the code or the task. Future prompts say this up front.
+  - 2.3 split the finish test into four cases (windows 3 and 4 × before/after the finish). Only window 4 rejects the
+    crossing-reset mutation; both windows are kept, as the task required.
 
 ## Next Up
 
-- Wave B: 2.1, 2.2, 2.3, 2.4, 2.5 (no dependencies; Node-only test cuts).
+- Wave C: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6 (independent coverage; no dependencies).

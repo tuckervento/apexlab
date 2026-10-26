@@ -1,21 +1,10 @@
-// Migration step 7: playback.pose() (ARCHITECTURE.md §10.2) on lap snapshots and dynamic traces, and the race clock.
-// The lap pose must reproduce what the map and HUD computed before step 7 (carState, copied below) bit for bit.
+// Playback poses (ARCHITECTURE.md §10.2): known lap/trace samples, kinematics and the race clock.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore } from './load-core.mjs';
 import { SKIDPAD, skidpadSetup } from './golden-util.mjs';
 
-const core = await loadCore(), { G } = core;
-
-// Pre-step-7 carState and raceClock, verbatim from src/views/map2d/map.js (step 6).
-function carStateOld(d,T,rt,replay){
-  const N=T.N;if(!(replay>0&&d&&d.t>0))return null;
-  const t=Math.min(rt,d.t-1e-6);let lo=0,hi=N;while(hi-lo>1){const m=(lo+hi)>>1;if(d.tc[m]<=t)lo=m;else hi=m;}
-  const j=(lo+1)%N,f=(t-d.tc[lo])/((d.tc[lo+1]-d.tc[lo])||1);
-  return {i:lo,x:d.px[lo]+(d.px[j]-d.px[lo])*f,y:d.py[lo]+(d.py[j]-d.py[lo])*f,ang:Math.atan2(d.py[j]-d.py[lo],d.px[j]-d.px[lo]),
-    v:d.v[lo]+(d.v[j]-d.v[lo])*f,glat:d.v[lo]*d.v[lo]*Math.abs(d.k[lo])/G,glong:(d.v[j]*d.v[j]-d.v[lo]*d.v[lo])/(2*d.ds[lo]+1e-9)/G};
-}
-function raceClockOld(disp,ghost,animT){const cyc=ghost?Math.max(disp.t,ghost.t)+1:disp.t;return animT%cyc;}
+const core = await loadCore();
 
 // Snapshots the way the app receives them: centreline, and lines part-way through the search.
 function snapshots(car = 'GT racer', track = core.TRACKS[0]) {
@@ -37,16 +26,67 @@ function times(d, n = 500) {
   return ts;
 }
 
-test('playback: lap pose equals pre-step-7 carState bit for bit', () => {
-  let n = 0;
-  for (const { T, info, snaps } of LAPS) for (const d of snaps) for (const t of times(d)) {
-    const o = carStateOld(d, T, t, 4), p = core.pose(d, t, info);
-    const pairs = [['x', p.x, o.x], ['y', p.y, o.y], ['heading', p.heading, o.ang], ['speed', p.speed, o.v],
-      ['|ay|/G', Math.abs(p.ay) / G, o.glat], ['ax/G', p.ax / G, o.glong], ['station', p.station, o.i]];
-    for (const [k, a, b] of pairs) if (!Object.is(a, b)) assert.fail(`t=${t}: ${k} ${a} vs old ${b}`);
-    n++;
+// Timing is deliberately nonuniform; geometry is a 12 m square, without legacy-optional height.
+const LAP = { px: [0, 12, 12, 0], py: [0, 0, 12, 12], v: [4, 8, 4, 8],
+  k: [0.125, -0.125, 0.25, -0.25], ds: [12, 12, 12, 12], tc: [0, 2, 5, 9, 14], t: 14,
+  phys: { wf: [100, 200, 400, 600], wr: [800, 600, 400, 200] } };
+const INFO = { n: 5, vstep: 2, curves: { gear: [1, 1, 2, 3, 4], rpm: [0.2, 0.3, 0.4, 0.6, 0.8] } };
+
+test('playback: known lap boundaries and midpoint', () => {
+  for (const [t, station, x, y, speed, s] of [[0, 0, 0, 0, 4, 0], [2, 1, 12, 0, 8, 12],
+    [5, 2, 12, 12, 4, 24], [9, 3, 0, 12, 8, 36]]) {
+    const p = core.pose(LAP, t);
+    assert.equal(p.station, station, `station at t=${t}`);
+    assert.equal(p.frac, 0, `boundary fraction at t=${t}`);
+    assert.deepEqual([p.x, p.y, p.speed, p.s], [x, y, speed, s], `boundary pose at t=${t}`);
   }
-  assert.ok(n > 2000, `only ${n} poses compared`);
+  const p = core.pose(LAP, 3.5, INFO);
+  assert.deepEqual([p.station, p.frac, p.x, p.y, p.speed, p.s], [1, 0.5, 12, 6, 6, 18], 'midpoint position, speed and distance');
+  assert.equal(p.heading, Math.PI / 2, 'midpoint heading follows the segment');
+  assert.deepEqual(p.phys, { wf: 300, wr: 500 }, 'midpoint telemetry is linearly interpolated');
+  // Positive curvature bends right in the screen frame; negative curvature bends left.
+  assert.equal(core.pose(LAP, 1).ay, 2, 'right bend ay is +2 m/s²');
+  assert.equal(p.ay, -8, 'left bend ay is -8 m/s²');
+  // Braking 8 -> 4 m/s over 12 m: (16 - 64) / 24 = -2 m/s².
+  assert.ok(Math.abs(p.ax + 2) < 1e-9, 'longitudinal acceleration is -2 m/s²');
+  assert.equal(p.gear, 3, '6 m/s selects gear 3');
+  assert.equal(p.rpm, 0.6, '6 m/s selects 0.6 redline');
+  const q = core.pose(LAP, 3.5);
+  assert.equal(q.gear, undefined, 'gear is optional without info');
+  assert.equal(q.rpm, undefined, 'rpm is optional without info');
+  assert.equal(q.z, 0, 'legacy snapshot without height is flat');
+});
+
+test('playback: closing segment and hold just before the finish', () => {
+  const p = core.pose(LAP, 11.5);
+  assert.deepEqual([p.station, p.frac, p.x, p.y, p.speed, p.s], [3, 0.5, 0, 6, 6, 42], 'closing segment interpolates last to first');
+  assert.equal(p.heading, -Math.PI / 2, 'closing segment points toward the start');
+  assert.deepEqual(p.phys, { wf: 350, wr: 500 }, 'closing telemetry wraps to the first station');
+  for (const t of [14, 20, 100]) {
+    const q = core.pose(LAP, t);
+    assert.equal(q.station, 3, 'lap end holds the final segment');
+    assert.ok(q.frac > 0.999 && q.frac < 1, 'lap end holds within the last 0.1% of the final segment');
+    assert.ok(q.s > 47.988 && q.s < 48 && q.y > 0 && q.y < 0.012, 'lap end is just before the finish');
+  }
+});
+
+const TRACE = { t: [2, 6], x: [0, 12], y: [4, 8], v: [3, 6], vy: [4, 8], psi: [3 * Math.PI / 4, -3 * Math.PI / 4],
+  s: [10, 30], st: [1, 2], r: [0.1, 0.3], delta: [0.2, 0.4], alf: [0.01, 0.03], alr: [-0.03, -0.01],
+  ax: [1, 3], ay: [-2, -4], gear: [2, 3] };
+
+test('playback: trace takes the shortest arc across the heading seam', () => {
+  // 135° -> -135° advances 90° through 180°; at one quarter it is 157.5°.
+  assert.ok(Math.abs(core.pose(TRACE, 3).heading - 7 * Math.PI / 8) < 1e-12, 'heading seam quarter is 7π/8 on the shortest arc');
+  assert.ok(Math.abs(Math.abs(core.pose(TRACE, 4).heading) - Math.PI) < 1e-12, 'heading seam midpoint is ±π');
+});
+
+test('playback: trace endpoint clamps and legacy height', () => {
+  for (const [t, x, y, s, speed, heading, station, gear] of [[-10, 0, 4, 10, 5, 3 * Math.PI / 4, 1, 2],
+    [20, 12, 8, 30, 10, -3 * Math.PI / 4, 2, 3]]) {
+    const p = core.pose(TRACE, t);
+    assert.deepEqual([p.x, p.y, p.s, p.speed, p.heading, p.station, p.gear], [x, y, s, speed, heading, station, gear], `trace clamps at t=${t}`);
+    assert.equal(p.z, 0, 'legacy trace without height is flat');
+  }
 });
 
 test('playback: lap pose properties', () => {
@@ -112,11 +152,10 @@ test('playback: lapExtremes is the range of the lap poses', () => {
 test('playback: raceClock', () => {
   assert.equal(core.raceClock([80], 100), 20);
   assert.equal(core.raceClock([80, 78], 100), 100 % 81, 'the quicker car waits 1 s at the line');
-  const r = core.mulberry32(3);
-  for (let k = 0; k < 200; k++) {
-    const disp = { t: 60 + 30 * r() }, ghost = r() < 0.5 ? { t: 60 + 30 * r() } : null, animT = 400 * r();
-    assert.ok(Object.is(core.raceClock(ghost ? [disp.t, ghost.t] : [disp.t], animT), raceClockOld(disp, ghost, animT)));
-  }
+  assert.equal(core.raceClock([80], 80), 0, 'single car restarts at its lap time');
+  assert.equal(core.raceClock([80, 78], 80), 80, 'cars hold until the shared restart');
+  assert.equal(core.raceClock([78, 80], 81), 0, 'slower ghost sets the shared restart');
+  assert.equal(core.raceClock([80, 78], 163), 1, 'shared clock repeats after multiple laps');
 });
 
 test(`playback: trace pose on the skidpad (${SKIDPAD.car}, ${SKIDPAD.R} m, 95%)`, t => {

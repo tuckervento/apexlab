@@ -131,4 +131,85 @@ Camera fixtures used a temporary `APEX_SRC` copy, deleted afterward. `git diff -
 
 ## 2.5 — playback: copied logic
 
-_(pending)_
+Original line numbers below refer to the test before this replacement. The seven fields checked by the old
+comparison loop are recorded separately. All faults were tested in temporary `APEX_SRC` copies of `src/` with
+`node --test tests/playback.test.mjs`; each failed with an assertion error, and the copies were deleted.
+
+- **Old:** `tests/playback.test.mjs:46`, x equals `carStateOld` bit for bit.
+- **Promise:** replay position follows the selected segment's coordinates.
+- **Replacement:** `playback: known lap boundaries and midpoint` checks explicit boundary positions and the
+  midpoint `(12, 6)`; `playback: closing segment and hold just before the finish` checks `(0, 6)` on the wrap.
+- **Fault shown:** `src/playback/pose.js:34`, add 1 m to x; failed "boundary pose at t=0".
+
+- **Old:** `tests/playback.test.mjs:46`, y equals `carStateOld` bit for bit.
+- **Promise:** replay position follows the selected segment's coordinates.
+- **Replacement:** `playback: known lap boundaries and midpoint` checks explicit boundary positions and the
+  midpoint `(12, 6)`; the closing-segment test checks `(0, 6)`.
+- **Fault shown:** `src/playback/pose.js:34`, add 1 m to y; failed "boundary pose at t=0".
+
+- **Old:** `tests/playback.test.mjs:46`, heading equals the old map's angle bit for bit.
+- **Promise:** lap heading points along the selected segment.
+- **Replacement:** the known midpoint heading is `π/2`, and the closing segment's heading is `-π/2`.
+- **Fault shown:** `src/playback/pose.js:34`, replace lap heading with 0; failed
+  "midpoint heading follows the segment".
+
+- **Old:** `tests/playback.test.mjs:46`, speed equals the old map's speed bit for bit.
+- **Promise:** speed interpolates between the selected stations in m/s.
+- **Replacement:** the known midpoint speed is 6 m/s between 8 and 4 m/s; explicit boundary speeds and the
+  closing-segment speed are also checked.
+- **Fault shown:** `src/playback/pose.js:35`, hold speed at the segment's starting value; failed
+  "midpoint position, speed and distance".
+
+- **Old:** `tests/playback.test.mjs:46`, `abs(ay)/G` equals the old map's unsigned lateral-g readout bit for bit.
+- **Promise:** lateral acceleration has the segment's magnitude in SI units; the old assertion did not protect sign.
+- **Replacement:** the known right bend gives `ay = +2 m/s²`, and the left bend gives `ay = -8 m/s²`, following
+  the documented screen-frame curvature convention.
+- **Fault shown:** `src/playback/pose.js:35`, negate lap `ay`; failed "right bend ay is +2 m/s²".
+
+- **Old:** `tests/playback.test.mjs:46`, `ax/G` equals the old map's longitudinal-g readout bit for bit.
+- **Promise:** longitudinal acceleration represents the speed change over distance in SI units.
+- **Replacement:** braking from 8 to 4 m/s over 12 m gives `(16 - 64)/24 = -2 m/s²`, checked within `1e-9 m/s²`.
+- **Fault shown:** `src/playback/pose.js:35`, divide lap `ax` by 9.81; failed
+  "longitudinal acceleration is -2 m/s²".
+
+- **Old:** `tests/playback.test.mjs:46`, station equals the old map's station bit for bit.
+- **Promise:** exact station times select the segment beginning at that station, including nonuniform timing.
+- **Replacement:** times `[0, 2, 5, 9]` select stations `[0, 1, 2, 3]` at fraction 0; time 3.5 selects station 1
+  at fraction 0.5, and time 11.5 selects the closing segment at fraction 0.5.
+- **Fault shown:** `src/playback/pose.js:24`, change the boundary comparison from `<=` to `<`; failed "station at t=2".
+
+- **Old:** `tests/playback.test.mjs:49`, more than 2000 historical pose comparisons ran.
+- **Promise:** none: this counted comparisons against copied logic rather than protecting playback behavior.
+- **Replacement:** no count threshold is needed for the explicit examples; the existing dense station/pose,
+  telemetry, extrema and trace-kinematics coverage remains.
+- **Fault shown:** no separate fault applies to deleting an incidental comparison count; the seven field
+  replacements above each have demonstrated faults.
+
+- **Old:** `tests/playback.test.mjs:118`, random race clocks equal `raceClockOld` bit for bit.
+- **Promise:** a single car restarts at its lap time; two cars share the slower lap time plus a one-second wait.
+- **Replacement:** preserve the two existing explicit cases; add single-car restart, waiting at the line,
+  a slower ghost determining the shared restart, and repeated-cycle examples.
+- **Fault shown:** `src/playback/pose.js:10`, replace `Math.max(...lapTimes)+1` with `lapTimes[0]+1`; failed
+  "slower ghost sets the shared restart".
+
+Additional known-example evidence (same temporary-copy procedure):
+
+| Mutation | Assertion that failed |
+|---|---|
+| `src/playback/pose.js:59`: use raw heading difference across the seam | "heading seam quarter is 7π/8 on the shortest arc" |
+| `src/playback/pose.js:36`: hold telemetry at its starting value | "midpoint telemetry is linearly interpolated" |
+| `src/playback/pose.js:31`: clamp the next station instead of wrapping | "closing segment interpolates last to first" |
+| `src/playback/pose.js:24`: hold 0.01 seconds before lap end | "lap end holds within the last 0.1% of the final segment" |
+| `src/playback/pose.js:37`: force gear 1 | "6 m/s selects gear 3" |
+| `src/playback/pose.js:37`: force rpm 0 | "6 m/s selects 0.6 redline" |
+| `src/playback/pose.js:34`: default missing snapshot height to 1 m | "legacy snapshot without height is flat" |
+
+The finish bound is geometric: stay strictly before the finish within the last 0.1% of the 12 m closing segment
+(0.012 m), with fraction in `(0.999, 1)` and distance in `(47.988, 48)` m. This allows the implementation's hold
+epsilon to change. The current implementation passes; the 0.01-second hold samples fraction 0.998 and fails.
+This is a sampling-policy tolerance, not a runtime budget. Synthetic trace examples also preserve endpoint clamps
+and the legacy missing-height default of 0. The optional clamp mutation was skipped after its target-uniqueness
+guard found two matches, before executing a mutated test; it is not counted as mutation evidence.
+
+Validation: `node --test tests/` passed 452 tests in 30 suites, with 0 failed, cancelled, skipped or todo.
+`git diff -- src` was empty; no production files or goldens were changed.
