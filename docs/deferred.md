@@ -290,8 +290,8 @@ resampled), but the recorded lap is refused as a ghost (`ghostFrom` in `src/app/
 
 ## Elsewhere
 
-- **Test contracts** (`docs/test-contract-plan.md`): **done** 2026-10-25. The plan and record are `PLAN.md` and
-  `STATUS.md`, the ledger `docs/test-contract-ledger.md`, and the budgets `docs/investigations/search-budgets.md`.
+- **Test contracts** (`docs/test-contract-plan.md`): **done** 2026-10-25. The plan and record are
+  `docs/plans/test-contracts/PLAN.md` and `STATUS.md`, the ledger `docs/test-contract-ledger.md`, and the budgets `docs/investigations/search-budgets.md`.
   Left open: a rare second-run screenshot drift (0.001–0.008 of pixels, seen three times: `view-toggle` and `view3d` together,
   then `trace3d`, then `streaks3d`; within tolerance, 0 on rerun, not reproduced in 15 runs under load). The suspected cause
   is web-font or text rasterisation.

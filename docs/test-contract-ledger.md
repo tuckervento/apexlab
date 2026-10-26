@@ -1,6 +1,6 @@
 # Test-contract deletion ledger
 
-Every assertion removed under `PLAN.md` (the test-contract plan) is recorded here before it goes. This is
+Every assertion removed under the test-contract plan (`docs/plans/test-contracts/PLAN.md`) is recorded here before it goes. This is
 `docs/test-contract-plan.md` §7: "record the old assertion, the promise it uniquely protected, its replacement test or
 why none is needed, and a demonstrated fault the replacement detects".
 

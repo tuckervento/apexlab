@@ -456,7 +456,7 @@ Branches are listed with their commit; Claude-subagent branches live in `.claude
 ## Next Up
 
 Nothing: every PLAN.md task is done. This plan is archived here, at `docs/plans/3d/`, and the repository root's
-`PLAN.md` is now the test-contract plan.
+`PLAN.md` then held the test-contract plan (itself archived at `docs/plans/test-contracts/` when it finished).
 
 Follow-ups resolved with Q on 2026-10-25, after the close:
 - **A1:** closed, superseded by the Map camera.
