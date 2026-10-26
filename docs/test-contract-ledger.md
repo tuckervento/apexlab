@@ -519,3 +519,30 @@ All reported failures were intended assertions, not syntax/import/runtime/hash f
 Validation: `node --test tests/` passed 510 tests in 0 suites: 510 passed, 0 failed, cancelled, skipped or todo
 (32353.947292 ms). Focused solver validation passed all 22 tests. `git diff --check` passed and
 `git diff -- src` was empty. Only the five authorized task paths changed; no commits were made.
+
+## 5.2 — Search contracts
+
+- **Old:** `tests/convergence.test.mjs:39–43`, runtime gate and exact `{centreLap, lap, evals, steps}` equality.
+  **Promise:** useful search quality, correct reported time and bounded completion; exact historical values and runtime identity are incidental.
+  **Replacement:** flat and 25 m hilly direct searches require convergence, at most 160,000 objective evaluations (`opt.evals`) and 160,000 `step()` calls, and a 120 s watchdog checked between steps (180 s outer timeout). Both baseline and feasible fixture reference are freshly scored with separate scratch; their improvement must exceed 1 s. Fresh final lap is positive and agrees with reported lap within 1e-9 s; gain must be >= 0.9987 with no upper bound. Exact endpoint, counts and visited stage count are diagnostics.
+  **Fault shown:** disposable `APEX_SRC` copies: `src/core/optimiser.js:21`, mark done immediately after setup (zero steps), fails "search gain >= 0.9987"; `:68`, add 1 s to `exactLap()`, fails "reported lap matches fresh rescore within 1e-9 s". A feasible gradient nudge after final clamp at `:87` lowers the fresh flat lap from 78.37714547025213 s to 78.37710768402341 s and passes all contracts.
+
+- **Old:** `tests/convergence.test.mjs:44–46`, every converged offset equals the historical fixture.
+  **Promise:** a feasible final line; historical coordinate identity is incidental.
+  **Replacement:** require every returned offset inside its station's `[B.lo, B.hi]`, finite fresh speeds/geometry and warning telemetry, and the fresh-score/quality contracts above. Existing polish, working-line bounds and faster-than-centreline properties remain.
+  **Fault shown:** `src/core/optimiser.js:87`, after final clamp set `off[0] = B.hi[0] + 0.01`, fails "returned line inside bounds" (and the retained working-line bounds property). The feasible better endpoint described above passes.
+
+- **Old:** `tests/solver.test.mjs:67–70`, runtime gate and exact protocol `{centreLap, lap, evals}` equality.
+  **Promise:** the real protocol completes a materially good search with a correct reported time and bounded work; historical effort/time identity is incidental.
+  **Replacement:** the protocol convergence search uses the same 0.9987 minimum gain, > 1 s reference improvement, positive fresh lap with 1e-9 s reporting tolerance, 160,000 evaluation/call ceilings and 120 s watchdog (180 s outer timeout). Count every call, including false returns and stage transitions, in the existing shared convergence run; check budgets between steps/ticks. Preserve all existing protocol properties. Counts, visited stage count and endpoint are diagnostics.
+  **Fault shown:** `src/core/optimiser.js:21`, setup then done without steps, fails "search gain >= 0.9987" through the protocol. `src/solver/solver.js:152`, add 1 s to the converged snapshot's lap, fails "reported lap matches fresh rescore within 1e-9 s". The same feasible improved endpoint at optimiser `:87` passes the protocol contracts.
+
+- **Old:** `tests/solver.test.mjs:71–73`, every published offset equals the historical fixture.
+  **Promise:** the published final line is feasible and useful; historical coordinate identity is incidental.
+  **Replacement:** every final snapshot offset is in bounds; snapshot speeds, geometry, cumulative times, force/load telemetry, extrema and warnings are finite. Freshly score that snapshot line for positive lap, reporting agreement and minimum gain; retain existing revision, publication and copy properties.
+  **Fault shown:** `src/core/optimiser.js:87`, push final `off[0]` 0.01 m beyond `B.hi[0]`, fails protocol "returned line inside bounds". The feasible improved endpoint passes with fresh lap 78.37710768402341 s.
+
+Budget evidence and rationale (Q approval in `docs/investigations/search-budgets.md`): measured Node v26.12.1 / V8 14.6.202.34-node.40 on Apple M3. Healthy flat direct/protocol: 78,063 objective evaluations, 76,851 calls, direct 8.141–8.253 s, protocol 8.009–14.288 s; hilly pilot: 72,001 evaluations, 70,298 calls, 21.176 s. The 160,000 ceilings allow roughly twice healthy flat work; evaluations exclude snapshot/reference/final scoring. The 120 s watchdog is a hang guard with contention headroom, not a speed target; an in-process timer cannot interrupt an infinite synchronous step. The approved investigation demonstrated redundant objective evaluations (229,363) failing "search evaluations <= 160000", idle calls (230,553) failing "search steps <= 160000", and a stalled final step (129.193 s) failing "search wall time <= 120 s". Quality calibration: healthy gain 1; halved stall threshold gain 0.997436713621 fails "search gain >= 0.9987". The approved 0.9987 threshold permits about 9.6 ms loss on the measured flat case; better results pass. Hilly quality uses its own reference, with no claim of independent hilly fault calibration.
+
+Task validation timings: focused direct flat 8.527 s, direct hilly 17.818 s (17.619 s timed search), protocol search 8.619 s; 28 focused tests pass. The added hilly run therefore costs 17.818 s in this focused run. All task mutations use deleted disposable source copies; `git diff -- src` is empty.
+Full suite: `node --test tests/` — 513 tests, 0 suites; 513 passed, 0 failed, 0 cancelled, 0 skipped, 0 todo; 39,301.265625 ms. Under full-suite/mutation contention the added hilly run took 22.805 s (22.397 s timed search). `git diff --check` passes. Protocol convergence helper instrumentation is necessary to count and bound the existing shared run; the dynamic-check subtest and all other test bodies are unchanged.

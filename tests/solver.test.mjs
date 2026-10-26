@@ -1,10 +1,9 @@
 // Migration step 5: the Solver behind the worker protocol (ARCHITECTURE.md §10.1), driven directly (no worker).
-// The optimiser's result depends only on its step sequence, so a run through the protocol must reproduce the
-// convergence fixture (§8.2/8.3) bit for bit; revisions must tag every result with the state it was computed on.
+// Protocol completion must deliver a feasible, independently scored, materially good line; revisions tag results.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore } from './load-core.mjs';
-import { loadGolden, assertRuntime, comboKey, dynResultSummary } from './golden-util.mjs';
+import { fixtureCase } from './fixture-util.mjs';
 
 const core = await loadCore(), CAR = 'GT racer', TRACK = core.TRACKS[0], WIDTH = 12;
 
@@ -34,21 +33,34 @@ function acceptedObserver() {
 let conv = null;
 function converged() {
   if (!conv) {
+    const t0 = performance.now(), stages = new Set();
     const { acc, hook } = acceptedObserver();
     conv = boot(hook); conv.accepted = acc;
     conv.s.handle({ type: 'run' });
     const o = conv.s.opt, step = o.step;
+    conv.steps = 0;
+    const budget = () => {
+      assert.ok((performance.now() - t0) / 1000 <= 120, 'search wall time <= 120 s');
+      assert.ok(o.evals <= 160000, 'search evaluations <= 160000');
+      assert.ok(conv.steps <= 160000, 'search steps <= 160000');
+    };
     o.step = function () {
+      budget();
+      assert.ok(conv.steps < 160000, 'search converged within 160000 steps');
+      stages.add(this.stage + 1);
       const polish = !!this.polish, accepted = step.call(this);
+      conv.steps++;
       if (polish && !accepted && !this.converged) acc.rejected++;
       return accepted;
     };
-    while (conv.s.tick(20));
+    while (conv.s.tick(20)) budget();
+    budget();
+    conv.secs = (performance.now() - t0) / 1000; conv.stages = stages.size;
   }
   return conv;
 }
 
-test(`solver: converges through the protocol, ${CAR}, ${TRACK.name}`, { timeout: 10 * 60 * 1000 }, async t => {
+test(`solver: converges through the protocol, ${CAR}, ${TRACK.name}`, { timeout: 180000 }, async t => {
   const b = converged();
   noErrors(b.ev);
   const snap = b.last('snapshot'), prog = b.last('progress'), centreLap = b.of('snapshot').find(e => e.ref).ref.t;
@@ -63,14 +75,32 @@ test(`solver: converges through the protocol, ${CAR}, ${TRACK.name}`, { timeout:
     assert.ok(snap.line.off.every((x, i) => x === b.s.pub[i]), 'snapshot off is the published line (run files export it)');
     assert.notEqual(snap.line.off.buffer, b.s.pub.buffer, 'off is a copy, never the solver\'s own array');
   });
-  await t.test('golden', () => {
-    const g = loadGolden();
-    assertRuntime(g);
-    const fx = g.combos[comboKey(CAR, TRACK.name)];
-    assert.deepEqual({ centreLap, lap: snap.lap, evals: prog.evals }, { centreLap: fx.centreLap, lap: fx.lap, evals: fx.evals });
-    const diff = [];
-    for (let i = 0; i < fx.N; i++) if (b.s.pub[i] !== fx.off[i]) diff.push(i);
-    assert.equal(diff.length, 0, `published line differs from the fixture at ${diff.length} stations (first: ${diff[0]})`);
+  await t.test('search contract', async () => {
+    const { T, car, B, opt } = b.s, N = T.N, line = snap.line.off;
+    const fx = await fixtureCase(`${CAR}|${TRACK.name}`);
+    const centre = Float64Array.from(B.lo, (lo, i) => Math.min(B.hi[i], Math.max(lo, 0)));
+    const centreLap = core.lapEval(T, car, centre, core.makeScratch(N));
+    assert.ok(fx.off.every((v, i) => v >= B.lo[i] && v <= B.hi[i]), 'fixture reference feasible');
+    const referenceLap = core.lapEval(T, car, fx.off, core.makeScratch(N));
+    assert.ok(centreLap - referenceLap > 1, 'reference improvement exceeds one second');
+    assert.ok(opt.converged, 'search converged');
+    assert.ok(opt.evals <= 160000, 'search evaluations <= 160000');
+    assert.ok(b.steps <= 160000, 'search steps <= 160000');
+    assert.ok(b.secs <= 120, 'search wall time <= 120 s');
+    assert.ok(line.every((v, i) => v >= B.lo[i] && v <= B.hi[i]), 'returned line inside bounds');
+    const S = core.makeScratch(N), resultLap = core.lapEval(T, car, line, S);
+    for (const k of ['px', 'py', 'ds', 'k', 'v', 'tc', 'pz'])
+      assert.ok(snap.line[k].every(Number.isFinite), `snapshot ${k} finite`);
+    for (const [k, a] of Object.entries(snap.line.phys)) assert.ok(a.every(Number.isFinite), `snapshot phys.${k} finite`);
+    for (const k of ['vmin', 'vmax']) assert.ok(Number.isFinite(snap[k]), `snapshot ${k} finite`);
+    for (const [k, v] of Object.entries(snap.warn)) assert.ok(Number.isFinite(v), `snapshot warning ${k} finite`);
+    assert.ok(S.v.every(Number.isFinite), 'fresh speeds finite');
+    assert.ok(Number.isFinite(resultLap) && resultLap > 0 && snap.lap > 0, 'positive finite lap');
+    // Absolute seconds, the same roundoff allowance as the direct search.
+    assert.ok(Math.abs(snap.lap - resultLap) <= 1e-9, 'reported lap matches fresh rescore within 1e-9 s');
+    const gain = (centreLap - resultLap) / (centreLap - referenceLap);
+    assert.ok(gain >= 0.9987, 'search gain >= 0.9987');
+    t.diagnostic(`fresh=${resultLap}  centreline=${centreLap}  reference=${referenceLap}  gain=${gain}  steps=${b.steps}  stages=${b.stages}  wall=${b.secs.toFixed(3)} s`);
   });
 });
 

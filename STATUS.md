@@ -1,19 +1,18 @@
 # STATUS
 
-_Last updated: 2026-10-25 (wave D)_
+_Last updated: 2026-10-25 (wave E)_
 
 ## Snapshot
 
-21 of 31 tasks done. Waves A–D are merged to `main`: phases 1–4 are complete, plus 5.4 and 5.5. On `main`:
-- 540/540 tests pass;
+24 of 31 tasks done. Waves A–E are merged to `main`: phases 1–5 are complete. The default suite no longer asserts
+any historical endpoint: no `assertRuntime` and no `golden.test.mjs`. On `main`:
+- 513/513 tests pass (~36 s);
 - race mutations 22/22 rejected;
-- the fixed-line inputs live in `tests/fixtures/fixed-lines.json`;
-- `elevation` and `runfile` no longer read `golden.json`;
-- `tools/numeric-report.mjs` is the opt-in exact-comparison report;
+- `node tools/numeric-report.mjs` reports "identical (587 quantities)";
 - `src/` changed only by 3.5's `client.js` reorder; the goldens are unchanged.
 
-Next: wave E. 5.1 measures the search budgets and **stops for Q's approval of the numbers**, then 5.2; 5.3 can run
-alongside.
+Next: wave F (6.1 delete parity, 6.2 retire the historical gates and rewrite the guidance, 6.3 drop `view-toggle`'s
+PNG workflow).
 
 ## Completed
 
@@ -111,11 +110,30 @@ alongside.
 - Wave D on merged `main`: suite 540/540; race 22/22;
   `git diff fae8411 HEAD -- src tests/golden.json tools prototype vendor` = `tools/numeric-report.mjs` only; no ledger
   placeholders.
+- [x] 5.3 fixed-line and dynamic-check contracts (Codex) — done 2026-10-25 — `ea06561` — verified:
+  - `golden.test.mjs` is deleted; `fixed-line.test.mjs` covers all 30 fixtures, with bounds from model constants
+    (the 900 s horizon, the trouble thresholds, at most 8 probes = 2 + six halvings of [0.80, 1.0] to < 0.004);
+  - Codex's 7 mutations (including driver gains ×0.3) fail named contracts;
+  - the coordinator's (bisection accepting a run with trouble) fails 22 cases, "final lap at frac 0.940625 not
+    clean".
+- [x] 5.1 search budgets (Codex) — done 2026-10-25 — `1057425` — verified:
+  - the measurements are in `docs/investigations/search-budgets.md`: healthy direct and protocol runs reach gain
+    1.0, 78,063 evaluations, ~8.2 s;
+  - each of 7 broken optimisers falls outside a named bound;
+  - **Q approved** gain ≥ 0.9987, ≤ 160k evaluations and steps, a 120 s watchdog, and a hilly case;
+  - the coordinator reran the skip-polish fault: it fails "search gain >= 0.9987".
+- [x] 5.2 search contracts (Codex) — done 2026-10-25 — `430e20a` — verified:
+  - optimisation bypassed fails the gain contract;
+  - an out-of-bounds offset fails "returned line inside bounds";
+  - `exactLap` or the snapshot lap +1 s fails the fresh-rescore check;
+  - a better feasible line (78.37714547 → 78.37710768 s) passes;
+  - the coordinator's (halved stall threshold) fails "search gain >= 0.9987";
+  - the hilly run adds ~18 s.
+- Wave E on merged `main` (`1a110c9`): suite 513/513; race 22/22;
+  `git diff 90642ee HEAD -- src tests/golden.json tools prototype vendor` is empty; no ledger placeholders; numeric
+  report "identical".
 
 ## In Progress
-
-- Wave E (2026-10-25), plan approved by Q. Stage 1: 5.1 (budget measurements; **stops for Q's approval**) and 5.3, in
-  Codex. Stage 2: 5.2 after Q approves the numbers and 5.3 merges.
 
 ## Blocked
 
@@ -177,9 +195,20 @@ alongside.
   - **5.5 counts quantities by shape:** a structural change (an object becoming `null`) counts as one quantity, so a
     differing run can show fewer than 587. The change is still listed; objects print as `[object Object]`
     (cosmetic).
+- **Wave E:**
+  - **Gain threshold (Q's decision):** Q chose 0.9987 over the coordinator's suggested 0.99. That leaves the healthy
+    run ~9.6 ms of slack, and it also catches a halved stall threshold, which the coordinator had argued is a
+    tuning variant. A valid future optimiser change that lands just under it means a deliberate re-calibration,
+    recorded in `search-budgets.md`.
+  - 5.1 had no per-stage iteration limit to halve, so a halved stall threshold stood in for that broken case.
+  - **Interim guidance (open until 6.2):** the default suite now asserts no historical values, but `CLAUDE.md`
+    still states the old golden rule. Until 6.2 rewrites it, exact mechanical-refactor evidence is
+    `node tools/numeric-report.mjs`.
 
 ## Next Up
 
-- Wave E:
-  - 5.1 (measure the search budgets; **stops for Q to approve the numbers**), then 5.2 (search contracts);
-  - 5.3 (fixed-line and dynamic-check contracts) can run alongside 5.1.
+- Wave F:
+  - 6.1 (delete `parity.test.mjs` and `load-prototype.mjs`; needs 3.1–3.4 and 5.2, all done);
+  - 6.2 (retire the historical gates and unused helpers; rewrite `CLAUDE.md`, `AGENTS.md`, `ARCHITECTURE.md` §8,
+    the test headers and `deferred.md`);
+  - 6.3 (drop `view-toggle`'s old-checkout PNG workflow; also look at the recurring second-run screenshot drift).
