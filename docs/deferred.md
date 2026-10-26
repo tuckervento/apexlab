@@ -27,6 +27,12 @@ and delete or update it here when it lands.
 
 Suggested order: A2 (the next physics step; it reshapes A4, so do A4 with or after it). A5 can ride along with A2. A7 on its own, with its own golden review.
 
+**Reading "goldens" below** (since the test-contract plan, 2026-10-25):
+- The default suite asserts contracts. Exact comparison is the opt-in `node tools/numeric-report.mjs` against
+  `tests/golden.json`, so "regenerate goldens and review the diff" means: review the report's delta table, then run
+  `make-golden.mjs --write`.
+- A change to a documented law also updates the contract that pins it (e.g. A7 and `flat-model.test.mjs`).
+
 ---
 
 ## Lessons to keep (from step 8)
@@ -213,8 +219,12 @@ load is more accurate, but it **changes flat results**: every golden.
 
 **Decided.** Do it on its own, so its golden diff is reviewed in isolation (Q, step 8 planning).
 
-**Verify.** Regenerate goldens and review the diff. The parity test vs the prototype will then fail by design: delete it
-then (`CLAUDE.md`).
+**Verify.**
+- `node tools/numeric-report.mjs` shows the expected delta table (every flat lap moves). Review it, then regenerate
+  `golden.json`.
+- `tests/flat-model.test.mjs` pins today's documented law ("rolling loss: CRR·m·g, independent of speed and
+  downforce"), so change that contract with the law, to the new closed form.
+- The prototype parity test it used to break is already gone (test-contract plan, 6.1).
 
 ## A8. Merge the flat and hilly code paths
 
@@ -280,6 +290,11 @@ resampled), but the recorded lap is refused as a ghost (`ghostFrom` in `src/app/
 
 ## Elsewhere
 
+- **Test contracts** (`docs/test-contract-plan.md`): **done** 2026-10-25. The plan and record are `PLAN.md` and
+  `STATUS.md`, the ledger `docs/test-contract-ledger.md`, and the budgets `docs/investigations/search-budgets.md`.
+  Left open: a rare second-run screenshot drift (0.001–0.008 of pixels, seen three times: `view-toggle` and `view3d` together,
+  then `trace3d`, then `streaks3d`; within tolerance, 0 on rerun, not reproduced in 15 runs under load). The suspected cause
+  is web-font or text rasterisation.
 - **3D view** (migration step 9): **done** 2026-10-25 (`ARCHITECTURE.md` §3 and §11; plan `docs/plans/3d/PLAN.md`, record
   `docs/plans/3d/STATUS.md`). Left open there: a direct check of the 3.6 label positions. Banking (A2) has its
   3D input ready (`stationFrames`' `bank`, zeros today).

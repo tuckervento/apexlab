@@ -115,16 +115,22 @@ index.html ─ src/app/                 state, worker client, controls, frame lo
 ## Tests
 
 ```bash
-node --test tests/    # Node's built-in runner, zero dependencies, about 15 s
+node --test tests/    # Node's built-in runner, zero dependencies, about 35–40 s
 ```
 
+The tests assert contracts (physical bounds, closed forms, finite differences, budgets), not historical outputs: a
+better optimiser result or an equivalent mesh passes, while a broken promise fails a named check.
+
 - **Gradient check:** the exact gradient against finite differences.
-- **Convergence:** the optimiser run to the end.
+- **Convergence:** the optimiser run to the end, within approved effort budgets and a minimum search quality, flat
+  and on hills.
 - **Skidpad:** the dynamic model on a constant-speed circle.
-- **Golden values:** 6 cars × 4 circuits, bit for bit.
-- **Parity:** the modules against the prototype.
+- **Fixed lines:** the dynamic check on 30 committed lines (6 cars × 4 circuits, plus 25 m hills), within physical
+  bounds.
+- **Track, units and flat physics:** geometry, conversions, drag, rolling loss, EV regimes and the cornering limit,
+  against hand-computed values.
 - **Solver protocol, `describeCar` and playback.**
-- **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, the committed physics hash, and a run file recorded before elevation that must still reload exactly.
+- **Saved runs:** the solver's `load` command (a recorded line comes back bit for bit), the file format and its refusals, the committed physics hash, and a run file recorded before elevation whose recorded data survives, re-scored by current physics on load.
 - **Elevation:** flat circuits unchanged bit for bit; the gradient on hills; closed forms (crest and compression corner speeds, terminal speed up a ramp); the dynamic check on hills.
 - **Race:** steady laps, lap times that add up, resets (including across the finish line), and the judge's thresholds. `node tests/check-race-mutations.mjs` (run separately) checks that each of these tests fails on deliberately broken code.
 - **3D view:** the pure modules (frames, meshes, cameras, attitude, effects, streaks, wheel blur) in Node, and the vendored three.js against its hashes.
@@ -137,7 +143,10 @@ node tools/cdp.mjs tools/scenarios/view3d.mjs   # exit 0 pass, 1 a check failed,
 
 The 3D scenarios compare screenshots against references in `tools/scenarios/ref/`. `APEX_UPDATE_REFS=1` rewrites them; review the images before committing.
 
-Golden values are per JavaScript runtime. After an intended physics change (or a Node upgrade), regenerate them with `node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`. Run the same command after driver edits; it regenerates independent physics and driver identities.
+Exact numbers are an opt-in report: `node tools/numeric-report.mjs` compares the current source with `tests/golden.json`
+bit for bit on the pinned runtime. It reports "identical" (a mechanical refactor must), a delta table to review (a
+physics change), or one message on another runtime. After an intended physics change, regenerate the baseline with
+`node tests/make-golden.mjs --write` and review the diff. After any edit to the physics files, also run `node tests/make-physics-version.mjs --write`. Run the same command after driver edits; it regenerates independent physics and driver identities.
 
 ## Documentation
 

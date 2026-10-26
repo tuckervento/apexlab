@@ -1,7 +1,8 @@
-// Shared by make-golden.mjs and the tests that check against tests/golden.json. The generator and the tests
-// call the same functions here, so they compute exactly the same quantities.
-// Goldens are bit-exact and per-runtime: Node and Chrome already differ in buildTrack's last bits
-// (investigations/golden-lap.md), so a different V8 build fails loudly rather than comparing.
+// Shared by make-golden.mjs, make-fixtures.mjs, tools/numeric-report.mjs and a few tests (skidpad and stadium setups,
+// clampedZeros, HILLY). The generator and the report call the same functions here, so they compute exactly the same
+// quantities. golden.json is bit-exact and per-runtime: Node and Chrome already differ in buildTrack's last bits
+// (investigations/golden-lap.md), so the report refuses a different V8 build (assertRuntime) rather than comparing.
+// The default suite asserts contracts and never reads golden.json.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 

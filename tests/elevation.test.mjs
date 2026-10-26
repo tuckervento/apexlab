@@ -1,5 +1,5 @@
 // Elevation (migration step 8): the track's height model, and (later phases) its physics. The guiding rule is that a
-// flat circuit is bit for bit what it was before elevation existed, so the goldens keep proving the flat physics.
+// flat circuit is bit for bit what it was before elevation existed (tools/numeric-report.mjs stays identical for flat cases).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore, setupPreset } from './load-core.mjs';

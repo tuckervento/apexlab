@@ -9,7 +9,7 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
 ## Running and testing
 
 - **Run:** `node serve.mjs`, then open `http://localhost:8000` (`PORT=` to change). `file://` no longer works: browsers block ES modules (and Workers) there. Only external resource is Google Fonts.
-- **Test:** `node --test tests/` (Node's built-in runner, zero deps; ~25 s). `tests/load-core.mjs` imports `src/` as one namespace (`APEX_SRC=<dir>` loads a modified copy, for checking that tests fail on broken code). Modules are cached per process, so module-level state is shared within a test file.
+- **Test:** `node --test tests/` (Node's built-in runner, zero deps; ~35–40 s). `tests/load-core.mjs` imports `src/` as one namespace (`APEX_SRC=<dir>` loads a modified copy, for checking that tests fail on broken code). Modules are cached per process, so module-level state is shared within a test file.
 - **Browser:** `node tools/cdp.mjs <scenario.mjs>` drives the real app in headless Chrome over the DevTools protocol (no deps; Node's `WebSocket`, `CHROME=<path>` if not at the macOS default), for what Node can't run: `controls.js`, `main.js`, the panel, the frame loop. A scenario gets `run(expr)` in the page, where `import('/src/app/state.js')` etc. are the app's own module instances. Exit 0 pass (or explicit `diagnostic: true`, reported as not verified), 1 the scenario failed (false checks, malformed results, page/scenario exceptions, unexpected or missing expected console errors), 2 the driver couldn't run it (Chrome, `serve.mjs`, port, DevTools; the reason is printed). Examples in `tools/scenarios/`.
   - **WebGL.** The 3D scenarios set `export const options = {webgl: true}` (or `APEX_WEBGL=1`): Chrome runs WebGL2 on
     SwiftShader. Without it, `getContext('webgl2')` is null.
@@ -20,15 +20,31 @@ Apex Lab: finds the minimum-time racing line around a closed circuit for a confi
     non-zero with "UPDATED reference (review)". Review every written image, then run the scenario twice without
     update mode: each reference must compare at fraction 0. `webgl2.mjs` tests both modes explicitly in a temp directory.
     References render with `prefers-color-scheme: light` unless a scenario explicitly chooses another scheme.
-    - `view-toggle.mjs` checks that 2D is byte-identical with 3D unopened, against PNGs saved on `main`
-      (`VIEW_TOGGLE_SAVE`/`VIEW_TOGGLE_BASELINE`; see its header). Without the baseline it skips that check.
-- `tests/parity.test.mjs` compares `src/` against the frozen prototype bit for bit (via `tests/load-prototype.mjs`, which extracts the prototype's `CORE`/`DYN` blocks into a `vm` context). Elevation (step 8) left flat circuits bit-identical, so it still passes; delete it after the first intended change to *flat* physics.
-- All six `ARCHITECTURE.md` §8 checks are ported: gradient, convergence, skidpad, and `golden.test.mjs` (centreline laps plus dynamic checks on 30 committed converged lines: 24 flat, 6 on 25 m hills), plus the elevation checks (`elevation.test.mjs`, §8.7). Each check has **property** assertions (physical sanity bounds) and **golden** assertions (bit-exact against `tests/golden.json`). No linter or build exists.
-- **Goldens:** any intended physics change breaks them by design. Regenerate with `node tests/make-golden.mjs --write` (~1 min), then review the `golden.json` diff before committing. A mechanical refactor (migration step 2) must leave them passing untouched. They are per-runtime: a different V8 build fails every golden assertion loudly, naming both versions.
-  Opt-in numerical comparison: `node tools/numeric-report.mjs [--json]` reports fixed-line, skidpad and GT/Harrow convergence differences against the baseline (`APEX_SRC=<dir>` checks a source copy).
+    - `view-toggle.mjs` compares the 2D map (3D never opened) against one tolerant reference, `view-toggle-2d.png`.
+- **Tests assert contracts, not historical outputs** (`docs/test-contract-plan.md`; done):
+  - **What they check:** physical bounds, closed forms, finite differences, protocol and ownership boundaries, and
+    saved-data preservation. A different valid optimiser endpoint or mesh triangulation must pass; a broken promise
+    must fail a named assertion.
+  - **Fixtures:** the fixed-line inputs are in `tests/fixtures/fixed-lines.json` (explicit car parameters, control
+    points and lines). `tests/fixture-util.mjs` (`fixtureCase`) rejects a case by name if its geometry no longer
+    matches. Revise deliberately: regenerate `golden.json` (its converged lines), then run
+    `node tests/make-fixtures.mjs --write` (it extracts from `golden.json` and the current generator), and review
+    both diffs.
+  - **Search budgets** (Q-approved, `docs/investigations/search-budgets.md`): gain ≥ 0.9987 against the fixture
+    line, at most 160k evaluations and 160k steps, and a 120 s watchdog. An optimiser change that lands below them
+    means a deliberate re-calibration recorded there, not a looser test.
+  - **Removing an assertion:** record it in `docs/test-contract-ledger.md` (old assertion, promise, replacement, and
+    a fault the replacement was shown to catch). No linter or build exists.
+- **Exact numerical evidence is opt-in:** `node tools/numeric-report.mjs [--json]` (`APEX_SRC=<dir>` for a source
+  copy) compares the fixed lines, the skidpad and the GT/Harrow convergence bit for bit against `tests/golden.json`.
+  - **Exit codes:** 0 "identical"; 1 a delta table; 2 once, on a different V8 build.
+  - **A mechanical refactor** must report identical.
+  - **An intended physics change** shows its delta table for review. Then regenerate the baseline with
+    `node tests/make-golden.mjs --write` (~1 min) and review the `golden.json` diff.
+  - **Not part of `node --test`:** the default suite never needs a particular runtime.
 - **Driver split:** `src/dynamics/plant.js` owns integration and actuators; `src/drivers/reference.js` owns control policy. `dynLap` in `dynamics/lap.js` accepts an optional driver. The generated `DRIVER` identity is independent of `PHYSICS`; regenerate both with `node tests/make-physics-version.mjs --write` after driver or physics edits.
 - **Race:** `tests/race.test.mjs` runs with the suite. `node tests/check-race-mutations.mjs` (~1.5 s) is run separately, not by `node --test tests/`: it breaks `APEX_SRC` copies of `src/race/` and asserts each targeted race test fails. Add a mutation there with every new race property. `src/race/` is **not** in the `PHYSICS` hash yet; it must join (as the rules hash, `docs/race-mode.md` §5.7) before race result files exist.
-- **Physics version:** `src/app/physics-version.js` holds the SHA-256 of the physics source (`core/`, `dynamics/`, `solver/solver.js`; not the presets, a run file stores its own car); run files carry it. After *any* edit to those files, mechanical refactors included, run `node tests/make-physics-version.mjs --write` and commit the result, or `runfile.test.mjs` fails. The hash identifies the source, not the results: a refactor changes it while the goldens still pass. `make-golden.mjs`'s `meta.sourceSha256` is a separate, older record (it includes `presets.js`) and is not kept current.
+- **Physics version:** `src/app/physics-version.js` holds the SHA-256 of the physics source (`core/`, `dynamics/`, `solver/solver.js`; not the presets, a run file stores its own car); run files carry it. After *any* edit to those files, mechanical refactors included, run `node tests/make-physics-version.mjs --write` and commit the result, or `runfile.test.mjs` fails. The hash identifies the source, not the results: a refactor changes it while the numeric report stays identical. `make-golden.mjs`'s `meta.sourceSha256` is a separate, older record (it includes `presets.js`) and is not kept current.
 - The gradient check measures error against `Σ|grad_i·d_i|`, not the net directional derivative: random directions can cancel ~10⁵×, which makes FD roundoff look like a failure.
 
 ## Architecture (big picture)
@@ -56,9 +72,16 @@ Key couplings across the layers:
 ## Things that bite
 
 - **`lapEval` has a hand-written exact adjoint gradient.** Any change to `lapEval` (including yaw limit, shift losses, GGV interpolation, and on hills the load factor's `dn/du` chain and the 3D steps) must be re-checked against central finite differences (≥4 sig figs, hard and `tau > 0` modes); `gradient.test.mjs` does this on flat and hilly circuits, through the load clamps too.
-- **Elevation keeps flat circuits bit-identical** (`ARCHITECTURE.md` §4.7): a flat station runs the flat code expression for expression, adjoint included, because the converged-line goldens depend on the gradient's bits. Put any hilly term in its own branch, never as a zero-valued addition (`+ 0·0` can turn a −0 into +0). A hilly circuit needs a car built with `{loads: true}` (`lapEval` throws otherwise; the solver builds it). Its levels start at a per-car floor `load.l0` ≤ 0 (zero grip below), so index them as `(l − l0)`, take levels with `Math.floor` (not `|0`, which truncates negatives), and pass `load.nf`/`load.l0` to `loadAt`/`tab3`/`gg3`. `Scratch.stall/air/ntop` (snapshot `warn`) report laps the floor or clamps distort; don't hide them.
+- **Elevation keeps flat circuits bit-identical** (`ARCHITECTURE.md` §4.7): a flat station runs the flat code expression for expression, adjoint included, because converged lines depend on the gradient's bits (the numeric report must stay identical for flat cases). Put any hilly term in its own branch, never as a zero-valued addition (`+ 0·0` can turn a −0 into +0). A hilly circuit needs a car built with `{loads: true}` (`lapEval` throws otherwise; the solver builds it). Its levels start at a per-car floor `load.l0` ≤ 0 (zero grip below), so index them as `(l − l0)`, take levels with `Math.floor` (not `|0`, which truncates negatives), and pass `load.nf`/`load.l0` to `loadAt`/`tab3`/`gg3`. `Scratch.stall/air/ntop` (snapshot `warn`) report laps the floor or clamps distort; don't hide them.
 - **No module-level mutable state in core/dynamics:** `vCorner`/`lapEval` output buffers live in `Scratch` (every `lapEval` caller needs its own `makeScratch(N)`); `DYN` is frozen. Keep it that way: the worker split depends on it.
-- **Preset circuits are seeds** into `genCtrl`/`buildTrack`; changing either changes every preset and invalidates golden lap times (GT racer on seed 27, 12 m width: 78.3771 s for a single run from the centreline in Node v26.12.0/v26.12.1; restarts scatter ~78.28–78.40 s; Node and Chrome differ by tens of ms, so golden values are per-runtime; dynamic check 97.8%). Changing either also requires regenerating `tests/golden.json`.
+- **Preset circuits are seeds** into `genCtrl`/`buildTrack`. Changing either changes every preset circuit:
+  - **Known values:** GT racer on seed 27, 12 m width, gives 78.3771 s for a single run from the centreline in Node
+    v26.12.0/v26.12.1. Restarts scatter ~78.28–78.40 s, Node and Chrome differ by tens of ms, and the dynamic check
+    gives 97.8%.
+  - **What moves:** the fixtures store explicit control points, so the contract suite is unaffected unless sampling
+    changes, which `fixtureCase` reports by name. The numeric report shows deltas, and `tests/golden.json` needs
+    regenerating.
+  - **`buildTrack` changes** may also need the fixtures revised: `make-golden.mjs`, then `make-fixtures.mjs`.
 - **Conventions:** SI internally (UI params are km/h, %, kW, deg; `carSpec` in `src/core/units.js` validates and converts them once into `car.spec`, renaming every field whose unit changes — read `car.spec`, never UI params, from core/dynamics); screen is y-down so normal `n = (−ty, tx)` points visually right; stations at uniform arc length with wrapping indices; speed tables are 0.5 m/s steps to `VMAX = 110`.
 - The optimiser's edge handling is a stiffening penalty, deliberately not a clamp (a clamp creates apex curvature kinks the lap model exploits).
 - **3D frame convention:** three `(X, Y, Z) = data (x, z, y)`, and yaw = −heading (`dataToThree` and `yawFromHeading` in `src/views/scene3d/frame.js`). Convert only at that boundary; physics, poses and snapshots keep the data frame. Two more signs, both cosmetic:
