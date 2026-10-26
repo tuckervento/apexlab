@@ -59,9 +59,12 @@ export default async ctx=>{
     const chaseDisabled=buttons([true,true,true,true]),a=position();
     q('#replaySeg [data-v="4"]').click();await wait(1000);q('#replaySeg [data-v="0"]').click();await wait(50);
     const b=position(),chaseMoves=Math.hypot(a[0]-b[0],a[1]-b[1])>0.001;
-    const oldSize=size(),oldInfo=S.info;q('#carPreset').value='Kart';q('#carPreset').dispatchEvent(new Event('change'));
-    for(let i=0;i<100&&S.info===oldInfo;i++)await wait(50);await wait(100);
-    const kartSmaller=size()<oldSize;
+    const oldSize=size(),oldInfo=S.info,oldCar=S.scene3d._debug.scene.getObjectByName('lapCar');q('#carPreset').value='Kart';q('#carPreset').dispatchEvent(new Event('change'));
+    const end=performance.now()+10000;
+    const rebuilt=()=>{const next=S.scene3d?._debug.scene.getObjectByName('lapCar');return S.info!==oldInfo&&!!next&&next!==oldCar;};
+    while(!rebuilt()&&performance.now()<end)await wait(50);
+    const kartReady=rebuilt(),kartSmaller=kartReady&&size()<oldSize;
+    v3check.kartSmallerSeen=kartReady?null:{reason:'Timed out waiting for lapCar rebuild after Kart selection',infoChanged:S.info!==oldInfo};
     {const select=q('#camera3d');select.value='overview';select.dispatchEvent(new Event('change',{bubbles:true}));};await settle();
     const overviewEnabled=buttons([false,false,false,true]);
     const canvas=q('#view3d'),fitRestores=v3check.fitRestores;
@@ -111,5 +114,6 @@ export default async ctx=>{
   }
   // Evidence for the intermittent missingWebgl failure (null when it passed).
   seen.missingWebgl=await run('window.v3missing??null');
+  seen.kartSmaller=await run('v3check.kartSmallerSeen');
   return {allTrue:Object.values(checks).every(Boolean),checks,seen,references,projection:'Reconstruct PerspectiveCamera from active public view(); project the live car group world position.'};
 };
