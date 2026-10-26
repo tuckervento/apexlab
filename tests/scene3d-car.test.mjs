@@ -51,20 +51,27 @@ test('placement preserves forward tangent and right wheels through yaw and pitch
   }
   placeCar(car,{x:0,y:0,heading:0});
   close(car.rotation.z,0,'missing pitch resets');close(car.position.y,0,'missing elevation defaults to zero');
-  const pivot=car.getObjectByName('wheelFR'),wheel=pivot.children[0];
-  pivot.rotation.y=-0.3;wheel.rotation.z=1.2;
-  close(pivot.rotation.y,-0.3,'steer pivot');close(wheel.rotation.z,1.2,'independent axle spin');
   disposeCar(car);
 });
 
-test('disposal frees all four geometries and four shared materials exactly once',()=>{
+test('disposal frees every owned geometry and material exactly once, including shared resources',()=>{
   const car=buildCarModel(CARS.Kart),geometries=new Set(),materials=new Set();
-  car.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)materials.add(o.material);});
-  assert.equal(geometries.size,4);assert.equal(materials.size,4);
-  const counts=new Map();
+  const uses=new Map(),counts=new Map();
+  car.traverse(o=>{
+    const resources=[];
+    if(o.geometry){geometries.add(o.geometry);resources.push(o.geometry);}
+    if(o.material)for(const material of [].concat(o.material)){materials.add(material);resources.push(material);}
+    for(const resource of resources)uses.set(resource,(uses.get(resource)??0)+1);
+  });
+  assert.ok(geometries.size>0,'model owns geometry');assert.ok(materials.size>0,'model owns materials');
+  const wheelGeometry=car.getObjectByName('wheelFL').children[0].geometry;
+  for(const name of ['wheelFR','wheelRL','wheelRR'])assert.equal(car.getObjectByName(name).children[0].geometry,wheelGeometry,'wheels share geometry');
+  assert.ok([...materials].some(m=>uses.get(m)>1),'model shares materials between meshes');
   for(const resource of [...geometries,...materials]){
     counts.set(resource,0);resource.addEventListener('dispose',()=>counts.set(resource,counts.get(resource)+1));
   }
   disposeCar(car);
-  for(const count of counts.values())assert.equal(count,1,'every resource disposed once');
+  for(const geometry of geometries)assert.equal(counts.get(geometry),1,'every owned geometry disposed once');
+  for(const material of materials)assert.equal(counts.get(material),1,'every owned material disposed once');
+  for(const [resource,n] of uses)if(n>1)assert.equal(counts.get(resource),1,'shared resource disposed once, not once per mesh');
 });

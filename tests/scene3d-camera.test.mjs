@@ -17,8 +17,24 @@ for(const preset of core.TRACKS)for(const hills of [0,40])for(const aspect of [1
     const {T}=setupPreset(core,'GT racer',{seed:preset.seed,hills});
     const {origin,lateral}=stationFrames(T);
     for(const fovDeg of [35,50,75]){
-      const s=init({T,aspect,fovDeg}),c=camera(s,aspect);
-      assert.deepEqual(Object.keys(view(s)),['position','target','up','fovDeg','near','far']);
+      const s=init({T,aspect,fovDeg}),v=view(s);
+      for(const key of ['position','target','up']){
+        assert.ok(Object.hasOwn(v,key),`view requires ${key}`);
+        assert.equal(v[key].length,3,`${key} has three components`);
+        for(const n of v[key])assert.ok(Number.isFinite(n),`${key} components finite`);
+      }
+      for(const key of ['fovDeg','near','far']){
+        assert.ok(Object.hasOwn(v,key),`view requires ${key}`);
+        assert.ok(Number.isFinite(v[key]),`${key} finite`);
+      }
+      assert.ok(v.fovDeg>0&&v.fovDeg<180,'usable vertical FOV');
+      assert.ok(v.near>0&&v.far>v.near,'ordered positive clipping planes');
+      const direction=new Vector3().fromArray(v.target).sub(new Vector3().fromArray(v.position));
+      assert.ok(direction.length()>0,'eye differs from target');
+      assert.ok(direction.normalize().cross(new Vector3().fromArray(v.up).normalize()).length()>1e-6,'up is not parallel to view direction');
+      const c=camera(s,aspect),target=new Vector3(...v.target).project(c);
+      assert.ok(Math.abs(target.x)<1e-10&&Math.abs(target.y)<1e-10,'view target projects to screen centre');
+      assert.ok(target.z>=-1&&target.z<=1,'view target fits clipping planes');
       assert.equal(view(s).fovDeg,fovDeg);
       for(let i=0;i<T.N;i++)for(const sign of [-1,1]){
         const p=new Vector3(...Array.from({length:3},(_,k)=>origin[3*i+k]+sign*lateral[3*i+k]*T.width/2)).project(c);

@@ -45,6 +45,9 @@ Next: wave B (2.1–2.5).
 
 ## In Progress
 
+- Wave B (2026-10-25): 2.1–2.5 in Codex (worktrees `../apexlab-wt/tc-2.x`, branches `tc/2.x`), plan approved by Q.
+  Ledger skeleton `docs/test-contract-ledger.md` on `main` first, one section per task, to keep the merges apart.
+
 ## Blocked
 
 ## Deviations & Decisions
