@@ -6,11 +6,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCore, runSource } from './load-core.mjs';
-import { loadGolden, assertRuntime, comboKey } from './golden-util.mjs';
+import { fixtureCase } from './fixture-util.mjs';
 import { PHYSICS } from '../src/app/physics-version.js';
 import { liveHash, makeRunFile, readRunFile, toGhost, CAR_KEYS } from '../src/app/runfile.js';
 import { SPEC } from '../src/app/sliders.js';
 
+const fx = await fixtureCase('GT racer|Harrow Ring');
 const core = await loadCore(), CAR = 'GT racer', TRACK = core.TRACKS[0], WIDTH = 12;
 
 // A solver booted the way the app boots (car, then track), all events recorded.
@@ -23,14 +24,17 @@ function boot() {
 const noErrors = ev => assert.deepEqual(ev.filter(e => e.type === 'error'), [], 'solver emitted errors');
 
 test(`load: the recorded line comes back bit for bit, ${CAR}, ${TRACK.name}`, async t => {
-  const g = loadGolden(), fx = g.combos[comboKey(CAR, TRACK.name)];
   const { s, ev } = boot(), n0 = ev.length, lineRev0 = s.lineRev;
-  s.handle({ type: 'load', rev: 3, params: { ...core.CARS[CAR] }, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, off: fx.off, run: false });
+  s.handle({ type: 'load', rev: 3, params: fx.car, ctrl: fx.ctrl, width: fx.width, off: fx.off, run: false });
   const got = ev.slice(n0); noErrors(got);
   const snap = got.find(e => e.type === 'snapshot'), loaded = got.find(e => e.type === 'loaded'), prog = got.filter(e => e.type === 'progress').at(-1);
 
   await t.test('property', () => {
-    assert.deepEqual(got.map(e => e.type), ['carInfo', 'track', 'snapshot', 'progress', 'loaded'], 'event order');
+    const at = type => got.findIndex(e => e.type === type);
+    for (const type of ['carInfo', 'track']) assert.ok(at(type) >= 0 && at(type) < at('snapshot'), `${type} before snapshot`);
+    assert.ok(at('snapshot') >= 0 && at('snapshot') < at('loaded'), 'snapshot before loaded');
+    assert.equal(got.find(e => e.type === 'carInfo').carRev, 3);
+    assert.equal(got.find(e => e.type === 'track').trackRev, 3);
     assert.deepEqual({ car: snap.carRev, track: snap.trackRev, loaded: loaded.rev }, { car: 3, track: 3, loaded: 3 }, 'one revision for car and track');
     assert.equal(snap.lineRev, lineRev0 + 1);
     assert.equal(prog.running, false, 'run:false stays paused');
@@ -38,12 +42,13 @@ test(`load: the recorded line comes back bit for bit, ${CAR}, ${TRACK.name}`, as
     assert.equal(loaded.clamped.n, 0, `fixture line was clamped at ${loaded.clamped.n} stations (max ${loaded.clamped.max} m)`);
     assert.ok(snap.ref && snap.ref.t > snap.lap, 'centreline reference lap sent with the first snapshot');
   });
-  await t.test('golden', () => {
-    assertRuntime(g);
-    assert.equal(snap.lap, fx.lap, 'lap time of the loaded line');
-    const diff = [];
-    for (let i = 0; i < fx.N; i++) if (snap.line.off[i] !== fx.off[i] || s.pub[i] !== fx.off[i]) diff.push(i);
-    assert.equal(diff.length, 0, `loaded line differs from the fixture at ${diff.length} stations (first: ${diff[0]})`);
+  await t.test('exact offsets', () => {
+    sameArrays(snap.line.off, fx.off, 'published offsets');
+    sameArrays(s.pub, fx.off, 'retained offsets');
+  });
+  await t.test('current physics', () => {
+    const car = core.buildCar(fx.car);
+    assert.equal(snap.lap, core.lapEval(fx.T, car, fx.off, core.makeScratch(fx.N)), 'loaded lap equals fresh current-physics evaluation');
   });
 });
 
@@ -60,12 +65,13 @@ test('liveHash: the browser-side hash equals runSource()', async () => {
 
 // A run exported from a solver that has loaded the committed GT racer / Harrow Ring fixture line (non-trivial doubles).
 function recorded() {
-  const fx = loadGolden().combos[comboKey(CAR, TRACK.name)], { s, ev } = boot();
-  s.handle({ type: 'load', rev: 3, params: { ...core.CARS[CAR] }, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, off: fx.off, run: false });
+  const { s, ev } = boot();
+  s.handle({ type: 'load', rev: 3, params: fx.car, ctrl: fx.ctrl, width: fx.width, off: fx.off, run: false });
   const snaps = ev.filter(e => e.type === 'snapshot'), snap = snaps.at(-1);
   const args = {
-    P: { ...core.CARS[CAR] }, ctrl: core.genCtrl(TRACK.seed, WIDTH), width: WIDTH, trackName: TRACK.name, seed: TRACK.seed,
+    P: fx.car, ctrl: fx.ctrl, width: fx.width, trackName: fx.trackName, seed: TRACK.seed,
     disp: { ...snap.line, t: snap.lap }, prog: { converged: true, evals: 78063 }, refT: snap.ref.t, dyn: null,
+    driver: { name: 'authored driver', sha256: 'a'.repeat(64), live: 'b'.repeat(64) },
     physics: { sha256: PHYSICS.sha256, live: PHYSICS.sha256 }, exported: '2026-10-23T00:00:00.000Z', userAgent: 'test',
   };
   return { file: makeRunFile(args), snap, args };
@@ -73,11 +79,15 @@ function recorded() {
 const sameArrays = (a, b, what) => { assert.equal(a.length, b.length, `${what} length`); for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) assert.fail(`${what}[${i}]: ${a[i]} !== ${b[i]}`); };
 
 test('run file: survives JSON, and loads back to the recorded lap', () => {
-  const { file, snap } = recorded(), back = readRunFile(JSON.parse(JSON.stringify(file)));
+  const { file, snap, args } = recorded(), back = readRunFile(JSON.parse(JSON.stringify(file)));
   sameArrays(back.line.off, snap.line.off, 'line.off');
-  for (const k of ['px', 'py', 'v', 'ds', 'k', 'tc']) sameArrays(back.result.snapshot[k], snap.line[k], `snapshot.${k}`);
+  for (const k of ['px', 'py', 'pz', 'v', 'ds', 'k', 'tc']) sameArrays(back.result.snapshot[k], snap.line[k], `snapshot.${k}`);
   for (const k of Object.keys(snap.line.phys)) sameArrays(back.result.snapshot.phys[k], snap.line.phys[k], `phys.${k}`);
   assert.equal(back.result.lap, snap.lap);
+  assert.equal(back.result.evals, 78063, 'authored evaluation count survives');
+  assert.deepEqual(back.driver, args.driver, 'driver identity survives JSON');
+  assert.deepEqual(back.physics, args.physics);
+  assert.equal(back.exported, args.exported); assert.equal(back.userAgent, args.userAgent);
   assert.deepEqual(back.car, core.CARS[CAR]);
   const { s, ev } = boot(), n0 = ev.length;
   s.handle({ type: 'load', rev: 3, params: back.car, ctrl: back.track.ctrl, width: back.track.width, off: back.line.off, run: false });
@@ -91,19 +101,24 @@ test('run file: survives JSON, and loads back to the recorded lap', () => {
 
 test('run file: refuses what it cannot use, and says what', () => {
   const { file, args } = recorded(), refuses = (mutate, re) => { const f = JSON.parse(JSON.stringify(file)); mutate(f); assert.throws(() => readRunFile(f), re); };
-  refuses(f => { f.format = 'other'; }, /format: expected "apexlab-run", got "other"/);
-  refuses(f => { f.version = 3; }, /version: file is format v3; this build reads v1 and v2/);
-  refuses(f => { f.track.ctrl[2] = f.track.ctrl[2].slice(0, 2); }, /track\.ctrl\[2\]: expected \[x, y, z\]/);
-  refuses(f => { delete f.result.snapshot.pz; }, /snapshot\.pz: expected an array/);
-  refuses(f => { delete f.car.mu; delete f.car.sens; }, /car: missing fields mu, sens/);
-  refuses(f => { f.car.turbo = 1; }, /car: unknown field turbo/);
-  refuses(f => { f.line.off.pop(); }, /line\.off: expected \d+ values, got \d+/);
-  refuses(f => { f.result.snapshot.tc.pop(); }, /snapshot\.tc: expected \d+ values, got \d+/);
-  refuses(f => { f.result.snapshot.phys.fxf[3] = null; }, /phys\.fxf\[3\]: expected a finite number, got null/);
-  refuses(f => { f.track.ctrl = f.track.ctrl.slice(0, 3); }, /track\.ctrl: expected at least 4/);
-  refuses(f => { f.track.width = -1; }, /track\.width: expected > 0, got -1/);
+  refuses(f => { f.format = 'other'; }, /format:/);
+  refuses(f => { f.version = 3; }, /version:/);
+  refuses(f => { f.track.ctrl[2] = f.track.ctrl[2].slice(0, 2); }, /track\.ctrl\[2\]:/);
+  refuses(f => { delete f.result.snapshot.pz; }, /snapshot\.pz:/);
+  refuses(f => { delete f.car.mu; delete f.car.sens; }, e => {
+    assert.match(e.message, /car:/);
+    const diagnosis = e.message.split('(')[0]; // exclude the parenthetical inventory of valid fields
+    for (const k of ['mu', 'sens']) assert.match(diagnosis, new RegExp(`\\b${k}\\b`), `missing car field names ${k}`);
+    return true;
+  });
+  refuses(f => { f.car.turbo = 1; }, /car:.*turbo/);
+  refuses(f => { f.line.off.pop(); }, /line\.off:/);
+  refuses(f => { f.result.snapshot.tc.pop(); }, /snapshot\.tc:/);
+  refuses(f => { f.result.snapshot.phys.fxf[3] = null; }, /phys\.fxf\[3\]:/);
+  refuses(f => { f.track.ctrl = f.track.ctrl.slice(0, 3); }, /track\.ctrl:/);
+  refuses(f => { f.track.width = -1; }, /track\.width:/);
   const nan = Float64Array.from(args.disp.off); nan[0] = NaN;
-  assert.throws(() => makeRunFile({ ...args, disp: { ...args.disp, off: nan } }), /export: line\.off\[0\] is NaN/);
+  assert.throws(() => makeRunFile({ ...args, disp: { ...args.disp, off: nan } }), /export: line\.off\[0\]/);
 });
 
 test('run file: CAR_KEYS is every preset field, and carSpec needs each one', () => {
@@ -167,25 +182,42 @@ test('load: another station count is resampled; run:true searches; bad input cha
   });
 });
 
-// A run file recorded by an earlier build (tests/fixtures/run-v1-gt-harrow.apexlab.json: format v1, physics 6a38517c,
-// made in Node before elevation existed) must load into this build and reproduce its recorded lap. The lap is
-// per-runtime like every golden, so the bit-exact part is gated on the goldens' V8 build.
-test('cross-version: a v1 run file from before elevation loads to its recorded lap', async t => {
-  const text = readFileSync(fileURLToPath(new URL('./fixtures/run-v1-gt-harrow.apexlab.json', import.meta.url)), 'utf8');
-  const run = readRunFile(JSON.parse(text)), { s, ev } = boot(), n0 = ev.length;
-  s.handle({ type: 'load', rev: 3, params: run.car, ctrl: run.track.ctrl, width: run.track.width, off: run.line.off, run: false });
-  const got = ev.slice(n0); noErrors(got);
-  const snap = got.find(e => e.type === 'snapshot'), loaded = got.find(e => e.type === 'loaded');
-  t.diagnostic(`recorded ${run.result.lap}  now ${snap.lap}  recorded physics ${run.physics.sha256.slice(0, 8)}, this build ${PHYSICS.sha256.slice(0, 8)}`);
-  await t.test('property', () => {
+const v1File = () => JSON.parse(readFileSync(new URL('./fixtures/run-v1-gt-harrow.apexlab.json', import.meta.url), 'utf8'));
+
+test('cross-version: reading preserves the v1 record and ghost samples', () => {
+  const file = v1File(), run = readRunFile(file);
+  for (const k of ['version', 'exported', 'userAgent', 'physics', 'car']) assert.deepEqual(run[k], file[k], `recorded ${k}`);
+  assert.equal(run.driver, null, 'legacy file has no separate driver identity');
+  for (const k of ['name', 'seed', 'width']) assert.equal(run.track[k], file.track[k], `track.${k}`);
+  assert.deepEqual(run.track.ctrl.map(p => p.slice(0, 2)), file.track.ctrl, 'recorded control points');
+  assert.equal(run.line.N, file.line.N); sameArrays(run.line.off, file.line.off, 'recorded offsets');
+  for (const k of ['lap', 'converged', 'evals', 'ref', 'dyn']) assert.deepEqual(run.result[k], file.result[k], `recorded result.${k}`);
+  for (const k of ['px', 'py', 'v', 'ds', 'k', 'tc']) sameArrays(run.result.snapshot[k], file.result.snapshot[k], `recorded snapshot.${k}`);
+  for (const k of Object.keys(file.result.snapshot.phys)) sameArrays(run.result.snapshot.phys[k], file.result.snapshot.phys[k], `recorded phys.${k}`);
+  const ghost = toGhost(run);
+  assert.deepEqual(ghost, { ...run.result.snapshot, t: file.result.lap, wb: file.car.wb, track: file.car.track }, 'ghost keeps the recorded snapshot');
+  for (const i of [0, 17, file.line.N - 1]) {
+    const p = core.pose(ghost, file.result.snapshot.tc[i]);
+    assert.deepEqual([p.station, p.x, p.y, p.speed], [i, file.result.snapshot.px[i], file.result.snapshot.py[i], file.result.snapshot.v[i]], 'ghost replays stored station samples');
+  }
+});
+
+test('cross-version: loading re-scores the exact v1 line under current physics', () => {
+  for (const different of [false, true]) {
+    const file = v1File();
+    if (different) { file.result.lap = 1234.5; file.physics = { sha256: 'c'.repeat(64), live: 'd'.repeat(64) }; }
+    const run = readRunFile(file), { s, ev } = boot(), n0 = ev.length;
+    assert.equal(run.result.lap, file.result.lap, 'recorded lap survives different physics');
+    assert.deepEqual(run.physics, file.physics, 'recorded physics identity survives');
+    s.handle({ type: 'load', rev: 3, params: run.car, ctrl: run.track.ctrl, width: run.track.width, off: run.line.off, run: false });
+    const got = ev.slice(n0); noErrors(got);
+    const snap = got.find(e => e.type === 'snapshot'), loaded = got.find(e => e.type === 'loaded');
     assert.equal(loaded.N, run.line.N); assert.equal(loaded.clamped.n, 0);
-    assert.ok(Math.abs(snap.lap - run.result.lap) < 0.5, `lap ${snap.lap} far from recorded ${run.result.lap}`);
-  });
-  await t.test('golden', () => {
-    assertRuntime(loadGolden());
-    assert.equal(snap.lap, run.result.lap, 'lap of the recorded line, re-scored by this build');
-    sameArrays(snap.line.off, run.line.off, 'line.off');
-  });
+    sameArrays(snap.line.off, file.line.off, 'v1 published offsets');
+    const T = core.buildTrack(run.track.ctrl, run.track.width), car = core.buildCar(run.car);
+    assert.equal(snap.lap, core.lapEval(T, car, Float64Array.from(file.line.off), core.makeScratch(T.N)), 'v1 loaded lap equals fresh current-physics evaluation');
+    if (different) assert.notEqual(snap.lap, 1234.5, 'loading recomputes instead of using the recorded lap');
+  }
 });
 
 // The v1 -> v2 migration, explicitly: the pre-elevation fixture comes back with heights 0 everywhere (exact: v1 is flat).
@@ -193,7 +225,7 @@ test('run file: a v1 file migrates to v2 with z = 0, pz = 0 and load factor nz =
   const run = readRunFile(JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/run-v1-gt-harrow.apexlab.json', import.meta.url)), 'utf8')));
   assert.equal(run.version, 1, 'the file\'s own version is reported');
   assert.ok(run.track.ctrl.every(p => p.length === 3 && p[2] === 0), 'control points [x, y, 0]');
-  assert.equal(run.result.snapshot.pz.length, run.line.N); assert.ok(run.result.snapshot.pz.every(z => z === 0), 'pz = 0');
+  assert.equal(run.result.snapshot.pz.length, run.line.N, 'v1 pz has one zero per station'); assert.ok(run.result.snapshot.pz.every(z => z === 0), 'pz = 0');
   assert.ok(core.buildTrack(run.track.ctrl, run.track.width).flat, 'the migrated circuit is flat');
   assert.ok(run.result.snapshot.phys.nz.length === run.line.N && run.result.snapshot.phys.nz.every(x => x === 1), 'load factor filled with 1 (level ground)');
 });

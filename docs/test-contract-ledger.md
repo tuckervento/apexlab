@@ -341,4 +341,114 @@ Validation: `node --test tests/` passed 456 tests in 30 suites: 456 passed, 0 fa
 
 ## 4.3 — saved-file compatibility
 
-_(pending)_
+Original line numbers refer to `tests/runfile.test.mjs` before task 4.3. The recorded-data, migration,
+validation, atomicity, physical-limit, resampling, `run:true`, hash and same-build round-trip tests remain.
+The same-build JSON test additionally covers pz, driver/physics identity and the authored evaluation count.
+`recorded()` now uses `fixtureCase('GT racer|Harrow Ring')`, with its geometry guard, rather than golden outputs.
+
+- **Old:** `tests/runfile.test.mjs:33`, full event-list equality with `[carInfo, track, snapshot, progress, loaded]`.
+  **Promise:** clients have the new car, track and snapshot installed before load completion; no unique promise requires the full list.
+  **Replacement:** the normal `property` subtest requires carInfo and track before snapshot, snapshot before loaded, and matching revisions; existing pause, station-count and no-clamp checks remain.
+  **Fault shown:** `src/solver/solver.js:107`, move loaded before `publish(false)` while preserving all events; fails "snapshot before loaded".
+
+- **Old:** `tests/runfile.test.mjs:42`, `assertRuntime(g)` gates the loaded-line checks.
+  **Promise:** none independently; the runtime gate made historical expected laps comparable, rather than checking file compatibility.
+  **Replacement:** no runtime gate is needed for authored fixture inputs, unconditional exact offsets and fresh current-physics scoring.
+  **Fault shown:** no distinct fault applies to removing the gate; the offset and lap faults below fail their replacement contracts without a runtime failure.
+
+- **Old:** `tests/runfile.test.mjs:43`, loaded lap equals the historical golden lap.
+  **Promise:** the solver correctly scores the input line; the historical value is not a compatibility promise.
+  **Replacement:** `current physics` compares the loaded lap with fresh-scratch `lapEval` of the fixture's exact line under current physics, built independently of solver state.
+  **Fault shown:** `src/solver/solver.js:152`, publish `lap:t+1` instead of `lap:t`; fails "loaded lap equals fresh current-physics evaluation".
+
+- **Old:** `tests/runfile.test.mjs:46`, zero differing published/retained offsets, inside the runtime-gated golden subtest.
+  **Promise:** unchanged station count and feasible offsets are published and retained exactly.
+  **Replacement:** unconditional `exact offsets` subtest compares snapshot offsets and retained `s.pub` exactly with fixture inputs; no-clamp and station-count checks remain.
+  **Fault shown:** `src/solver/solver.js:105`, add 0.125 m to offset 0 before copying the loaded line; fails "published offsets[0]: -4.919328310263691 !== -5.044328310263691".
+
+- **Old:** `tests/runfile.test.mjs:94`, exact format-error prose.
+  **Promise:** invalid format is refused with an actionable field name.
+  **Replacement:** keep the invalid input and require `/format:/` in its thrown error, without pinning explanatory prose.
+  **Fault shown:** `src/app/runfile.js:57`, replace the format error's field with unknown; fails "The input did not match the regular expression /format:/".
+
+- **Old:** `tests/runfile.test.mjs:95`, exact unsupported-version prose and supported-version list.
+  **Promise:** unsupported versions are refused with the version field identified.
+  **Replacement:** keep version 3 input and require `/version:/` in its thrown error.
+  **Fault shown:** `src/app/runfile.js:58`, replace the version error's field with unknown; fails "The input did not match the regular expression /version:/".
+
+- **Old:** `tests/runfile.test.mjs:96`, malformed-control-point error includes exact expected-shape prose.
+  **Promise:** malformed control points are refused and the offending point is identified.
+  **Replacement:** keep the short point and require `/track\.ctrl\[2\]:/`.
+  **Fault shown:** `src/app/runfile.js:77`, replace the indexed control-point error field with unknown; fails "The input did not match the regular expression /track\.ctrl\[2\]:/".
+
+- **Old:** `tests/runfile.test.mjs:97`, missing-pz error includes exact expected-array prose.
+  **Promise:** missing v2 snapshot heights are refused with the pz field identified.
+  **Replacement:** keep the missing pz input and require `/snapshot\.pz:/`.
+  **Fault shown:** `src/app/runfile.js:88`, label the pz array validation unknown; fails "The input did not match the regular expression /snapshot\.pz:/".
+
+- **Old:** `tests/runfile.test.mjs:98`, missing-car-fields error equals the prose pattern `car: missing fields mu, sens`.
+  **Promise:** every missing car field is named, including when more than one is absent.
+  **Replacement:** delete both mu and sens; require `car:` and each whole field name independently in the diagnosis before the parenthetical valid-field inventory. Neither name may be satisfied by that inventory; field order and explanatory prose are not frozen.
+  **Fault shown:** `src/app/runfile.js:71`, omit names by replacing `missing.join(', ')` with question marks; fails "missing car field names mu". Report only mu via `missing.slice(0, 1).join(', ')`; fails "missing car field names sens". Report only sens via `missing.slice(1).join(', ')`; fails "missing car field names mu". The initial broad regex incorrectly accepted names from the inventory; task work stopped, and this corrected replacement was verified after the user's follow-up.
+
+- **Old:** `tests/runfile.test.mjs:99`, unknown-car-field error includes exact unknown-field prose.
+  **Promise:** unknown car fields are refused and named.
+  **Replacement:** keep turbo input and require `/car:.*turbo/`.
+  **Fault shown:** `src/app/runfile.js:71`, omit unknown-field names by substituting question marks; fails "The input did not match the regular expression /car:.*turbo/".
+
+- **Old:** `tests/runfile.test.mjs:100`, short-offset-array error includes exact expected/actual-count prose.
+  **Promise:** an offset array with the wrong length is refused with the field identified.
+  **Replacement:** keep the shortened array and require `/line\.off:/`.
+  **Fault shown:** `src/app/runfile.js:83`, label offset validation unknown; fails "The input did not match the regular expression /line\.off:/".
+
+- **Old:** `tests/runfile.test.mjs:101`, short-timing-array error includes exact expected/actual-count prose.
+  **Promise:** a timing array with the wrong length is refused with the field identified.
+  **Replacement:** keep the shortened tc array and require `/snapshot\.tc:/`.
+  **Fault shown:** `src/app/runfile.js:87`, label tc validation unknown; fails "The input did not match the regular expression /snapshot\.tc:/".
+
+- **Old:** `tests/runfile.test.mjs:102`, invalid-force-sample error includes exact finite-number/null prose.
+  **Promise:** nonnumeric telemetry is refused and its field and sample index are identified.
+  **Replacement:** keep the null force sample and require `/phys\.fxf\[3\]:/`.
+  **Fault shown:** `src/app/runfile.js:90`, label physics arrays unknown; fails "The input did not match the regular expression /phys\.fxf\[3\]:/".
+
+- **Old:** `tests/runfile.test.mjs:103`, too-few-control-points error includes exact minimum-count prose.
+  **Promise:** unusably short control-point arrays are refused with the field identified.
+  **Replacement:** keep three control points and require `/track\.ctrl:/`.
+  **Fault shown:** `src/app/runfile.js:75`, replace the control-point-array error field with unknown; fails "The input did not match the regular expression /track\.ctrl:/".
+
+- **Old:** `tests/runfile.test.mjs:104`, negative-width error includes exact positive-value prose.
+  **Promise:** negative width is refused with the field identified.
+  **Replacement:** keep width -1 and require `/track\.width:/`.
+  **Fault shown:** `src/app/runfile.js:74`, replace the width error field with unknown; fails "The input did not match the regular expression /track\.width:/".
+
+- **Old:** `tests/runfile.test.mjs:106`, nonfinite-export error includes exact `is NaN` prose.
+  **Promise:** exporting a nonfinite offset is refused and identifies its field and index.
+  **Replacement:** keep NaN at offset 0 and require `/export: line\.off\[0\]/`.
+  **Fault shown:** `src/app/runfile.js:31`, label exported array samples unknown; fails "The input did not match the regular expression /export: line\.off\[0\]/".
+
+- **Old:** `tests/runfile.test.mjs:182`, current v1-line lap differs from the historical lap by less than 0.5 seconds.
+  **Promise:** loading correctly re-scores usable saved input; closeness to historical physics is not required.
+  **Replacement:** `cross-version: loading re-scores the exact v1 line under current physics` retains exact offsets, station count and no clamp; compares with fresh-scratch `lapEval`. A second input deliberately records lap 1234.5 and different physics identity; reading preserves these and loading recomputes the current lap.
+  **Fault shown:** `src/solver/solver.js:152`, publish `lap:t+1`; fails "v1 loaded lap equals fresh current-physics evaluation".
+
+- **Old:** `tests/runfile.test.mjs:185`, `assertRuntime(loadGolden())` gates cross-version equality and offsets.
+  **Promise:** none independently; saved-file compatibility is not tied to the fixture's runtime.
+  **Replacement:** no gate needed; exact v1 offsets are checked normally, recorded data is compared directly with immutable file inputs, and loaded laps are freshly evaluated.
+  **Fault shown:** no distinct fault applies to gate removal; the offset and lap mutations fail the unconditional contracts with assertion failures.
+
+- **Old:** `tests/runfile.test.mjs:186`, re-evaluated v1 line equals its historical lap exactly.
+  **Promise:** parsing preserves the historical record and loading scores the input correctly; equality between different physics builds is not promised.
+  **Replacement:** `cross-version: reading preserves the v1 record and ghost samples` checks recorded lap, snapshot arrays, offsets and metadata directly against file inputs; ghost samples replay stored stations. The loading test compares with fresh current-physics evaluation, including the deliberately different record.
+  **Fault shown:** `src/solver/solver.js:152`, publish `lap:t+1`; fails "v1 loaded lap equals fresh current-physics evaluation". Stored data and ghost checks remain separate from the solver result.
+
+Teeth ran as targeted tests so the deliberately mutated solver did not fail hash freshness first. Solver faults were
+applied in place, copied to disposable `APEX_SRC` trees for `loadCore`, and restored byte for byte; every copy was
+deleted in `finally`. Run-file reader/exporter faults used in-place edits for their direct imports, restored byte
+for byte in `finally`. Each of the 18 mutations failed with its intended assertion, not an import, syntax, hash or
+runtime error. `git diff -- src` was empty after every mutation.
+Additional migration evidence: `src/app/runfile.js:88`, omit synthesized v1 pz samples (empty array instead of N zeros)
+→ "v1 pz has one zero per station". Existing z = 0, pz = 0 and nz = 1 checks remain.
+
+Validation: `node --test tests/` passed 540 tests in 30 suites: 540 passed, 0 failed, cancelled, skipped or todo.
+The focused run-file test passed 19 tests. `git diff --check` passed; `git diff -- src` was empty.
+Only `tests/runfile.test.mjs` and this ledger section changed; no production files, goldens or hashes changed.

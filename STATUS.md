@@ -1,18 +1,19 @@
 # STATUS
 
-_Last updated: 2026-10-25 (wave C)_
+_Last updated: 2026-10-25 (wave D)_
 
 ## Snapshot
 
-16 of 31 tasks done. Waves A–C are merged to `main`, completing phases 1–3: the independent coverage that parity and
-the goldens will be replaced by now exists. On `main`:
-- 506/506 tests pass;
-- `check-race-mutations` rejects all 22 mutations;
-- all 26 scenarios exit 0 in two passes (Mac in dark mode);
-- the goldens and `tools/` are unchanged;
-- `src/` differs only by the Q-approved `client.js` reorder (3.5).
+21 of 31 tasks done. Waves A–D are merged to `main`: phases 1–4 are complete, plus 5.4 and 5.5. On `main`:
+- 540/540 tests pass;
+- race mutations 22/22 rejected;
+- the fixed-line inputs live in `tests/fixtures/fixed-lines.json`;
+- `elevation` and `runfile` no longer read `golden.json`;
+- `tools/numeric-report.mjs` is the opt-in exact-comparison report;
+- `src/` changed only by 3.5's `client.js` reorder; the goldens are unchanged.
 
-Next: wave D (4.1 and 5.4, then 4.2, 4.3 and 5.5).
+Next: wave E. 5.1 measures the search budgets and **stops for Q's approval of the numbers**, then 5.2; 5.3 can run
+alongside.
 
 ## Completed
 
@@ -83,12 +84,35 @@ Next: wave D (4.1 and 5.4, then 4.2, 4.3 and 5.5).
 - Wave C on merged `main` (`ac7b75f`): suite 506/506; race 22/22;
   `git diff 9ed63cc HEAD -- src tests/golden.json tools prototype vendor` = `src/app/client.js` only (+6/−4); all 26
   scenarios exit 0 in two passes.
+- [x] 4.1 input fixtures (Codex) — done 2026-10-25 — `ff3228f` — verified:
+  - all 30 fixture lines and centreline laps re-score to `golden.json` exactly (`Object.is`) on V8
+    14.6.202.34-node.40;
+  - regeneration is byte-identical;
+  - Codex's sampling mutations (stations /5, L+1) are rejected by name;
+  - the coordinator's (one control point moved 40 m) → "Fixture GT racer|Harrow Ring: geometry mismatch (N 775 vs
+    783, …)".
+- [x] 5.4 accepted-line publication at the boundary (Codex) — done 2026-10-25 — `de206bb` — verified: publishing the
+  trial buffer (`solver.js:137`, rerun by the coordinator) fails "every snapshot line equals Optimizer.current() at
+  publication" and "publication after rejection shows the previously accepted line"; `current()` returning `off`
+  fails "rejection preserves the previously accepted line".
+- [x] 4.2 fixture consumers (Codex) — done 2026-10-25 — `4f28916` — verified: `elevation.test.mjs` passes 32/32 with
+  a `golden.json` copy that has no combos at all (the coordinator reran this); a broken clean-lap condition fails
+  "Road car: final lap not clean".
+- [x] 4.3 saved-file compatibility (Codex) — done 2026-10-25 — `8ed26c3` — verified:
+  - 18 mutations each fail their intended assertion: a corrupted published offset, a missing v1 pz, a lap +1 s, the
+    completion order, each error field name;
+  - the coordinator's (the level-ground `nz` default set to 0.5) fails "load factor filled with 1 (level ground)";
+  - ledger filled.
+- [x] 5.5 numerical comparison report (Codex) — done 2026-10-25 — `282ca69` — verified:
+  - on unchanged source, "identical (587 quantities …)", exit 0, ~11–15 s;
+  - a mechanical refactor (independent `px`/`py` assignments swapped): identical;
+  - `CRR` 0.013 and (coordinator) `ETA` 0.91: delta tables, exit 1;
+  - a simulated runtime mismatch: one non-success line, exit 2.
+- Wave D on merged `main`: suite 540/540; race 22/22;
+  `git diff fae8411 HEAD -- src tests/golden.json tools prototype vendor` = `tools/numeric-report.mjs` only; no ledger
+  placeholders.
 
 ## In Progress
-
-- Wave D (2026-10-25), plan approved by Q. Stage 1: 4.1 and 5.4 in Codex (`tc/4.1`, `tc/5.4`). Stage 2 (4.2, 4.3,
-  5.5) branches from `main` after 4.1 merges. 4.1's fixture API is fixed in the plan: `tests/fixtures/fixed-lines.json`,
-  `tests/make-fixtures.mjs`, `tests/fixture-util.mjs` (`loadFixedLines`, `fixtureCase`).
 
 ## Blocked
 
@@ -139,8 +163,20 @@ Next: wave D (4.1 and 5.4, then 4.2, 4.3 and 5.5).
   It's always on the second run, always within tolerance, and always 0 on rerun. It looks like one cause (the web
   font or text rasterisation is the leading theory) and deserves an investigation before 6.3 decides `view-toggle`'s
   byte comparison.
+- **Wave D:**
+  - Ran in two stages: 4.1 and 5.4, then 4.2, 4.3 and 5.5 on the merged fixtures. The coordinator fixed 4.1's API in
+    the plan (`fixed-lines.json`; `fixture-util.mjs`'s `loadFixedLines`/`fixtureCase`, which reject a geometry
+    mismatch by name), so stage 2 could rely on it.
+  - 4.2 builds the hilly track from the hilly fixture case after checking its x/y match the flat case exactly, and
+    dropped the flat-fraction diagnostic.
+  - 4.3 stopped correctly when its first missing-fields replacement passed a mutation that stopped naming the
+    fields; it now requires every name, with two missing at once.
+  - **5.5 counts quantities by shape:** a structural change (an object becoming `null`) counts as one quantity, so a
+    differing run can show fewer than 587. The change is still listed; objects print as `[object Object]`
+    (cosmetic).
 
 ## Next Up
 
-- Wave D: 4.1 (input fixtures out of `golden.json`) and 5.4 (accepted-line publication), then 4.2, 4.3 and 5.5 (all
-  need 4.1).
+- Wave E:
+  - 5.1 (measure the search budgets; **stops for Q to approve the numbers**), then 5.2 (search contracts);
+  - 5.3 (fixed-line and dynamic-check contracts) can run alongside 5.1.
